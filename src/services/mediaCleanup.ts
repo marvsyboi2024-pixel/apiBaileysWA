@@ -1,5 +1,5 @@
-import { readdir, stat, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { readdir, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import config from "@/config";
 import logger from "@/lib/logger";
@@ -36,7 +36,7 @@ export class MediaCleanupService {
   private async cleanup() {
     if (this.isRunning) return;
     this.isRunning = true;
-    
+
     try {
       if (!existsSync(MEDIA_DIR)) {
         this.isRunning = false;

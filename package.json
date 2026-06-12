@@ -21,7 +21,7 @@
 		"@hono/node-server": "^1.19.12",
 		"@hono/swagger-ui": "^0.6.1",
 		"@hono/zod-openapi": "^1.2.4",
-		"@whiskeysockets/baileys": "7.0.0-rc10",
+		"@whiskeysockets/baileys": "7.0.0-rc13",
 		"bcryptjs": "^3.0.3",
 		"hono": "^4.12.9",
 		"lru-cache": "^11.2.7",

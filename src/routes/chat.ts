@@ -18,8 +18,6 @@ import {
   chatModifySchema,
   deleteMessageSchema,
   downloadMediaSchema,
-  sendReactionSchema,
-  sendPollSchema,
   editMessageSchema,
   fetchHistorySchema,
   forwardMessageSchema,
@@ -29,6 +27,8 @@ import {
   sendBulkSchema,
   sendMessageSchema,
   sendMessageStaticSchema,
+  sendPollSchema,
+  sendReactionSchema,
   sendReceiptsSchema,
 } from "@/schemas/chat";
 import {

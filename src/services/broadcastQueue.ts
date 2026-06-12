@@ -118,10 +118,10 @@ async function processBroadcastJob(job: BroadcastJob): Promise<void> {
         error: errorToString(error),
       });
       job.progress = i + 1;
-      
+
       // Free memory even on error
       job.messages[i].message = {} as any;
-      
+
       logger.error(
         "[Broadcast:%s] Error sending to %s: %s",
         job.id,

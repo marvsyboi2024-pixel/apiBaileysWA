@@ -33,7 +33,10 @@ export function generateOpenApiSpec(pkg: Record<string, any>, port: number) {
     tags: [
       { name: "Status", description: "Server health and status" },
       { name: "Sessions", description: "WhatsApp session management" },
-      { name: "Chats", description: "Chat operations — send, read, delete, edit, bulk send, reaction, poll" },
+      {
+        name: "Chats",
+        description: "Chat operations — send, read, delete, edit, bulk send, reaction, poll",
+      },
       { name: "Groups", description: "Group management — create, participants, settings" },
       { name: "Profile", description: "Profile management — status, name, picture, block" },
       { name: "Media", description: "Media download and retrieval" },
@@ -304,10 +307,10 @@ export function generateOpenApiSpec(pkg: Record<string, any>, port: number) {
                     jid: { type: "string", description: "Chat JID" },
                     messageId: { type: "string", description: "ID of the message to react to" },
                     text: { type: "string", description: "Emoji reaction (e.g., '👍')" },
-                  }
-                }
-              }
-            }
+                  },
+                },
+              },
+            },
           },
           responses: { 200: { description: "Reaction sent" } },
         },
@@ -329,12 +332,20 @@ export function generateOpenApiSpec(pkg: Record<string, any>, port: number) {
                   properties: {
                     receiver: { type: "string", description: "Receiver phone number or group JID" },
                     name: { type: "string", description: "Poll question" },
-                    values: { type: "array", items: { type: "string" }, description: "Poll options" },
-                    selectableCount: { type: "integer", description: "How many options can be selected", default: 1 },
-                  }
-                }
-              }
-            }
+                    values: {
+                      type: "array",
+                      items: { type: "string" },
+                      description: "Poll options",
+                    },
+                    selectableCount: {
+                      type: "integer",
+                      description: "How many options can be selected",
+                      default: 1,
+                    },
+                  },
+                },
+              },
+            },
           },
           responses: { 200: { description: "Poll sent" } },
         },

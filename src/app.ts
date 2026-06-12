@@ -7,6 +7,7 @@ import { cors } from "hono/cors";
 import { logger as honoLogger } from "hono/logger";
 import config from "@/config";
 import { loadDashboard } from "@/dashboard/loader";
+import { generateOpenApiSpec } from "@/docs/openapi";
 import appLogger from "@/lib/logger";
 import { success } from "@/lib/response";
 import { authMiddleware } from "@/middleware/auth";
@@ -18,8 +19,6 @@ import profileRoutes from "@/routes/profile";
 import sessionRoutes from "@/routes/session";
 import statusRoutes from "@/routes/status";
 import storyRoutes from "@/routes/story";
-
-import { generateOpenApiSpec } from "@/docs/openapi";
 
 const app = new Hono();
 
