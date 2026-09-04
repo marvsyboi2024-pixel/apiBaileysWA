@@ -1,15 +1,18 @@
 # === Custom Project Files ===
-AUDIT*.md
-AGENT.md
-AGENTS.md
-SKILL.md
-SKILLS.md
-PRD.md
-CONCEPT.md
+*.md
+!README.md
 REFERENCES/
+memorypedia/
 data/
 media/
+uploads/
 sessions/
+
+# === Coding Agent Harness ===
+.agent*/
+.pi*/
+.claude*/
+.codex*/
 
 # === Environment / Config ===
 .env
@@ -17,7 +20,7 @@ sessions/
 .env.local
 .env.*.local
 *.env
-#!.env.example
+!.env.example
 
 # === Logs ===
 logs/
@@ -38,15 +41,18 @@ build/
 *.swo
 *.lock
 *.lock-wscript
+!uv.lock
+!package-lock.json
 
 # === Database ===
 *.db
 *.sqlite3
-*.sql
 *.sql.gz
 *.backup.sql
 db.sqlite3-journal
 *.db-journal
+!database/schema.sql
+!migrations/*.sql
 
 # === Python ===
 __pycache__/
