@@ -7,6 +7,7 @@
 import type { Context, Next } from "hono";
 import { LRUCache } from "lru-cache";
 import config from "@/config";
+import { error } from "@/lib/response";
 
 interface RateLimitOptions {
   /** Time window in milliseconds */
@@ -54,7 +55,7 @@ export function rateLimit(options: RateLimitOptions) {
         c.header("X-RateLimit-Limit", String(max));
         c.header("X-RateLimit-Remaining", "0");
         c.header("X-RateLimit-Reset", String(Math.ceil(entry.resetAt / 1000)));
-        return c.json({ success: false, message }, 429);
+        return error(c, message, 429);
       }
 
       cache.set(key, entry);

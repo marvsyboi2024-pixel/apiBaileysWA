@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { Context, Next } from "hono";
 import config from "@/config";
+import { error } from "@/lib/response";
 import logger from "@/lib/logger";
 import { getRedis, isRedisAvailable } from "@/lib/redis";
 
@@ -89,10 +90,10 @@ export async function authMiddleware(c: Context, next: Next) {
 
   // No simple token and no Redis key → check if simple token was configured
   if (config.auth.globalToken) {
-    return c.json({ success: false, message: "Unauthorized: invalid token" }, 401);
+    return error(c, "Unauthorized: invalid token", 401);
   }
 
-  return c.json({ success: false, message: "Unauthorized: API key required" }, 401);
+  return error(c, "Unauthorized: API key required", 401);
 }
 
 /**
@@ -103,7 +104,7 @@ export async function adminGuard(c: Context, next: Next) {
 
   const auth = c.get("auth") as AuthData | undefined;
   if (auth?.role !== "admin" && config.env !== "development") {
-    return c.json({ success: false, message: "Forbidden: admin access required" }, 403);
+    return error(c, "Forbidden: admin access required", 403);
   }
 
   return next();

@@ -1,6 +1,7 @@
 import type { Context, Next } from "hono";
 import connectionManager from "@/baileys/connectionManager";
 import { SESSION_ID_REGEX } from "@/schemas/session";
+import { error } from "@/lib/response";
 
 /**
  * Middleware to validate that a session exists and is connected.
@@ -11,21 +12,19 @@ export async function sessionValidator(c: Context, next: Next) {
   const sessionId = c.req.param("sessionId");
 
   if (!sessionId) {
-    return c.json({ success: false, message: "Session ID is required" }, 400);
+    return error(c, "Session ID is required", 400);
   }
 
   if (!SESSION_ID_REGEX.test(sessionId)) {
-    return c.json(
-      {
-        success: false,
-        message: "Invalid session ID format (alphanumeric, hyphens, underscores, max 64 chars)",
-      },
+    return error(
+      c,
+      "Invalid session ID format (alphanumeric, hyphens, underscores, max 64 chars)",
       400,
     );
   }
 
   if (!connectionManager.hasSession(sessionId)) {
-    return c.json({ success: false, message: `Session '${sessionId}' not found` }, 404);
+    return error(c, `Session '${sessionId}' not found`, 404);
   }
 
   return next();

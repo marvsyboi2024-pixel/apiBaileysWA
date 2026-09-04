@@ -9,7 +9,7 @@ import config from "@/config";
 import { loadDashboard } from "@/dashboard/loader";
 import { generateOpenApiSpec } from "@/docs/openapi";
 import appLogger from "@/lib/logger";
-import { success } from "@/lib/response";
+import { success, error } from "@/lib/response";
 import { authMiddleware } from "@/middleware/auth";
 import { generalRateLimit } from "@/middleware/rateLimit";
 import chatRoutes from "@/routes/chat";
@@ -24,6 +24,15 @@ const app = new Hono();
 
 // ── Global Middleware ───────────────────────────────
 app.use("*", cors({ origin: config.corsOrigin }));
+
+// Request ID: echo an incoming x-request-id (for tracing across reverse
+// proxies) or mint a short one; every response carries it back.
+app.use("*", async (c, next) => {
+  const incoming = c.req.header("x-request-id");
+  const requestId = incoming || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  c.header("x-request-id", requestId);
+  await next();
+});
 
 app.use("*", async (c, next) => {
   await next();
@@ -49,7 +58,7 @@ if (config.env === "development") {
 app.onError((err, c) => {
   appLogger.error("Unhandled error: %s", err.stack || err.message);
   const message = config.env === "development" ? err.message : "Internal server error";
-  return c.json({ success: false, message }, 500);
+  return error(c, message, 500);
 });
 
 // ── OpenAPI / Swagger Documentation ─────────────────

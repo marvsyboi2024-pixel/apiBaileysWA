@@ -282,6 +282,49 @@ Track progress:
 GET /chats/my-session/broadcast/bc_1709271000_abc123
 ```
 
+### Standard response envelope (`code` & `requestId`)
+
+Every public API response (success or error) is a stable JSON envelope:
+
+- **Success** — `{ success, message, data?, requestId }`
+- **Error** — `{ success: false, message, code, requestId }`
+
+`code` is a machine-readable error code derived from the HTTP status so
+integrators can branch programmatically instead of parsing free-text
+messages:
+
+| HTTP | `code` |
+|---|---|
+| 400 | `VALIDATION_ERROR` |
+| 401 | `UNAUTHORIZED` |
+| 403 | `FORBIDDEN` |
+| 404 | `NOT_FOUND` |
+| 409 | `CONFLICT` |
+| 422 | `UNPROCESSABLE_ENTITY` |
+| 429 | `RATE_LIMITED` |
+| 500 | `INTERNAL_ERROR` |
+| 503 | `SERVICE_UNAVAILABLE` |
+| …   | `HTTP_<status>` fallback |
+
+`requestId` lets you trace a request end-to-end across logs and reverse
+proxies. Send your own id in the `x-request-id` header to have it echoed
+back, or omit it and one is generated for you.
+
+Example:
+
+```bash
+curl -i -X POST /chats/missing-session/send \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "x-request-id: req_12345" \
+  -H "Content-Type: application/json" \
+  -d '{"receiver":"6281234567890","message":{"text":"hi"}}'
+```
+
+```json
+HTTP/1.1 404 Not Found
+{ "success": false, "message": "Session 'missing-session' not found", "code": "NOT_FOUND", "requestId": "req_12345" }
+```
+
 ### Create a Group
 
 ```bash
