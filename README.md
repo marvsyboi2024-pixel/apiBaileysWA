@@ -375,6 +375,27 @@ Fallback order for webhook auth/signing secret:
 1. Per-session webhook secret
 2. `AUTH_GLOBAL_TOKEN` (only when fallback is enabled)
 
+#### Delivery hardening (retries, rate limit, circuit breaker, dead-letter)
+
+Outbound delivery is hardened per receiver URL (see `.env.example`):
+
+- **Smart retry** — non-retryable 4xx give up immediately; 429/503 honor
+  `Retry-After` (capped); 5xx/408/425/network retry with backoff
+  (`WEBHOOK_RETRY_MAX`, `WEBHOOK_RETRY_INTERVAL`, `WEBHOOK_BACKOFF_FACTOR`,
+  `WEBHOOK_RETRYABLE_STATUSES`).
+- **Per-URL rate limit** — `WEBHOOK_RATE_PER_MIN` (0 = off) token-bucket per
+  receiver; extra events wait (bounded, fail-open) instead of being dropped.
+- **Circuit breaker** — `WEBHOOK_CIRCUIT_FAILURES` (default 5) consecutive
+  genuine failures (retryable 5xx / network errors — not 4xx or healthy 429s)
+  pause delivery to that endpoint for `WEBHOOK_CIRCUIT_RESET_MS` (default
+  30s). Paused deliveries are logged as `skipped` and never silently dropped.
+- **Dead-letter** — `WEBHOOK_DEAD_LETTER_ENABLED` keeps deliveries that
+  exhausted retries (in-memory, optionally persisted as JSONL to
+  `WEBHOOK_DEAD_LETTER_DIR`) for manual replay via the dashboard.
+- **SSRF guard** — `WEBHOOK_BLOCK_INTERNAL=true` rejects webhook URLs
+  pointing at localhost / private networks (off by default so local testing
+  works).
+
 Available events:
 
 - `connection.update` — Connection state changes (QR, open, close)

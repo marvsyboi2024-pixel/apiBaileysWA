@@ -31,7 +31,7 @@ import eventBus from "@/dashboard/eventBus";
 import logger, { baileysLogger, deepSanitizeObject } from "@/lib/logger";
 import { addWebhookLog } from "@/services/webhookLog";
 import { addToDeadLetter } from "@/services/webhookDeadLetter";
-import { webhookQueue, webhookRateLimiter } from "@/services/webhookQueue";
+import { webhookQueue, webhookRateLimiter, webhookCircuitBreaker } from "@/services/webhookQueue";
 import { asyncSleep } from "@/utils/asyncSleep";
 import { errorToString } from "@/utils/validation";
 
@@ -1044,6 +1044,26 @@ export class BaileysConnection {
       logger.debug({ sessionId: this.sessionId, payload: sanitizedPayload }, "Webhook payload");
     }
 
+    // Circuit breaker: skip delivery entirely while the endpoint is cooling
+    // down after repeated failures (event is logged; NOT dead-lettered since
+    // the failure is not permanent — it will resume once the circuit closes).
+    if (!webhookCircuitBreaker.beforeSend(webhookUrl)) {
+      addWebhookLog({
+        sessionId: this.sessionId,
+        event: payload.event,
+        webhookUrl,
+        status: "skipped",
+        attempt: 0,
+        error: "Delivery skipped: circuit breaker open for this webhook URL",
+      });
+      logger.warn(
+        "[%s] Webhook circuit open for %s — delivery skipped",
+        this.sessionId,
+        webhookUrl,
+      );
+      return "skipped";
+    }
+
     return webhookQueue.add(async () => {
       const { maxRetries, retryInterval, backoffFactor, retryableStatuses, retryHttp429 } =
         config.webhook.retryPolicy;
@@ -1094,6 +1114,7 @@ export class BaileysConnection {
 
           if (response.ok) {
             logger.debug("[%s] Webhook delivered successfully", this.sessionId);
+            webhookCircuitBreaker.recordSuccess(webhookUrl);
             addWebhookLog({
               sessionId: this.sessionId,
               event: payload.event,
@@ -1193,6 +1214,13 @@ export class BaileysConnection {
         lastFailureReason || "unknown",
         nonRetryable ? " [non-retryable]" : "",
       );
+
+      // Circuit breaker: only genuine receiver failures (retryable 5xx /
+      // network errors that exhausted the loop) count toward opening the
+      // circuit — NOT 4xx client errors or a healthy 429 rate-limit signal.
+      if (!nonRetryable) {
+        webhookCircuitBreaker.recordFailure(webhookUrl);
+      }
 
       // Keep permanently-failed deliveries in the dead-letter buffer so they
       // can be replayed once the receiver recovers (instead of silent loss).

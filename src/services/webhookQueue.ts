@@ -136,3 +136,95 @@ export const webhookRateLimiter = new PerUrlRateLimiter(
   config.webhook.ratePerMin,
   config.webhook.rateMaxWaitMs,
 );
+
+/**
+ * Per-URL circuit breaker.
+ *
+ * Problem: when a receiver is down, every event still burns N retry attempts
+ * against a dead endpoint (timeouts, backoff sleeps) before failing — wasting
+ * queue slots and hammering the target.
+ *
+ * Design:
+ * - Track consecutive failures per URL. On success the counter resets.
+ * - After `failureThreshold` consecutive failures the circuit opens for
+ *   `resetMs`; while open, beforeSend() returns false and the caller skips
+ *   the network call (event is logged + dead-lettered when enabled).
+ * - After the cooldown a single probe delivery is allowed (half-open); if it
+ *   succeeds the circuit closes, if it fails it reopens.
+ * - Enabled only when failureThreshold > 0 (WEBHOOK_CIRCUIT_FAILURES).
+ *   Unlike the rate limiter this defaults ON (5 failures / 30s reset) — it
+ *   never drops events permanently, only pauses a dead endpoint.
+ */
+class PerUrlCircuitBreaker {
+  private state = new Map<
+    string,
+    { failures: number; openUntil: number; halfOpen: boolean }
+  >();
+  private readonly failureThreshold: number;
+  private readonly resetMs: number;
+
+  constructor(failureThreshold: number, resetMs: number) {
+    this.failureThreshold = failureThreshold;
+    this.resetMs = resetMs;
+  }
+
+  get enabled() {
+    return this.failureThreshold > 0;
+  }
+
+  /**
+   * Ask whether a delivery to `url` may proceed right now. Returns false when
+   * the circuit is open (delivery should be skipped/logged).
+   */
+  beforeSend(url: string): boolean {
+    if (!this.enabled) return true;
+    const now = Date.now();
+    const entry = this.state.get(url);
+    if (!entry) return true;
+    if (entry.openUntil === 0) return true; // closed
+    if (now < entry.openUntil) return false; // still cooling down
+    // Cooldown elapsed — allow a single half-open probe delivery.
+    entry.halfOpen = true;
+    return true;
+  }
+
+  /** Record a successful delivery; closes/resets the circuit for this URL. */
+  recordSuccess(url: string) {
+    if (!this.enabled) return;
+    const entry = this.state.get(url);
+    if (!entry) return;
+    entry.failures = 0;
+    entry.openUntil = 0;
+    entry.halfOpen = false;
+  }
+
+  /** Record a failed delivery; opens the circuit after the threshold. */
+  recordFailure(url: string) {
+    if (!this.enabled) return;
+    const now = Date.now();
+    const entry = this.state.get(url) ?? { failures: 0, openUntil: 0, halfOpen: false };
+    // A half-open probe that failed reopens immediately.
+    if (entry.halfOpen) {
+      entry.openUntil = now + this.resetMs;
+      entry.halfOpen = false;
+    }
+    entry.failures += 1;
+    if (entry.failures >= this.failureThreshold && entry.openUntil === 0) {
+      entry.openUntil = now + this.resetMs;
+    }
+    this.state.set(url, entry);
+  }
+
+  get stats() {
+    let open = 0;
+    for (const e of this.state.values()) {
+      if (e.openUntil > Date.now()) open += 1;
+    }
+    return { urls: this.state.size, open, threshold: this.failureThreshold, resetMs: this.resetMs };
+  }
+}
+
+export const webhookCircuitBreaker = new PerUrlCircuitBreaker(
+  config.webhook.circuitFailures,
+  config.webhook.circuitResetMs,
+);

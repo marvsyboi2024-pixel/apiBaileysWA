@@ -31,6 +31,8 @@ const {
   WEBHOOK_RETRYABLE_STATUSES,
   WEBHOOK_RATE_PER_MIN,
   WEBHOOK_RATE_MAX_WAIT_MS,
+  WEBHOOK_CIRCUIT_FAILURES,
+  WEBHOOK_CIRCUIT_RESET_MS,
   WEBHOOK_DEAD_LETTER_ENABLED,
   WEBHOOK_DEAD_LETTER_DIR,
   WEBHOOK_BLOCK_INTERNAL,
@@ -190,6 +192,14 @@ const config = {
     ratePerMin: WEBHOOK_RATE_PER_MIN ? Number(WEBHOOK_RATE_PER_MIN) : 0,
     /** Max ms an event waits for a free per-URL slot before proceeding anyway. */
     rateMaxWaitMs: WEBHOOK_RATE_MAX_WAIT_MS ? Number(WEBHOOK_RATE_MAX_WAIT_MS) : 30000,
+    /**
+     * Per-URL circuit breaker: after N consecutive failures to the same
+     * receiver the circuit opens and delivery is skipped (logged, and the
+     * event goes to the dead-letter buffer when enabled) for resetMs,
+     * instead of hammering a dead endpoint. 0 = disabled.
+     */
+    circuitFailures: WEBHOOK_CIRCUIT_FAILURES !== undefined ? Number(WEBHOOK_CIRCUIT_FAILURES) : 5,
+    circuitResetMs: WEBHOOK_CIRCUIT_RESET_MS ? Number(WEBHOOK_CIRCUIT_RESET_MS) : 30000,
     /**
      * Dead-letter buffer for webhooks that exhausted all retries. When
      * enabled, failed deliveries are kept (and optionally persisted to disk)
