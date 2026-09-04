@@ -29,7 +29,8 @@ app.use("*", cors({ origin: config.corsOrigin }));
 // proxies) or mint a short one; every response carries it back.
 app.use("*", async (c, next) => {
   const incoming = c.req.header("x-request-id");
-  const requestId = incoming || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const requestId =
+    incoming || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   c.header("x-request-id", requestId);
   await next();
 });

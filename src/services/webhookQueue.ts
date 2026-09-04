@@ -59,10 +59,7 @@ export const webhookQueue = new ConcurrencyQueue(config.webhook.concurrency);
  * Enabled only when WEBHOOK_RATE_PER_MIN > 0; default 0 = disabled (legacy).
  */
 class PerUrlRateLimiter {
-  private buckets = new Map<
-    string,
-    { tokens: number; lastRefill: number; lastUsed: number }
-  >();
+  private buckets = new Map<string, { tokens: number; lastRefill: number; lastUsed: number }>();
   private readonly ratePerMin: number;
   private readonly maxWaitMs: number;
   private readonly idleTtlMs = 5 * 60 * 1000;
@@ -156,10 +153,7 @@ export const webhookRateLimiter = new PerUrlRateLimiter(
  *   never drops events permanently, only pauses a dead endpoint.
  */
 class PerUrlCircuitBreaker {
-  private state = new Map<
-    string,
-    { failures: number; openUntil: number; halfOpen: boolean }
-  >();
+  private state = new Map<string, { failures: number; openUntil: number; halfOpen: boolean }>();
   private readonly failureThreshold: number;
   private readonly resetMs: number;
 

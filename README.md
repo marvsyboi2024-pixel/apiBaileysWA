@@ -294,7 +294,7 @@ integrators can branch programmatically instead of parsing free-text
 messages:
 
 | HTTP | `code` |
-|---|---|
+| --- | --- |
 | 400 | `VALIDATION_ERROR` |
 | 401 | `UNAUTHORIZED` |
 | 403 | `FORBIDDEN` |
@@ -304,7 +304,7 @@ messages:
 | 429 | `RATE_LIMITED` |
 | 500 | `INTERNAL_ERROR` |
 | 503 | `SERVICE_UNAVAILABLE` |
-| …   | `HTTP_<status>` fallback |
+| … | `HTTP_<status>` fallback |
 
 `requestId` lets you trace a request end-to-end across logs and reverse
 proxies. Send your own id in the `x-request-id` header to have it echoed

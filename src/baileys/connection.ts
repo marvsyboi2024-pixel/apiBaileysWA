@@ -1239,11 +1239,7 @@ export class BaileysConnection {
         lastError: lastFailureReason || "unknown",
       });
       if (dlEntry) {
-        logger.warn(
-          "[%s] Webhook delivery moved to dead-letter (%s)",
-          this.sessionId,
-          dlEntry.id,
-        );
+        logger.warn("[%s] Webhook delivery moved to dead-letter (%s)", this.sessionId, dlEntry.id);
       }
       return "failed";
     });
@@ -1263,9 +1259,7 @@ export class BaileysConnection {
  * hints when compressed). Signature is computed over the UNCOMPRESSED JSON,
  * so receivers verify after decompressing.
  */
-function maybeGzipBody(
-  rawBody: string,
-): { body: string | ArrayBuffer; contentEncoding?: string } {
+function maybeGzipBody(rawBody: string): { body: string | ArrayBuffer; contentEncoding?: string } {
   const threshold = config.webhook.gzipThreshold;
   if (threshold > 0 && Buffer.byteLength(rawBody) >= threshold) {
     // Zero-copy: hand fetch the underlying ArrayBuffer, not the Node Buffer
