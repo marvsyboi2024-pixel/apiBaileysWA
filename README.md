@@ -389,6 +389,10 @@ Outbound delivery is hardened per receiver URL (see `.env.example`):
   genuine failures (retryable 5xx / network errors — not 4xx or healthy 429s)
   pause delivery to that endpoint for `WEBHOOK_CIRCUIT_RESET_MS` (default
   30s). Paused deliveries are logged as `skipped` and never silently dropped.
+- **Gzip** — bodies larger than `WEBHOOK_GZIP_THRESHOLD` bytes (default
+  16 KB; 0 = off) are sent with `Content-Encoding: gzip`. The signature is
+  computed over the *uncompressed* JSON, so receivers decompress first, then
+  verify.
 - **Dead-letter** — `WEBHOOK_DEAD_LETTER_ENABLED` keeps deliveries that
   exhausted retries (in-memory, optionally persisted as JSONL to
   `WEBHOOK_DEAD_LETTER_DIR`) for manual replay via the dashboard.

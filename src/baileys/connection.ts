@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { gzipSync } from "node:zlib";
 import type { Boom } from "@hapi/boom";
 import { humanizeReadBeforeReply, resolveHumanizeOptions } from "@/baileys/replyEngine";
 import makeWASocket, {
@@ -1093,6 +1094,10 @@ export class BaileysConnection {
             throw new Error(reason);
           }
 
+          // Compress large payloads (gzip) — signature stays over the plain body.
+          const { body, contentEncoding } = maybeGzipBody(rawBody);
+          if (contentEncoding) headers["Content-Encoding"] = contentEncoding;
+
           // Per-receiver-URL throttle (token bucket). Waits for a free slot
           // when the endpoint is being hit too fast; fails open after cap.
           const waitedMs = await webhookRateLimiter.waitForSlot(webhookUrl);
@@ -1108,7 +1113,7 @@ export class BaileysConnection {
           const response = await fetch(webhookUrl, {
             method: "POST",
             headers,
-            body: rawBody,
+            body,
             signal: AbortSignal.timeout(30000), // 30s timeout per attempt
           });
 
@@ -1253,6 +1258,26 @@ export class BaileysConnection {
  */
 
 /**
+ * Compress a webhook body with gzip when it exceeds WEBHOOK_GZIP_THRESHOLD.
+ * Returns the body to send plus the header set (Content-Encoding + length
+ * hints when compressed). Signature is computed over the UNCOMPRESSED JSON,
+ * so receivers verify after decompressing.
+ */
+function maybeGzipBody(
+  rawBody: string,
+): { body: string | ArrayBuffer; contentEncoding?: string } {
+  const threshold = config.webhook.gzipThreshold;
+  if (threshold > 0 && Buffer.byteLength(rawBody) >= threshold) {
+    // Zero-copy: hand fetch the underlying ArrayBuffer, not the Node Buffer
+    // wrapper (Bun/undici BodyInit expects ArrayBuffer/Uint8Array<ArrayBuffer>).
+    const buf = gzipSync(rawBody);
+    const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+    return { body: ab, contentEncoding: "gzip" };
+  }
+  return { body: rawBody };
+}
+
+/**
  * Build the auth + signature headers for a webhook delivery.
  *
  * Header convention (single source of truth): the secret travels in BOTH
@@ -1311,13 +1336,17 @@ export async function deliverWebhookOnce(
       return { ok: false, status: 0, error: headerError };
     }
 
+    // Compress large payloads (gzip) — signature stays over the plain body.
+    const { body, contentEncoding } = maybeGzipBody(rawBody);
+    if (contentEncoding) headers["Content-Encoding"] = contentEncoding;
+
     // Per-receiver-URL throttle (token bucket). Fails open after the cap.
     await webhookRateLimiter.waitForSlot(webhookUrl);
 
     const response = await fetch(webhookUrl, {
       method: "POST",
       headers,
-      body: rawBody,
+      body,
       signal: AbortSignal.timeout(timeoutMs),
     });
     return { ok: response.ok, status: response.status };

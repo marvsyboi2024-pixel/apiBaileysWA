@@ -33,6 +33,7 @@ const {
   WEBHOOK_RATE_MAX_WAIT_MS,
   WEBHOOK_CIRCUIT_FAILURES,
   WEBHOOK_CIRCUIT_RESET_MS,
+  WEBHOOK_GZIP_THRESHOLD,
   WEBHOOK_DEAD_LETTER_ENABLED,
   WEBHOOK_DEAD_LETTER_DIR,
   WEBHOOK_BLOCK_INTERNAL,
@@ -200,6 +201,15 @@ const config = {
      */
     circuitFailures: WEBHOOK_CIRCUIT_FAILURES !== undefined ? Number(WEBHOOK_CIRCUIT_FAILURES) : 5,
     circuitResetMs: WEBHOOK_CIRCUIT_RESET_MS ? Number(WEBHOOK_CIRCUIT_RESET_MS) : 30000,
+    /**
+     * Compress webhook payloads with gzip when the JSON body exceeds this
+     * many bytes (media-carrying events can be large). 0 = never compress.
+     * Receivers that do not send Accept-Encoding still get a compressed body
+     * — they must handle Content-Encoding: gzip (most HTTP clients do); the
+     * signature is computed over the uncompressed JSON so it stays verifiable
+     * after decompression.
+     */
+    gzipThreshold: WEBHOOK_GZIP_THRESHOLD !== undefined ? Number(WEBHOOK_GZIP_THRESHOLD) : 16384,
     /**
      * Dead-letter buffer for webhooks that exhausted all retries. When
      * enabled, failed deliveries are kept (and optionally persisted to disk)
