@@ -27,6 +27,8 @@ const {
   WEBHOOK_SIGNATURE_MODE,
   WEBHOOK_ALLOW_GLOBAL_TOKEN_FALLBACK,
   WEBHOOK_CONCURRENCY,
+  WEBHOOK_RETRY_HTTP_429,
+  WEBHOOK_RETRYABLE_STATUSES,
   BROADCAST_MIN_DELAY_MS,
   BROADCAST_MAX_DELAY_MS,
   BROADCAST_BATCH_SIZE,
@@ -158,6 +160,21 @@ const config = {
       maxRetries: WEBHOOK_RETRY_MAX ? Number(WEBHOOK_RETRY_MAX) : 3,
       retryInterval: WEBHOOK_RETRY_INTERVAL ? Number(WEBHOOK_RETRY_INTERVAL) : 5000,
       backoffFactor: WEBHOOK_BACKOFF_FACTOR ? Number(WEBHOOK_BACKOFF_FACTOR) : 3,
+      /** Respect Retry-After on 429 (exponential backoff otherwise). */
+      retryHttp429: WEBHOOK_RETRY_HTTP_429 !== "false",
+      /**
+       * HTTP statuses that are retryable. 4xx (bad request) is not — retrying
+       * a malformed payload will never succeed and only burns quota.
+       * Default: 408, 425, 429, 5xx. Can be overridden via env, e.g.
+       * "408,425,429,500,502,503,504".
+       */
+      retryableStatuses: new Set(
+        WEBHOOK_RETRYABLE_STATUSES
+          ? WEBHOOK_RETRYABLE_STATUSES.split(",")
+              .map((s) => Number(s.trim()))
+              .filter((n) => Number.isInteger(n))
+          : [408, 425, 429, 500, 502, 503, 504],
+      ),
     },
   },
 

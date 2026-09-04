@@ -72,6 +72,28 @@ const LOGGER_OMIT_KEYS = [
   "appStateSyncKeyShare",
 ];
 
+/**
+ * Parse an HTTP Retry-After header (seconds or HTTP-date) into milliseconds.
+ * Returns undefined when absent/unparseable so callers fall back to their
+ * own backoff schedule.
+ */
+function parseRetryAfter(header: string | null): number | undefined {
+  if (!header) return undefined;
+  const trimmed = header.trim();
+  if (!trimmed) return undefined;
+  const seconds = Number(trimmed);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    // Cap at 5 minutes so a misbehaving server can't stall the queue forever.
+    return Math.min(Math.round(seconds * 1000), 300000);
+  }
+  const parsed = Date.parse(trimmed);
+  if (Number.isFinite(parsed)) {
+    const ms = parsed - Date.now();
+    return ms > 0 ? Math.min(ms, 300000) : undefined;
+  }
+  return undefined;
+}
+
 export class BaileysConnection {
   public sessionId: string;
   private options: SessionOptions;
@@ -970,13 +992,15 @@ export class BaileysConnection {
     }
 
     return webhookQueue.add(async () => {
-      const { maxRetries, retryInterval, backoffFactor } = config.webhook.retryPolicy;
+      const { maxRetries, retryInterval, backoffFactor, retryableStatuses, retryHttp429 } =
+        config.webhook.retryPolicy;
       const maxAttempts = Math.max(1, maxRetries);
       let attempt = 0;
       let currentDelay = retryInterval;
       let lastFailureReason = "";
+      let nonRetryable = false;
 
-      while (attempt < maxAttempts) {
+      while (attempt < maxAttempts && !nonRetryable) {
         const startedAt = Date.now();
         const currentAttempt = attempt + 1;
         try {
@@ -1033,6 +1057,20 @@ export class BaileysConnection {
             return "success";
           }
 
+          lastFailureReason = `HTTP ${response.status}`;
+
+          // Smart retry: 4xx (except 408/425/429) is a client error that will
+          // never succeed on retry — report once and give up immediately.
+          const retryable = retryableStatuses.has(response.status);
+          if (!retryable) {
+            nonRetryable = true;
+            logger.warn(
+              "[%s] Webhook rejected with non-retryable status HTTP %d (no retry)",
+              this.sessionId,
+              response.status,
+            );
+          }
+
           addWebhookLog({
             sessionId: this.sessionId,
             event: payload.event,
@@ -1044,8 +1082,7 @@ export class BaileysConnection {
             error: `HTTP ${response.status}`,
           });
 
-          lastFailureReason = `HTTP ${response.status}`;
-          if (currentAttempt < maxAttempts) {
+          if (retryable && currentAttempt < maxAttempts) {
             logger.warn(
               "[%s] Webhook failed (HTTP %d), attempt %d/%d",
               this.sessionId,
@@ -1053,6 +1090,22 @@ export class BaileysConnection {
               currentAttempt,
               maxAttempts,
             );
+
+            // Respect Retry-After when present (429 / 503) instead of the
+            // fixed backoff — the server tells us exactly when to retry.
+            const retryAfterMs = retryHttp429
+              ? parseRetryAfter(response.headers.get("retry-after"))
+              : undefined;
+            if (retryAfterMs !== undefined) {
+              currentDelay = retryAfterMs;
+              logger.warn(
+                "[%s] Respecting Retry-After %dms before next attempt",
+                this.sessionId,
+                retryAfterMs,
+              );
+            } else {
+              currentDelay *= backoffFactor;
+            }
           }
         } catch (error) {
           const reason = errorToString(error);
@@ -1078,18 +1131,18 @@ export class BaileysConnection {
         }
 
         attempt++;
-        if (attempt < maxAttempts) {
+        if (attempt < maxAttempts && !nonRetryable) {
           const jitter = Math.floor(Math.random() * 1000);
           await asyncSleep(currentDelay + jitter);
-          currentDelay *= backoffFactor;
         }
       }
 
       logger.error(
-        "[%s] Webhook failed after %d attempts (last error: %s)",
+        "[%s] Webhook failed after %d attempt(s) (last error: %s)%s",
         this.sessionId,
-        maxAttempts,
+        attempt,
         lastFailureReason || "unknown",
+        nonRetryable ? " [non-retryable]" : "",
       );
       return "failed";
     });
