@@ -62,6 +62,7 @@ const {
   HUMANIZE_PRESENCE_DEDUPE_MS,
   HUMANIZE_GLOBAL_PACING_MIN_MS,
   HUMANIZE_GLOBAL_PACING_MAX_MS,
+  HUMANIZE_DELAY_DISTRIBUTION,
   BROADCAST_TYPING_SIMULATION,
   BROADCAST_DELAY_DISTRIBUTION,
   BROADCAST_BATCH_CHECK_WA,
@@ -97,7 +98,12 @@ function rangePair(
 }
 
 // Normalized delay ranges (swap inverted env values, preserve explicit 0 = off)
-const typingDelay = rangePair(SIMULATE_TYPING_DELAY_MIN_MS, SIMULATE_TYPING_DELAY_MAX_MS, 1500, 3000);
+const typingDelay = rangePair(
+  SIMULATE_TYPING_DELAY_MIN_MS,
+  SIMULATE_TYPING_DELAY_MAX_MS,
+  1500,
+  3000,
+);
 const autoReadDelay = rangePair(AUTO_READ_DELAY_MIN_MS, AUTO_READ_DELAY_MAX_MS, 1500, 4000);
 const humanReadDelay = rangePair(HUMANIZE_READ_DELAY_MIN_MS, HUMANIZE_READ_DELAY_MAX_MS, 800, 2500);
 const humanThinkDelay = rangePair(HUMANIZE_THINK_MIN_MS, HUMANIZE_THINK_MAX_MS, 800, 2000);
@@ -202,7 +208,19 @@ const config = {
     enabled: DASHBOARD_ENABLED ? DASHBOARD_ENABLED === "true" : true,
     registrationEnabled: DASHBOARD_REGISTRATION_ENABLED === "true",
     registrationRequireApproval: DASHBOARD_REGISTRATION_REQUIRE_APPROVAL === "true",
+    /**
+     * JWT secret for dashboard auth. In production a missing/default secret is
+     * treated as a misconfiguration (jwtMisconfigured=true) so the dashboard
+     * fails closed instead of silently signing tokens with a publicly-known
+     * default. In development the built-in default stays for local convenience.
+     */
     jwtSecret: DASHBOARD_JWT_SECRET || "baileys-wa-api-dashboard-secret-change-me",
+    jwtMisconfigured:
+      (NODE_ENV || "development") === "production" &&
+      (!DASHBOARD_JWT_SECRET ||
+        !DASHBOARD_JWT_SECRET.trim() ||
+        DASHBOARD_JWT_SECRET.includes("change-me") ||
+        DASHBOARD_JWT_SECRET.includes("change_me")),
     passwordMinLength: DASHBOARD_PASSWORD_MIN_LENGTH ? Number(DASHBOARD_PASSWORD_MIN_LENGTH) : 6,
   },
 
@@ -239,6 +257,8 @@ const config = {
     /** Global min/max gap between ANY outbound action within a session (0 = off). */
     globalPacingMinMs: humanPacing.minMs,
     globalPacingMaxMs: humanPacing.maxMs,
+    /** Delay pattern for read/think gaps: `uniform` (legacy) or `human`. */
+    delayDistribution: (HUMANIZE_DELAY_DISTRIBUTION || "uniform") as "uniform" | "human",
   },
 
   autoReply: {

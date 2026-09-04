@@ -465,7 +465,7 @@ baileys-wa-api/
 | `DASHBOARD_REGISTRATION_ENABLED`          | `false`                          | Allow account creation                                                   |
 | `DASHBOARD_REGISTRATION_REQUIRE_APPROVAL` | `true`                           | Require admin approval before new user can login                         |
 | `DASHBOARD_PASSWORD_MIN_LENGTH`           | `6`                              | Minimum password length for dashboard users                              |
-| `DASHBOARD_JWT_SECRET`                    | `change-this-to-a-random-secret` | JWT secret for dashboard auth                                            |
+| `DASHBOARD_JWT_SECRET`                    | `change-this-to-a-random-secret` | JWT secret for dashboard auth. **In production**: if unset/still default, dashboard auth is disabled (fail-closed, 503) — generate with `openssl rand -base64 48` |
 | `SIMULATE_TYPING_BEFORE_SEND`             | `true`                           | Auto-send "composing" presence before each message (default: true)       |
 | `SIMULATE_TYPING_DELAY_MIN_MS`            | `1500`                           | Typing delay range in ms (random between min-max)                        |
 | `SIMULATE_TYPING_DELAY_MAX_MS`            | `3000`                           | Typing delay range in ms (random between min-max)                        |
@@ -484,6 +484,12 @@ baileys-wa-api/
 | `HUMANIZE_PRESENCE_DEDUPE_MS`             | `0`                              | Min gap between repeated composing/paused to the same chat (ms); `0` = always send (legacy) |
 | `HUMANIZE_GLOBAL_PACING_MIN_MS`           | `0`                              | Min random gap between ANY outbound actions within a session (ms); `0` = off (legacy) |
 | `HUMANIZE_GLOBAL_PACING_MAX_MS`           | `0`                              | Max random gap between ANY outbound actions within a session (ms); `0` = off (legacy) |
+| `HUMANIZE_DELAY_DISTRIBUTION`             | `uniform`                        | Delay pattern for humanize read/think gaps: `uniform` (random min–max, legacy) or `human` (short gaps + occasional longer pauses) |
+
+### CORS & reverse-proxy notes
+
+- **`CORS_ORIGIN=*`** (default) is safe for a token-based public API: CORS only controls which browser origins may *read responses*, it is **not** authentication — requests still need `AUTH_GLOBAL_TOKEN` / API keys. Restrict it (comma-separated origins) when a browser dashboard on another domain must talk to this API, or when you never want other sites to read responses.
+- **`TRUST_PROXY=false`** (default) uses the socket address for rate limiting — spoofed `x-forwarded-for` headers cannot bypass limits. Set `TRUST_PROXY=true` **only** behind a trusted reverse proxy / load balancer (Nginx, Caddy, Cloudflare, AWS ALB) so the real client IP is used.
 
 ---
 

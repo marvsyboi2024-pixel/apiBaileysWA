@@ -14,6 +14,18 @@ import { authRateLimit } from "@/middleware/rateLimit";
 const DATA_DIR = join(process.cwd(), "data");
 const USERS_FILE = join(DATA_DIR, "dashboard-users.json");
 
+/** Response used when the dashboard JWT secret is not configured in production. */
+function jwtMisconfiguredResponse(c: Context) {
+  return c.json(
+    {
+      success: false,
+      message:
+        "Dashboard auth is disabled: DASHBOARD_JWT_SECRET is not set to a secure value. Set it in production to enable the dashboard.",
+    },
+    503,
+  );
+}
+
 interface DashboardUser {
   id: string;
   username: string;
@@ -102,6 +114,8 @@ const dashboardAuth = new Hono<DashboardEnv>();
  * POST /dashboard/api/auth/login
  */
 dashboardAuth.post("/login", authRateLimit, async (c) => {
+  if (config.dashboard.jwtMisconfigured) return jwtMisconfiguredResponse(c);
+
   const body = await c.req.json();
   const { username, password } = body;
 
@@ -149,6 +163,8 @@ dashboardAuth.post("/login", authRateLimit, async (c) => {
  * POST /dashboard/api/auth/register
  */
 dashboardAuth.post("/register", authRateLimit, async (c) => {
+  if (config.dashboard.jwtMisconfigured) return jwtMisconfiguredResponse(c);
+
   const users = loadUsers();
 
   // If users exist and registration is disabled
@@ -247,6 +263,7 @@ dashboardAuth.get("/me", async (c) => {
   if (!token) return c.json({ success: false, message: "Not authenticated" }, 401);
 
   try {
+    if (config.dashboard.jwtMisconfigured) return jwtMisconfiguredResponse(c);
     const payload = await verify(token, config.dashboard.jwtSecret, "HS256");
     return c.json({
       success: true,
@@ -298,6 +315,8 @@ dashboardAuth.get("/status", (c) => {
  * Middleware to verify dashboard JWT token
  */
 export async function dashboardAuthMiddleware(c: Context, next: Next) {
+  if (config.dashboard.jwtMisconfigured) return jwtMisconfiguredResponse(c);
+
   const authHeader = c.req.header("Authorization");
   const tokenFromHeader = authHeader?.replace(/^Bearer\s+/i, "").trim();
   const tokenFromQuery =

@@ -3,37 +3,16 @@ import connectionManager from "@/baileys/connectionManager";
 import type { BroadcastJob, BroadcastMessage } from "@/baileys/types";
 import config from "@/config";
 import logger from "@/lib/logger";
-import { asyncSleep, randomDelay } from "@/utils/asyncSleep";
+import { asyncSleep, distributedDelay } from "@/utils/asyncSleep";
 import { formatPhone } from "@/utils/phone";
 import { errorToString } from "@/utils/validation";
 
 const jobs = new Map<string, BroadcastJob>();
 
-/**
- * Human-like delay distribution for broadcasts.
- * Mix of short typical gaps with occasional longer "pauses" to avoid the
- * perfectly-uniform cadence of an automated sender. Falls back to a plain
- * uniform random when the sender did not choose "human".
- */
-function humanDelay(lo: number, hi: number): number {
-  const r = Math.random();
-  if (r < 0.7) {
-    // 70%: short, human-ish gap (lower half of range, still >= lo)
-    const mid = lo + (hi - lo) * 0.45;
-    return Math.floor(lo + Math.random() * (mid - lo));
-  }
-  if (r < 0.9) {
-    // 20%: full-range random
-    return randomDelay(lo, hi);
-  }
-  // 10%: occasional long pause (1.5x–3x hi) — feels like the sender got busy
-  return Math.floor(hi * 1.5 + Math.random() * hi * 1.5);
-}
-
 /** Generate the next inter-message delay honoring the configured distribution. */
 function nextDelayMs(customDelay: number | undefined, lo: number, hi: number): number {
   if (customDelay !== undefined) return customDelay;
-  return config.broadcast.delayDistribution === "human" ? humanDelay(lo, hi) : randomDelay(lo, hi);
+  return distributedDelay(config.broadcast.delayDistribution, lo, hi);
 }
 
 /**

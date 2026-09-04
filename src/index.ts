@@ -60,17 +60,14 @@ startServer();
 
 // ── Production Config Validation ────────────────────
 if (config.env === "production") {
-  if (
-    config.dashboard.jwtSecret.includes("change-me") ||
-    config.dashboard.jwtSecret.includes("change_me")
-  ) {
-    logger.warn(
-      "⚠️  DASHBOARD_JWT_SECRET is using default value! Set a secure random secret for production.",
+  if (config.dashboard.jwtMisconfigured) {
+    logger.error(
+      "❌ DASHBOARD_JWT_SECRET is not set to a secure value! Dashboard auth is DISABLED (fail-closed). Generate one with: openssl rand -base64 48",
     );
   }
   if (config.corsOrigin === "*") {
     logger.warn(
-      "⚠️  CORS_ORIGIN is set to '*'. Consider restricting to specific domains (comma-separated) in production.",
+      "⚠️  CORS_ORIGIN is set to '*'. This is fine for a token-based public API (CORS is not auth), but if you serve the dashboard UI to other domains, restrict CORS_ORIGIN to your known dashboard domain(s) (comma-separated).",
     );
   }
   if (!config.auth.globalToken && !config.redis.enabled) {

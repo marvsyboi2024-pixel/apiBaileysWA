@@ -17,7 +17,7 @@
 import type { AnyRegularMessageContent, WAMessage } from "@whiskeysockets/baileys";
 import config from "@/config";
 import logger from "@/lib/logger";
-import { asyncSleep, randomDelay } from "@/utils/asyncSleep";
+import { asyncSleep, distributedDelay, randomDelay } from "@/utils/asyncSleep";
 
 /** Extract the human-readable text length from any message content. */
 function textLengthOf(content: unknown): number {
@@ -85,7 +85,7 @@ export async function humanizeReadBeforeReply(opts: HumanizeStepOptions, ctx: Hu
   try {
     const lo = opts.readMinMs ?? config.humanize.readDelayMinMs;
     const hi = opts.readMaxMs ?? config.humanize.readDelayMaxMs;
-    await asyncSleep(randomDelay(lo, hi));
+    await asyncSleep(distributedDelay(config.humanize.delayDistribution, lo, hi));
     await ctx.markRead();
   } catch (err) {
     logger.warn("[Humanize] read-before-reply skipped: %s", (err as Error).message);
@@ -106,7 +106,7 @@ export async function humanizeTypingSequence(
     // thinking gap before starting to type
     const thinkLo = opts.thinkMinMs ?? config.humanize.thinkMinMs;
     const thinkHi = opts.thinkMaxMs ?? config.humanize.thinkMaxMs;
-    await asyncSleep(randomDelay(thinkLo, thinkHi));
+    await asyncSleep(distributedDelay(config.humanize.delayDistribution, thinkLo, thinkHi));
 
     await ctx.setPresence("available");
     await ctx.setPresence("composing");
