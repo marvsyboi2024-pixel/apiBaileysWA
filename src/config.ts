@@ -45,9 +45,26 @@ const {
   SIMULATE_TYPING_DELAY_MIN_MS,
   SIMULATE_TYPING_DELAY_MAX_MS,
   AUTO_READ_MESSAGES,
+  AUTO_READ_DELAY_ENABLED,
+  AUTO_READ_DELAY_MIN_MS,
+  AUTO_READ_DELAY_MAX_MS,
   AUTO_MARK_ONLINE,
   MAX_SESSIONS,
   REJECT_CALLS,
+  // Humanized interaction (WA-Web-like pacing)
+  HUMANIZE_READ_BEFORE_REPLY,
+  HUMANIZE_READ_DELAY_MIN_MS,
+  HUMANIZE_READ_DELAY_MAX_MS,
+  HUMANIZE_THINK_MIN_MS,
+  HUMANIZE_THINK_MAX_MS,
+  HUMANIZE_TYPING_PROPORTIONAL,
+  HUMANIZE_PRESENCE_DEDUPE_MS,
+  HUMANIZE_GLOBAL_PACING_MIN_MS,
+  HUMANIZE_GLOBAL_PACING_MAX_MS,
+  BROADCAST_TYPING_SIMULATION,
+  BROADCAST_DELAY_DISTRIBUTION,
+  BROADCAST_BATCH_CHECK_WA,
+  BROADCAST_CHECK_WA_BATCH_SIZE,
 } = process.env;
 
 const config = {
@@ -106,6 +123,14 @@ const config = {
     maxDelayMs: BROADCAST_MAX_DELAY_MS ? Number(BROADCAST_MAX_DELAY_MS) : 3000,
     batchSize: BROADCAST_BATCH_SIZE ? Number(BROADCAST_BATCH_SIZE) : 10,
     batchPauseMs: BROADCAST_BATCH_PAUSE_MS ? Number(BROADCAST_BATCH_PAUSE_MS) : 5000,
+    /** Show "composing…" bubble per recipient during broadcasts (default: false — safer). */
+    typingSimulation:
+      BROADCAST_TYPING_SIMULATION !== undefined ? BROADCAST_TYPING_SIMULATION === "true" : false,
+    /** "uniform" (legacy) or "human" (mixed short/long gaps + jitter). */
+    delayDistribution: (BROADCAST_DELAY_DISTRIBUTION || "uniform") as "uniform" | "human",
+    /** Check WA registration in batches instead of 1-by-1 (fewer usync queries). */
+    batchCheckWa: BROADCAST_BATCH_CHECK_WA === "true",
+    checkWaBatchSize: BROADCAST_CHECK_WA_BATCH_SIZE ? Number(BROADCAST_CHECK_WA_BATCH_SIZE) : 50,
   },
 
   media: {
@@ -141,8 +166,34 @@ const config = {
     typingDelayMinMs: SIMULATE_TYPING_DELAY_MIN_MS ? Number(SIMULATE_TYPING_DELAY_MIN_MS) : 1500,
     typingDelayMaxMs: SIMULATE_TYPING_DELAY_MAX_MS ? Number(SIMULATE_TYPING_DELAY_MAX_MS) : 3000,
     autoReadMessages: AUTO_READ_MESSAGES === "true",
+    /** Jeda "buka chat" sebelum mark read saat auto-read ON (0 = instan, seperti lama). */
+    autoReadDelayEnabled: AUTO_READ_DELAY_ENABLED !== "false",
+    autoReadDelayMinMs: AUTO_READ_DELAY_MIN_MS ? Number(AUTO_READ_DELAY_MIN_MS) : 1500,
+    autoReadDelayMaxMs: AUTO_READ_DELAY_MAX_MS ? Number(AUTO_READ_DELAY_MAX_MS) : 4000,
     autoMarkOnline: AUTO_MARK_ONLINE !== "false",
     rejectCalls: REJECT_CALLS === "true",
+  },
+
+  /**
+   * Humanized interaction — WA-Web-like pacing before reads/replies.
+   * All knobs default to the legacy behavior (0 / false) unless enabled.
+   */
+  humanize: {
+    /** Mark incoming as read before sending an auto-reply (like opening WA Web). */
+    readBeforeReply: HUMANIZE_READ_BEFORE_REPLY === "true",
+    /** Random "reading" gap before read receipts (ms). */
+    readDelayMinMs: HUMANIZE_READ_DELAY_MIN_MS ? Number(HUMANIZE_READ_DELAY_MIN_MS) : 800,
+    readDelayMaxMs: HUMANIZE_READ_DELAY_MAX_MS ? Number(HUMANIZE_READ_DELAY_MAX_MS) : 2500,
+    /** Random "thinking" gap before typing starts (ms). */
+    thinkMinMs: HUMANIZE_THINK_MIN_MS ? Number(HUMANIZE_THINK_MIN_MS) : 800,
+    thinkMaxMs: HUMANIZE_THINK_MAX_MS ? Number(HUMANIZE_THINK_MAX_MS) : 2000,
+    /** Typing duration proportional to reply length when true. */
+    typingProportional: HUMANIZE_TYPING_PROPORTIONAL !== "false",
+    /** Min gap between repeated composing/paused to same chat (0 = send every time). */
+    presenceDedupeMs: HUMANIZE_PRESENCE_DEDUPE_MS ? Number(HUMANIZE_PRESENCE_DEDUPE_MS) : 0,
+    /** Global min/max gap between ANY outbound action within a session (0 = off). */
+    globalPacingMinMs: HUMANIZE_GLOBAL_PACING_MIN_MS ? Number(HUMANIZE_GLOBAL_PACING_MIN_MS) : 0,
+    globalPacingMaxMs: HUMANIZE_GLOBAL_PACING_MAX_MS ? Number(HUMANIZE_GLOBAL_PACING_MAX_MS) : 0,
   },
 
   autoReply: {

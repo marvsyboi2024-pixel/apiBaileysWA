@@ -270,9 +270,9 @@ Response:
 
 ```json
 {
-	"success": true,
-	"message": "Broadcast job created",
-	"data": { "jobId": "bc_1709271000_abc123", "total": 3, "status": "pending" }
+ "success": true,
+ "message": "Broadcast job created",
+ "data": { "jobId": "bc_1709271000_abc123", "total": 3, "status": "pending" }
 }
 ```
 
@@ -451,6 +451,10 @@ baileys-wa-api/
 | `BROADCAST_MAX_DELAY_MS`                  | `3000`                           | Max delay between bulk messages                                          |
 | `BROADCAST_BATCH_SIZE`                    | `10`                             | Messages per batch before pause                                          |
 | `BROADCAST_BATCH_PAUSE_MS`                | `5000`                           | Pause between batches                                                    |
+| `BROADCAST_TYPING_SIMULATION`             | `false`                          | Show a per-recipient "composing…" bubble during broadcasts (default: false — safer/less bot-like; adds typing delay per recipient) |
+| `BROADCAST_DELAY_DISTRIBUTION`            | `uniform`                        | Delay pattern between messages: `uniform` (random min–max, legacy) or `human` (short gaps + occasional longer pauses) |
+| `BROADCAST_BATCH_CHECK_WA`                | `false`                          | Check recipient WA-registration in batches (fewer usync queries) instead of 1-by-1 |
+| `BROADCAST_CHECK_WA_BATCH_SIZE`           | `50`                             | Batch size when `BROADCAST_BATCH_CHECK_WA=true`                          |
 | `MEDIA_INCLUDE_BASE64`                    | `false`                          | Include media in webhooks                                                |
 | `MEDIA_CLEANUP_ENABLED`                   | `true`                           | Auto-delete old media files                                              |
 | `MEDIA_CLEANUP_INTERVAL_MS`               | `3600000`                        | Media cleanup interval (ms)                                              |
@@ -464,9 +468,21 @@ baileys-wa-api/
 | `SIMULATE_TYPING_BEFORE_SEND`             | `true`                           | Auto-send "composing" presence before each message (default: true)       |
 | `SIMULATE_TYPING_DELAY_MIN_MS`            | `1500`                           | Typing delay range in ms (random between min-max)                        |
 | `SIMULATE_TYPING_DELAY_MAX_MS`            | `3000`                           | Typing delay range in ms (random between min-max)                        |
-| `AUTO_READ_MESSAGES`                      | `false`                          | Auto-mark incoming messages as read (default: false, like WA Web toggle) |
+| `AUTO_READ_MESSAGES`                      | `false`                          | **⚠ RISK**: auto-mark incoming as read. Instant 0ms reads on 100% of chats is a bot signature & may trigger bans. Leave `false` unless required; if enabled also set `AUTO_READ_DELAY_ENABLED=true` for a natural delay |
+| `AUTO_READ_DELAY_ENABLED`                 | `true`                           | Wait a natural "opened chat" delay before marking read (only when `AUTO_READ_MESSAGES=true`); `false` = read instantly (legacy) |
+| `AUTO_READ_DELAY_MIN_MS`                  | `1500`                           | Min random "opened chat" delay before read receipt (ms)                 |
+| `AUTO_READ_DELAY_MAX_MS`                  | `4000`                           | Max random "opened chat" delay before read receipt (ms)                 |
 | `AUTO_MARK_ONLINE`                        | `true`                           | Auto-set presence to "available" when sending messages (default: true)   |
 | `REJECT_CALLS`                            | `false`                          | Auto-reject incoming calls across all sessions                           |
+| `HUMANIZE_READ_BEFORE_REPLY`              | `false`                          | Before auto-replying to a 1-on-1 chat, wait a natural "reading" gap then mark as read (bot-like instant replies without prior read = risky) |
+| `HUMANIZE_READ_DELAY_MIN_MS`              | `800`                            | Min random "reading" gap before the read receipt (ms)                   |
+| `HUMANIZE_READ_DELAY_MAX_MS`              | `2500`                           | Max random "reading" gap before the read receipt (ms)                   |
+| `HUMANIZE_THINK_MIN_MS`                   | `800`                            | Min random "thinking" gap before typing starts (ms)                     |
+| `HUMANIZE_THINK_MAX_MS`                   | `2000`                           | Max random "thinking" gap before typing starts (ms)                     |
+| `HUMANIZE_TYPING_PROPORTIONAL`            | `false`                          | When `true`, typing ("composing") duration scales with reply length instead of a fixed random range. Default `false` = legacy fixed random typing delay (controlled by `SIMULATE_TYPING_DELAY_*`) |
+| `HUMANIZE_PRESENCE_DEDUPE_MS`             | `0`                              | Min gap between repeated composing/paused to the same chat (ms); `0` = always send (legacy) |
+| `HUMANIZE_GLOBAL_PACING_MIN_MS`           | `0`                              | Min random gap between ANY outbound actions within a session (ms); `0` = off (legacy) |
+| `HUMANIZE_GLOBAL_PACING_MAX_MS`           | `0`                              | Max random gap between ANY outbound actions within a session (ms); `0` = off (legacy) |
 
 ---
 

@@ -9,6 +9,42 @@ import { errorToString } from "@/utils/validation";
 
 const jobs = new Map<string, BroadcastJob>();
 
+/**
+ * Human-like delay distribution for broadcasts.
+ * Mix of short typical gaps with occasional longer "pauses" to avoid the
+ * perfectly-uniform cadence of an automated sender. Falls back to a plain
+ * uniform random when the sender did not choose "human".
+ */
+function humanDelay(lo: number, hi: number): number {
+  const r = Math.random();
+  if (r < 0.7) {
+    // 70%: short, human-ish gap (lower half of range, still >= lo)
+    const mid = lo + (hi - lo) * 0.45;
+    return Math.floor(lo + Math.random() * (mid - lo));
+  }
+  if (r < 0.9) {
+    // 20%: full-range random
+    return randomDelay(lo, hi);
+  }
+  // 10%: occasional long pause (1.5x–3x hi) — feels like the sender got busy
+  return Math.floor(hi * 1.5 + Math.random() * hi * 1.5);
+}
+
+/** Generate the next inter-message delay honoring the configured distribution. */
+function nextDelayMs(customDelay: number | undefined, lo: number, hi: number): number {
+  if (customDelay !== undefined) return customDelay;
+  return config.broadcast.delayDistribution === "human" ? humanDelay(lo, hi) : randomDelay(lo, hi);
+}
+
+/**
+ * Broadcast is a background bulk operation: typing bubbles per recipient are
+ * both odd (you don't type to each contact) and an extra per-message delay.
+ * Off unless the operator explicitly enables BROADCAST_TYPING_SIMULATION.
+ */
+function broadcastSimulateTyping(): boolean {
+  return config.broadcast.typingSimulation;
+}
+
 /** Maximum age of completed jobs before cleanup (1 hour) */
 const MAX_JOB_AGE_MS = 3600_000;
 /** Maximum total jobs stored in memory */
@@ -61,7 +97,29 @@ export async function createBroadcastJob(
 async function processBroadcastJob(job: BroadcastJob): Promise<void> {
   job.status = "running";
   const session = connectionManager.getSession(job.sessionId);
-  const { minDelayMs, maxDelayMs, batchSize, batchPauseMs } = config.broadcast;
+  const { minDelayMs, maxDelayMs, batchSize, batchPauseMs, batchCheckWa, checkWaBatchSize } =
+    config.broadcast;
+
+  // Batch pre-check of recipient WA registration (fewer usync queries than
+  // 1-by-1) when enabled. Default (false) keeps the legacy per-recipient check.
+  const validJids = new Set<string>();
+  const invalidByIndex = new Map<number, string>(); // index -> receiver
+  if (batchCheckWa) {
+    const chunkSize = checkWaBatchSize > 0 ? checkWaBatchSize : 50;
+    for (let i = 0; i < job.messages.length; i += chunkSize) {
+      const chunk = job.messages.slice(i, i + chunkSize);
+      const chunkJids = chunk.map((m) => formatPhone(m.receiver));
+      const registered = await session.checkOnWhatsAppBatch(chunkJids);
+      chunk.forEach((m, offset) => {
+        const jid = chunkJids[offset];
+        if (registered.has(jid)) {
+          validJids.add(jid);
+        } else {
+          invalidByIndex.set(i + offset, m.receiver);
+        }
+      });
+    }
+  }
 
   for (let i = 0; i < job.messages.length; i++) {
     if ((job.status as string) === "cancelled") {
@@ -71,12 +129,30 @@ async function processBroadcastJob(job: BroadcastJob): Promise<void> {
     }
 
     const { receiver, message, delay: customDelay } = job.messages[i];
+    const jid = formatPhone(receiver);
 
     try {
-      const jid = formatPhone(receiver);
+      // When batch-checking, skip jids already known invalid (skip re-check).
+      if (batchCheckWa && invalidByIndex.has(i)) {
+        job.errors.push({
+          index: i,
+          receiver,
+          error: "Number not registered on WhatsApp",
+        });
+        job.progress = i + 1;
+        job.messages[i].message = {} as any;
 
-      // Check if number exists
-      const exists = await session.isOnWhatsApp(jid);
+        // Still honor inter-message delay for a human cadence
+        if (i < job.messages.length - 1) {
+          const d = nextDelayMs(customDelay, minDelayMs, maxDelayMs);
+          await asyncSleep(d);
+          if ((i + 1) % batchSize === 0) await asyncSleep(batchPauseMs);
+        }
+        continue;
+      }
+
+      // Check if number exists (1-by-1 unless already batch-verified valid)
+      const exists = batchCheckWa ? validJids.has(jid) : await session.isOnWhatsApp(jid);
       if (!exists) {
         job.errors.push({
           index: i,
@@ -85,8 +161,10 @@ async function processBroadcastJob(job: BroadcastJob): Promise<void> {
         });
         job.progress = i + 1;
       } else {
-        // Send message
-        await session.sendMessage(jid, message as AnyMessageContent);
+        // Send message — no typing bubble per recipient unless explicitly enabled
+        await session.sendMessage(jid, message as AnyMessageContent, {
+          simulateTyping: broadcastSimulateTyping(),
+        });
         job.progress = i + 1;
         logger.debug("[Broadcast:%s] Sent %d/%d to %s", job.id, i + 1, job.total, receiver);
       }
@@ -96,7 +174,7 @@ async function processBroadcastJob(job: BroadcastJob): Promise<void> {
 
       // Delay between messages
       if (i < job.messages.length - 1) {
-        const delayMs = customDelay ?? randomDelay(minDelayMs, maxDelayMs);
+        const delayMs = nextDelayMs(customDelay, minDelayMs, maxDelayMs);
         await asyncSleep(delayMs);
 
         // Batch pause

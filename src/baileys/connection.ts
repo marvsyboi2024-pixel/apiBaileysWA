@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import type { Boom } from "@hapi/boom";
+import { humanizeReadBeforeReply, resolveHumanizeOptions } from "@/baileys/replyEngine";
 import makeWASocket, {
   type AnyMessageContent,
   type BaileysEventMap,
@@ -79,6 +80,8 @@ export class BaileysConnection {
   private store: MemoryStore;
   private reconnectCount = 0;
   private clearOnlinePresenceTimeout: ReturnType<typeof setTimeout> | null = null;
+  /** Last time a "composing" presence was sent per chat (for presence dedupe). */
+  private lastComposingAt = new Map<string, number>();
   private _isConnected = false;
   private _qrCode: string | null = null;
   private _pairingCode: string | null = null;
@@ -430,6 +433,21 @@ export class BaileysConnection {
         .map((m) => m.key);
       if (incomingKeys.length > 0) {
         try {
+          // Humanize: simulate a natural "opened chat" delay before marking read
+          // (unless AUTO_READ_DELAY_ENABLED=false → read instantly, legacy).
+          const arDelay = config.simulation.autoReadDelayEnabled;
+          const arLo = config.simulation.autoReadDelayMinMs;
+          const arHi = config.simulation.autoReadDelayMaxMs;
+          if (arDelay && arHi > 0 && arHi >= arLo) {
+            const waitMs = Math.floor(Math.random() * (arHi - arLo) + arLo);
+            logger.debug(
+              "[%s] Auto-read delay %dms before marking %d read",
+              this.sessionId,
+              waitMs,
+              incomingKeys.length,
+            );
+            await delay(waitMs);
+          }
           await this.readMessages(incomingKeys);
           logger.debug(
             "[%s] Auto-read %d incoming message(s)",
@@ -521,12 +539,38 @@ export class BaileysConnection {
           autoReplyBurstCache.set(burstKey, true);
           autoReplyCooldownCache.set(cooldownKey, true);
 
+          await this.humanizeReadStep(m);
+
           logger.info("[%s] Sending auto-reply to %s", this.sessionId, remoteJid);
           await this.sendMessage(remoteJid, { text: autoReply.message }, { quoted: m });
         } catch (err) {
           logger.error("[%s] Failed to send auto-reply: %s", this.sessionId, errorToString(err));
         }
       }
+    }
+  }
+
+  /**
+   * Humanized read-before-reply, for 1-on-1 chats only (not groups).
+   * Waits a natural "reading" gap then marks the message as read, so an
+   * auto-reply does not fire instantly with no prior read receipt.
+   * No-op unless the feature is enabled via config.
+   */
+  private async humanizeReadStep(m: WAMessage) {
+    const remoteJid = m.key.remoteJid;
+    if (!remoteJid || remoteJid.endsWith("@g.us")) return;
+
+    const humanize = resolveHumanizeOptions(m);
+    if (!humanize) return;
+
+    try {
+      const sock = this.safeSocket();
+      await humanizeReadBeforeReply(humanize, {
+        markRead: () => sock.readMessages([m.key]),
+        setPresence: async () => {},
+      });
+    } catch (err) {
+      logger.debug("[%s] Humanize read step skipped: %s", this.sessionId, errorToString(err));
     }
   }
 
@@ -569,28 +613,74 @@ export class BaileysConnection {
   ) {
     const shouldSimulateTyping =
       options?.simulateTyping ?? this.options.simulateTyping ?? config.simulation.typingBeforeSend;
+    const hz = config.humanize;
 
     if (shouldSimulateTyping) {
       try {
-        // Mark as "available" first (like opening WA Web)
-        if (config.simulation.autoMarkOnline) {
-          await this.sendPresenceUpdate("available", receiver);
+        // Humanize: random "thinking" gap before typing starts (only when enabled)
+        const thinkMin = hz.thinkMinMs > 0 ? hz.thinkMinMs : 0;
+        const thinkMax = hz.thinkMaxMs >= thinkMin ? hz.thinkMaxMs : thinkMin;
+        if (thinkMin > 0) {
+          const thinkMs = Math.floor(Math.random() * (thinkMax - thinkMin) + thinkMin);
+          logger.debug("[%s] Humanize think gap %dms → %s", this.sessionId, thinkMs, receiver);
+          await delay(thinkMs);
         }
-        // Subscribe to presence & send "composing" indicator
-        await this.safeSocket().presenceSubscribe(receiver);
-        await this.sendPresenceUpdate("composing", receiver);
 
-        // Random human-like typing delay
-        const delayMs = Math.floor(
-          Math.random() *
-            (config.simulation.typingDelayMaxMs - config.simulation.typingDelayMinMs) +
-            config.simulation.typingDelayMinMs,
-        );
-        logger.debug("[%s] Simulating typing for %dms to %s", this.sessionId, delayMs, receiver);
-        await delay(delayMs);
+        // Typing duration: proportional to reply length when enabled, otherwise
+        // the legacy fixed random range.
+        const msgText =
+          typeof (message as { text?: string }).text === "string"
+            ? ((message as { text?: string }).text as string)
+            : "";
+        const msgLen = msgText.length;
+        let delayMs: number;
+        if (hz.typingProportional && msgLen > 0) {
+          const base = 600;
+          const typed = (msgLen / 4) * 1000; // ~4 chars/sec human typing
+          delayMs = Math.min(
+            Math.max(base + typed, 800),
+            config.simulation.typingDelayMaxMs || 6000,
+          );
+        } else {
+          delayMs = Math.floor(
+            Math.random() *
+              (config.simulation.typingDelayMaxMs - config.simulation.typingDelayMinMs) +
+              config.simulation.typingDelayMinMs,
+          );
+        }
 
-        // Clear composing indicator
-        await this.sendPresenceUpdate("paused", receiver);
+        // Humanize presence dedupe: skip re-sending composing/paused to the SAME
+        // chat if we toggled recently (avoids rapid bubble flicker).
+        // 0 = always send (legacy).
+        const dedupeMs = hz.presenceDedupeMs;
+        const lastComposing = this.lastComposingAt.get(receiver) || 0;
+        const withinDedupe = dedupeMs > 0 && Date.now() - lastComposing < dedupeMs;
+
+        if (!withinDedupe) {
+          // Mark as "available" first (like opening WA Web)
+          if (config.simulation.autoMarkOnline) {
+            await this.sendPresenceUpdate("available", receiver);
+          }
+          // Subscribe to presence & send "composing" indicator
+          await this.safeSocket().presenceSubscribe(receiver);
+          await this.sendPresenceUpdate("composing", receiver);
+
+          logger.debug("[%s] Simulating typing for %dms to %s", this.sessionId, delayMs, receiver);
+          await delay(delayMs);
+
+          // Clear composing indicator
+          await this.sendPresenceUpdate("paused", receiver);
+          this.lastComposingAt.set(receiver, Date.now());
+        } else {
+          // Still wait a plausible typing duration, but no bubble re-toggle.
+          logger.debug(
+            "[%s] Presence dedupe active — typing %dms without bubble to %s",
+            this.sessionId,
+            delayMs,
+            receiver,
+          );
+          await delay(delayMs);
+        }
       } catch (err) {
         logger.warn(
           "[%s] Typing simulation error (non-fatal): %s",
@@ -598,6 +688,16 @@ export class BaileysConnection {
           errorToString(err),
         );
       }
+    }
+
+    // Humanize: global pacing — random min/max gap between ANY outbound actions
+    // within a session (across chats) to avoid bursts. 0/0 = off (legacy).
+    const paceMin = hz.globalPacingMinMs;
+    const paceMax = hz.globalPacingMaxMs;
+    if (paceMin > 0 && paceMax >= paceMin) {
+      const paceMs = Math.floor(Math.random() * (paceMax - paceMin) + paceMin);
+      logger.debug("[%s] Global pacing gap %dms", this.sessionId, paceMs);
+      await delay(paceMs);
     }
 
     return this.safeSocket().sendMessage(receiver, message, { quoted: options?.quoted });
@@ -667,6 +767,38 @@ export class BaileysConnection {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Batch WhatsApp-registration check (fewer usync queries to WA than 1-by-1).
+   * Chunks into safe batches (Baileys caps onWhatsApp per call), and on any
+   * error falls back to checking the remaining jids individually so a single
+   * failure never aborts a broadcast. Returns a Set of registered jids.
+   */
+  async checkOnWhatsAppBatch(jids: string[]): Promise<Set<string>> {
+    const registered = new Set<string>();
+    const CHUNK = 50;
+    for (let i = 0; i < jids.length; i += CHUNK) {
+      const chunk = jids.slice(i, i + CHUNK);
+      try {
+        const results = await this.safeSocket().onWhatsApp(...chunk);
+        for (const r of results ?? []) {
+          if (r?.exists && r.jid) registered.add(r.jid);
+        }
+      } catch (err) {
+        logger.warn(
+          "[%s] Batch WA-check failed (%d jids), falling back 1-by-1: %s",
+          this.sessionId,
+          chunk.length,
+          errorToString(err),
+        );
+        for (const jid of chunk) {
+          const ok = await this.isOnWhatsApp(jid);
+          if (ok) registered.add(jid);
+        }
+      }
+    }
+    return registered;
   }
 
   async profilePictureUrl(jid: string, type?: "preview" | "image") {
