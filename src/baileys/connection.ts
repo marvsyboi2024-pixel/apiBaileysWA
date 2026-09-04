@@ -30,6 +30,7 @@ import config from "@/config";
 import eventBus from "@/dashboard/eventBus";
 import logger, { baileysLogger, deepSanitizeObject } from "@/lib/logger";
 import { addWebhookLog } from "@/services/webhookLog";
+import { addToDeadLetter } from "@/services/webhookDeadLetter";
 import { webhookQueue, webhookRateLimiter } from "@/services/webhookQueue";
 import { asyncSleep } from "@/utils/asyncSleep";
 import { errorToString } from "@/utils/validation";
@@ -92,6 +93,42 @@ function parseRetryAfter(header: string | null): number | undefined {
     return ms > 0 ? Math.min(ms, 300000) : undefined;
   }
   return undefined;
+}
+
+/**
+ * Validate an outbound webhook target before fetching it (SSRF guard).
+ * - Non-http(s) schemes are always rejected (file:, ftp:, gopher:, ...).
+ * - Internal/private-network targets (localhost, RFC1918, link-local, cloud
+ *   metadata 169.254.169.254) are rejected only when WEBHOOK_BLOCK_INTERNAL
+ *   is enabled — default allows them so local receivers keep working.
+ * Returns an error message when the URL must be rejected, else null.
+ */
+function validateWebhookTarget(webhookUrl: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(webhookUrl);
+  } catch {
+    return "Invalid webhook URL";
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return `Unsupported webhook URL scheme: ${url.protocol}`;
+  }
+  if (!config.webhook.blockInternal) return null;
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const isInternal =
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "::1" ||
+    host.startsWith("127.") ||
+    host.startsWith("10.") ||
+    host.startsWith("192.168.") ||
+    host.startsWith("169.254.") ||
+    host.startsWith("0.") ||
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host) ||
+    host.endsWith(".internal") ||
+    host.endsWith(".local") ||
+    host === "metadata.google.internal";
+  return isInternal ? `Blocked internal/private webhook target: ${host}` : null;
 }
 
 export class BaileysConnection {
@@ -1156,7 +1193,79 @@ export class BaileysConnection {
         lastFailureReason || "unknown",
         nonRetryable ? " [non-retryable]" : "",
       );
+
+      // Keep permanently-failed deliveries in the dead-letter buffer so they
+      // can be replayed once the receiver recovers (instead of silent loss).
+      const dlEntry = addToDeadLetter({
+        sessionId: this.sessionId,
+        event: payload.event,
+        webhookUrl,
+        webhookSecret,
+        payload,
+        attempts: attempt,
+        lastError: lastFailureReason || "unknown",
+      });
+      if (dlEntry) {
+        logger.warn(
+          "[%s] Webhook delivery moved to dead-letter (%s)",
+          this.sessionId,
+          dlEntry.id,
+        );
+      }
       return "failed";
     });
+  }
+}
+
+/**
+ * One-shot webhook delivery used by dead-letter replay (and reuse in tests).
+ * Builds the same auth/signature headers as sendToWebhook, honors the
+ * per-URL rate limiter, and performs a single POST. No retries — the caller
+ * owns retry/backoff policy.
+ */
+export async function deliverWebhookOnce(
+  webhookUrl: string,
+  payload: unknown,
+  secret: string,
+  timeoutMs = 30000,
+): Promise<{ ok: boolean; status: number; error?: string }> {
+  // SSRF guard: validate the target before fetching.
+  const invalid = validateWebhookTarget(webhookUrl);
+  if (invalid) {
+    return { ok: false, status: 0, error: invalid };
+  }
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const rawBody = JSON.stringify(payload);
+    if (secret) {
+      headers["x-webhook-secret"] = secret;
+      headers.Authorization = `Bearer ${secret}`;
+    }
+    if (config.webhook.signatureMode !== "off") {
+      if (!secret && config.webhook.signatureMode === "required") {
+        return { ok: false, status: 0, error: "Missing secret for required signature mode" };
+      }
+      if (secret) {
+        const timestamp = String(Date.now());
+        const signature = createHmac("sha256", secret)
+          .update(`${timestamp}.${rawBody}`)
+          .digest("hex");
+        headers["x-webhook-timestamp"] = timestamp;
+        headers["x-webhook-signature"] = `sha256=${signature}`;
+      }
+    }
+
+    // Per-receiver-URL throttle (token bucket). Fails open after the cap.
+    await webhookRateLimiter.waitForSlot(webhookUrl);
+
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers,
+      body: rawBody,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return { ok: response.ok, status: response.status };
+  } catch (error) {
+    return { ok: false, status: 0, error: errorToString(error) };
   }
 }

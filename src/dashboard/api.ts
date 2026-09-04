@@ -9,12 +9,20 @@ import type { proto, WAPresence } from "@whiskeysockets/baileys";
 import { type Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { updateSessionMetadata } from "@/baileys/authState";
+import { deliverWebhookOnce } from "@/baileys/connection";
 import connectionManager from "@/baileys/connectionManager";
 import config from "@/config";
 import { dashboardAuthMiddleware, findDashboardUserById } from "@/dashboard/auth";
 import eventBus, { type DashboardEvent } from "@/dashboard/eventBus";
 import { isBun } from "@/lib/runtime";
 import { addWebhookLog, clearWebhookLogs, getWebhookLogs } from "@/services/webhookLog";
+import { type DeadLetterEntry } from "@/services/webhookDeadLetter";
+import {
+  clearDeadLetters,
+  getDeadLetters,
+  replayAllDeadLetters,
+  replayDeadLetter,
+} from "@/services/webhookDeadLetter";
 
 const dashboardApi = new Hono();
 
@@ -504,6 +512,79 @@ dashboardApi.post("/webhooks/logs/clear", (c) => {
   if (denied) return denied;
   clearWebhookLogs();
   return c.json({ success: true, message: "Webhook logs cleared" });
+});
+
+/**
+ * GET /dashboard/api/webhooks/dead-letter
+ * Read dead-letter entries (webhooks that exhausted all retries).
+ */
+dashboardApi.get("/webhooks/dead-letter", (c) => {
+  const denied = requireCapability(c, "manageWebhooks");
+  if (denied) return denied;
+  const limit = Number(c.req.query("limit") || "50");
+  const sessionId = c.req.query("sessionId") || undefined;
+  return c.json({ success: true, data: getDeadLetters(limit, sessionId) });
+});
+
+/**
+ * POST /dashboard/api/webhooks/dead-letter/:id/retry
+ * Replay a single dead-letter delivery.
+ */
+dashboardApi.post("/webhooks/dead-letter/:id/retry", async (c) => {
+  const denied = requireCapability(c, "manageWebhooks");
+  if (denied) return denied;
+  const id = c.req.param("id");
+  const deliver = async (entry: DeadLetterEntry) => {
+    const res = await deliverWebhookOnce(
+      entry.webhookUrl,
+      entry.payload,
+      entry.webhookSecret || "",
+      15000,
+    );
+    return res.ok ? "success" : "failed";
+  };
+  const result = await replayDeadLetter(id, deliver);
+  if (result === "not-found") {
+    return c.json({ success: false, message: "Dead-letter entry not found" }, 404);
+  }
+  return c.json({
+    success: result === "success",
+    message: result === "success" ? "Dead-letter replayed successfully" : "Replay failed",
+  });
+});
+
+/**
+ * POST /dashboard/api/webhooks/dead-letter/retry-all
+ * Replay all queued dead-letters (best-effort).
+ */
+dashboardApi.post("/webhooks/dead-letter/retry-all", async (c) => {
+  const denied = requireCapability(c, "manageWebhooks");
+  if (denied) return denied;
+  const { replayed, succeeded } = await replayAllDeadLetters(async (entry: DeadLetterEntry) => {
+    const res = await deliverWebhookOnce(
+      entry.webhookUrl,
+      entry.payload,
+      entry.webhookSecret || "",
+      15000,
+    );
+    return res.ok ? "success" : "failed";
+  });
+  return c.json({
+    success: true,
+    data: { replayed, succeeded },
+    message: `Replayed ${succeeded}/${replayed} dead-letter entries`,
+  });
+});
+
+/**
+ * POST /dashboard/api/webhooks/dead-letter/clear
+ * Clear the dead-letter buffer.
+ */
+dashboardApi.post("/webhooks/dead-letter/clear", (c) => {
+  const denied = requireCapability(c, "manageWebhooks");
+  if (denied) return denied;
+  clearDeadLetters();
+  return c.json({ success: true, message: "Dead-letter buffer cleared" });
 });
 
 /**

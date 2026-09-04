@@ -31,6 +31,9 @@ const {
   WEBHOOK_RETRYABLE_STATUSES,
   WEBHOOK_RATE_PER_MIN,
   WEBHOOK_RATE_MAX_WAIT_MS,
+  WEBHOOK_DEAD_LETTER_ENABLED,
+  WEBHOOK_DEAD_LETTER_DIR,
+  WEBHOOK_BLOCK_INTERNAL,
   BROADCAST_MIN_DELAY_MS,
   BROADCAST_MAX_DELAY_MS,
   BROADCAST_BATCH_SIZE,
@@ -187,6 +190,22 @@ const config = {
     ratePerMin: WEBHOOK_RATE_PER_MIN ? Number(WEBHOOK_RATE_PER_MIN) : 0,
     /** Max ms an event waits for a free per-URL slot before proceeding anyway. */
     rateMaxWaitMs: WEBHOOK_RATE_MAX_WAIT_MS ? Number(WEBHOOK_RATE_MAX_WAIT_MS) : 30000,
+    /**
+     * Dead-letter buffer for webhooks that exhausted all retries. When
+     * enabled, failed deliveries are kept (and optionally persisted to disk)
+     * instead of being dropped, so operators can replay them.
+     * Default: disabled = legacy behavior (failed webhooks are dropped).
+     */
+    deadLetterEnabled: WEBHOOK_DEAD_LETTER_ENABLED === "true",
+    deadLetterDir: WEBHOOK_DEAD_LETTER_DIR || "",
+    /**
+     * Block webhook URLs pointing at internal/private network targets
+     * (localhost, 127.0.0.0/8, 10.x, 172.16-31.x, 192.168.x, link-local,
+     * cloud metadata 169.254.169.254). Default false = allowed, so local
+     * testing against http://localhost/127.0.0.1 receivers keeps working.
+     * Enable in production when webhook URLs may be set by untrusted users.
+     */
+    blockInternal: WEBHOOK_BLOCK_INTERNAL === "true",
   },
 
   broadcast: {
