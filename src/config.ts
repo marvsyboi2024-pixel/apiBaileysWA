@@ -36,6 +36,7 @@ const {
   MEDIA_CLEANUP_INTERVAL_MS,
   MEDIA_MAX_AGE_HOURS,
   CORS_ORIGIN,
+  TRUST_PROXY,
   DASHBOARD_ENABLED,
   DASHBOARD_REGISTRATION_ENABLED,
   DASHBOARD_REGISTRATION_REQUIRE_APPROVAL,
@@ -66,6 +67,42 @@ const {
   BROADCAST_BATCH_CHECK_WA,
   BROADCAST_CHECK_WA_BATCH_SIZE,
 } = process.env;
+
+/**
+ * Parse an env min/max pair into a sane numeric range.
+ * - Missing/blank values fall back to the given defaults.
+ * - Non-numeric (NaN) values fall back to defaults.
+ * - Inverted ranges (min > max) are swapped so downstream random delays never
+ *   produce an empty/negative window (e.g. MIN above MAX).
+ * - An explicit 0 is preserved — several knobs treat 0 as "off/legacy" and
+ *   must be reachable via env (previous truthiness parsing silently ignored 0).
+ */
+function rangePair(
+  minRaw: string | undefined,
+  maxRaw: string | undefined,
+  defaultMin: number,
+  defaultMax: number,
+): { minMs: number; maxMs: number } {
+  const parse = (v: string | undefined): number => {
+    if (v === undefined || v === "") return NaN;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : NaN;
+  };
+  let min = parse(minRaw);
+  let max = parse(maxRaw);
+  if (!Number.isFinite(min)) min = defaultMin;
+  if (!Number.isFinite(max)) max = defaultMax;
+  if (min > max) [min, max] = [max, min];
+  return { minMs: min, maxMs: max };
+}
+
+// Normalized delay ranges (swap inverted env values, preserve explicit 0 = off)
+const typingDelay = rangePair(SIMULATE_TYPING_DELAY_MIN_MS, SIMULATE_TYPING_DELAY_MAX_MS, 1500, 3000);
+const autoReadDelay = rangePair(AUTO_READ_DELAY_MIN_MS, AUTO_READ_DELAY_MAX_MS, 1500, 4000);
+const humanReadDelay = rangePair(HUMANIZE_READ_DELAY_MIN_MS, HUMANIZE_READ_DELAY_MAX_MS, 800, 2500);
+const humanThinkDelay = rangePair(HUMANIZE_THINK_MIN_MS, HUMANIZE_THINK_MAX_MS, 800, 2000);
+const humanPacing = rangePair(HUMANIZE_GLOBAL_PACING_MIN_MS, HUMANIZE_GLOBAL_PACING_MAX_MS, 0, 0);
+const broadcastDelay = rangePair(BROADCAST_MIN_DELAY_MS, BROADCAST_MAX_DELAY_MS, 1500, 3000);
 
 const config = {
   env: (NODE_ENV || "development") as "development" | "production",
@@ -119,8 +156,8 @@ const config = {
   },
 
   broadcast: {
-    minDelayMs: BROADCAST_MIN_DELAY_MS ? Number(BROADCAST_MIN_DELAY_MS) : 1500,
-    maxDelayMs: BROADCAST_MAX_DELAY_MS ? Number(BROADCAST_MAX_DELAY_MS) : 3000,
+    minDelayMs: broadcastDelay.minMs,
+    maxDelayMs: broadcastDelay.maxMs,
     batchSize: BROADCAST_BATCH_SIZE ? Number(BROADCAST_BATCH_SIZE) : 10,
     batchPauseMs: BROADCAST_BATCH_PAUSE_MS ? Number(BROADCAST_BATCH_PAUSE_MS) : 5000,
     /** Show "composing…" bubble per recipient during broadcasts (default: false — safer). */
@@ -150,6 +187,14 @@ const config = {
     return origins.length === 1 ? origins[0] : origins;
   })(),
 
+  /**
+   * Trust proxy headers (x-forwarded-for / x-real-ip / cf-connecting-ip)
+   * for client IP detection. Enable ONLY when running behind a trusted
+   * reverse proxy / load balancer. When false (default), the socket remote
+   * address is used — spoofed XFF headers cannot bypass rate limits.
+   */
+  trustProxy: TRUST_PROXY === "true",
+
   /** Maximum concurrent sessions allowed */
   maxSessions: MAX_SESSIONS ? Number(MAX_SESSIONS) : 50,
 
@@ -163,13 +208,13 @@ const config = {
 
   simulation: {
     typingBeforeSend: SIMULATE_TYPING_BEFORE_SEND !== "false",
-    typingDelayMinMs: SIMULATE_TYPING_DELAY_MIN_MS ? Number(SIMULATE_TYPING_DELAY_MIN_MS) : 1500,
-    typingDelayMaxMs: SIMULATE_TYPING_DELAY_MAX_MS ? Number(SIMULATE_TYPING_DELAY_MAX_MS) : 3000,
+    typingDelayMinMs: typingDelay.minMs,
+    typingDelayMaxMs: typingDelay.maxMs,
     autoReadMessages: AUTO_READ_MESSAGES === "true",
     /** Jeda "buka chat" sebelum mark read saat auto-read ON (0 = instan, seperti lama). */
     autoReadDelayEnabled: AUTO_READ_DELAY_ENABLED !== "false",
-    autoReadDelayMinMs: AUTO_READ_DELAY_MIN_MS ? Number(AUTO_READ_DELAY_MIN_MS) : 1500,
-    autoReadDelayMaxMs: AUTO_READ_DELAY_MAX_MS ? Number(AUTO_READ_DELAY_MAX_MS) : 4000,
+    autoReadDelayMinMs: autoReadDelay.minMs,
+    autoReadDelayMaxMs: autoReadDelay.maxMs,
     autoMarkOnline: AUTO_MARK_ONLINE !== "false",
     rejectCalls: REJECT_CALLS === "true",
   },
@@ -182,18 +227,18 @@ const config = {
     /** Mark incoming as read before sending an auto-reply (like opening WA Web). */
     readBeforeReply: HUMANIZE_READ_BEFORE_REPLY === "true",
     /** Random "reading" gap before read receipts (ms). */
-    readDelayMinMs: HUMANIZE_READ_DELAY_MIN_MS ? Number(HUMANIZE_READ_DELAY_MIN_MS) : 800,
-    readDelayMaxMs: HUMANIZE_READ_DELAY_MAX_MS ? Number(HUMANIZE_READ_DELAY_MAX_MS) : 2500,
+    readDelayMinMs: humanReadDelay.minMs,
+    readDelayMaxMs: humanReadDelay.maxMs,
     /** Random "thinking" gap before typing starts (ms). */
-    thinkMinMs: HUMANIZE_THINK_MIN_MS ? Number(HUMANIZE_THINK_MIN_MS) : 800,
-    thinkMaxMs: HUMANIZE_THINK_MAX_MS ? Number(HUMANIZE_THINK_MAX_MS) : 2000,
+    thinkMinMs: humanThinkDelay.minMs,
+    thinkMaxMs: humanThinkDelay.maxMs,
     /** Typing duration proportional to reply length when true. */
-    typingProportional: HUMANIZE_TYPING_PROPORTIONAL !== "false",
+    typingProportional: HUMANIZE_TYPING_PROPORTIONAL === "true",
     /** Min gap between repeated composing/paused to same chat (0 = send every time). */
     presenceDedupeMs: HUMANIZE_PRESENCE_DEDUPE_MS ? Number(HUMANIZE_PRESENCE_DEDUPE_MS) : 0,
     /** Global min/max gap between ANY outbound action within a session (0 = off). */
-    globalPacingMinMs: HUMANIZE_GLOBAL_PACING_MIN_MS ? Number(HUMANIZE_GLOBAL_PACING_MIN_MS) : 0,
-    globalPacingMaxMs: HUMANIZE_GLOBAL_PACING_MAX_MS ? Number(HUMANIZE_GLOBAL_PACING_MAX_MS) : 0,
+    globalPacingMinMs: humanPacing.minMs,
+    globalPacingMaxMs: humanPacing.maxMs,
   },
 
   autoReply: {

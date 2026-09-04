@@ -6,6 +6,7 @@
  */
 import type { Context, Next } from "hono";
 import { LRUCache } from "lru-cache";
+import config from "@/config";
 
 interface RateLimitOptions {
   /** Time window in milliseconds */
@@ -71,15 +72,44 @@ export function rateLimit(options: RateLimitOptions) {
 }
 
 /**
- * Extract client IP address from request headers.
+ * Extract client IP address.
+ *
+ * When TRUST_PROXY=true (behind a trusted reverse proxy / LB), the real
+ * client IP is read from forwarding headers.
+ *
+ * When TRUST_PROXY=false (default — direct exposure), forwarding headers are
+ * IGNORED because they are client-supplied and spoofable; the socket remote
+ * address is used instead so attackers cannot bypass rate limits / auth by
+ * forging x-forwarded-for.
  */
 function getClientIp(c: Context): string {
-  return (
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    c.req.header("x-real-ip") ||
-    c.req.header("cf-connecting-ip") ||
-    "unknown"
-  );
+  if (config.trustProxy) {
+    return (
+      c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+      c.req.header("x-real-ip") ||
+      c.req.header("cf-connecting-ip") ||
+      getRemoteAddress(c) ||
+      "unknown"
+    );
+  }
+  return getRemoteAddress(c) || "unknown";
+}
+
+/** Socket remote address (peer) — not spoofable by client headers. */
+function getRemoteAddress(c: Context): string {
+  // Hono passes runtime-specific env as the 2nd fetch arg (Bun server object
+  // for Bun.serve; the raw IncomingMessage for @hono/node-server).
+  const env = c.env as
+    | {
+        incoming?: { socket?: { remoteAddress?: string } };
+        requestIP?: (req: unknown) => { address: string } | null;
+      }
+    | undefined;
+  const fromSocket = env?.incoming?.socket?.remoteAddress;
+  if (fromSocket) return fromSocket;
+  // Bun.serve exposes server.requestIP(request) → { address }
+  const viaBun = env?.requestIP?.(c.req.raw)?.address;
+  return viaBun || "";
 }
 
 // ── Pre-configured rate limiters ───────────────────

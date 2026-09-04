@@ -460,6 +460,7 @@ baileys-wa-api/
 | `MEDIA_CLEANUP_INTERVAL_MS`               | `3600000`                        | Media cleanup interval (ms)                                              |
 | `MEDIA_MAX_AGE_HOURS`                     | `24`                             | Max age of media files                                                   |
 | `CORS_ORIGIN`                             | `*`                              | CORS allowed origins                                                     |
+| `TRUST_PROXY`                             | `false`                          | Trust `x-forwarded-for`/`x-real-ip`/`cf-connecting-ip` for client IP. Enable ONLY behind a trusted reverse proxy/LB; when `false` the socket address is used so spoofed headers cannot bypass rate limits |
 | `DASHBOARD_ENABLED`                       | `true`                           | Enable internal UI dashboard                                             |
 | `DASHBOARD_REGISTRATION_ENABLED`          | `false`                          | Allow account creation                                                   |
 | `DASHBOARD_REGISTRATION_REQUIRE_APPROVAL` | `true`                           | Require admin approval before new user can login                         |
