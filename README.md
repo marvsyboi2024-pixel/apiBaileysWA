@@ -349,10 +349,21 @@ Set `WEBHOOK_URL` in `.env` or per-session. Events are sent as POST:
 }
 ```
 
-When signature mode is enabled, webhook requests can include:
+Webhook requests are authenticated with the configured secret sent in **two headers**
+so both legacy and standard receivers work (this is deliberate, kept in a single
+header builder):
+
+- `x-webhook-secret: <secret>` — legacy receivers built for this API
+- `Authorization: Bearer <secret>` — standard receivers / API gateways
+
+When signature mode is enabled, webhook requests also include:
 
 - `x-webhook-timestamp`
 - `x-webhook-signature: sha256=<hmac>`
+
+(The signature uses the *same* secret — a shared-secret HMAC over
+`"<timestamp>.<body>"`, not a separate signing key — so only verify it if you
+control the receiver and trust the shared secret.)
 
 Controlled by:
 

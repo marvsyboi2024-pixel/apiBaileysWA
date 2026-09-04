@@ -2,14 +2,17 @@
  * Dashboard-specific API routes — SSE events, webhook config, stats.
  */
 
-import { createHmac } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { proto, WAPresence } from "@whiskeysockets/baileys";
 import { type Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { updateSessionMetadata } from "@/baileys/authState";
-import { deliverWebhookOnce } from "@/baileys/connection";
+import {
+  buildWebhookHeaders,
+  deliverWebhookOnce,
+  validateWebhookTarget,
+} from "@/baileys/connection";
 import connectionManager from "@/baileys/connectionManager";
 import config from "@/config";
 import { dashboardAuthMiddleware, findDashboardUserById } from "@/dashboard/auth";
@@ -338,6 +341,12 @@ dashboardApi.post("/sessions/:sessionId/webhook/test", async (c) => {
       );
     }
 
+    // SSRF guard (same policy as live webhook delivery).
+    const targetError = validateWebhookTarget(webhookUrl);
+    if (targetError) {
+      return c.json({ success: false, message: targetError }, 400);
+    }
+
     const payload = {
       type: "dashboard.webhook.test",
       sessionId,
@@ -349,33 +358,17 @@ dashboardApi.post("/sessions/:sessionId/webhook/test", async (c) => {
 
     const startedAt = Date.now();
     try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
       const rawBody = JSON.stringify(payload);
-      if (webhookSecret) {
-        headers["x-webhook-secret"] = webhookSecret;
-        headers.Authorization = `Bearer ${webhookSecret}`;
-      }
-
-      if (config.webhook.signatureMode !== "off") {
-        if (!webhookSecret && config.webhook.signatureMode === "required") {
-          return c.json(
-            {
-              success: false,
-              message:
-                "Webhook signature mode is required, but no secret is available (session secret or AUTH_GLOBAL_TOKEN)",
-            },
-            400,
-          );
-        }
-
-        if (webhookSecret) {
-          const timestamp = String(Date.now());
-          const signature = createHmac("sha256", webhookSecret)
-            .update(`${timestamp}.${rawBody}`)
-            .digest("hex");
-          headers["x-webhook-timestamp"] = timestamp;
-          headers["x-webhook-signature"] = `sha256=${signature}`;
-        }
+      const { headers, error: headerError } = buildWebhookHeaders(webhookSecret, rawBody);
+      if (headerError) {
+        return c.json(
+          {
+            success: false,
+            message:
+              "Webhook signature mode is required, but no secret is available (session secret or AUTH_GLOBAL_TOKEN)",
+          },
+          400,
+        );
       }
 
       const response = await fetch(webhookUrl, {

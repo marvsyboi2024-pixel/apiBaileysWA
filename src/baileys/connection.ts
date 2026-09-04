@@ -103,7 +103,7 @@ function parseRetryAfter(header: string | null): number | undefined {
  *   is enabled — default allows them so local receivers keep working.
  * Returns an error message when the URL must be rejected, else null.
  */
-function validateWebhookTarget(webhookUrl: string): string | null {
+export function validateWebhookTarget(webhookUrl: string): string | null {
   let url: URL;
   try {
     url = new URL(webhookUrl);
@@ -985,6 +985,22 @@ export class BaileysConnection {
       return "disabled";
     }
 
+    // SSRF guard (same policy as deliverWebhookOnce): non-http(s) schemes are
+    // always rejected; internal/private targets only when WEBHOOK_BLOCK_INTERNAL.
+    const targetError = validateWebhookTarget(webhookUrl);
+    if (targetError) {
+      addWebhookLog({
+        sessionId: this.sessionId,
+        event: payload.event,
+        webhookUrl,
+        status: "network-error",
+        attempt: 0,
+        error: targetError,
+      });
+      logger.warn("[%s] Webhook blocked: %s", this.sessionId, targetError);
+      return "failed";
+    }
+
     // Check allowed events
     const eventName = payload.event.toUpperCase().replace(/[.-]/g, "_");
     if (!config.webhook.allowedEvents.has("ALL") && !config.webhook.allowedEvents.has(eventName)) {
@@ -1041,36 +1057,20 @@ export class BaileysConnection {
         const startedAt = Date.now();
         const currentAttempt = attempt + 1;
         try {
-          const headers: Record<string, string> = { "Content-Type": "application/json" };
           const rawBody = JSON.stringify(payload);
-          if (webhookSecret) {
-            headers["x-webhook-secret"] = webhookSecret;
-            headers.Authorization = `Bearer ${webhookSecret}`;
-          }
-
-          if (config.webhook.signatureMode !== "off") {
-            if (!webhookSecret && config.webhook.signatureMode === "required") {
-              const reason = "Missing secret for required webhook signature mode";
-              addWebhookLog({
-                sessionId: this.sessionId,
-                event: payload.event,
-                webhookUrl,
-                status: "network-error",
-                attempt: currentAttempt,
-                latencyMs: Date.now() - startedAt,
-                error: reason,
-              });
-              throw new Error(reason);
-            }
-
-            if (webhookSecret) {
-              const timestamp = String(Date.now());
-              const signature = createHmac("sha256", webhookSecret)
-                .update(`${timestamp}.${rawBody}`)
-                .digest("hex");
-              headers["x-webhook-timestamp"] = timestamp;
-              headers["x-webhook-signature"] = `sha256=${signature}`;
-            }
+          const { headers, error: headerError } = buildWebhookHeaders(webhookSecret, rawBody);
+          if (headerError) {
+            const reason = headerError;
+            addWebhookLog({
+              sessionId: this.sessionId,
+              event: payload.event,
+              webhookUrl,
+              status: "network-error",
+              attempt: currentAttempt,
+              latencyMs: Date.now() - startedAt,
+              error: reason,
+            });
+            throw new Error(reason);
           }
 
           // Per-receiver-URL throttle (token bucket). Waits for a free slot
@@ -1223,6 +1223,48 @@ export class BaileysConnection {
  * per-URL rate limiter, and performs a single POST. No retries — the caller
  * owns retry/backoff policy.
  */
+
+/**
+ * Build the auth + signature headers for a webhook delivery.
+ *
+ * Header convention (single source of truth): the secret travels in BOTH
+ * `x-webhook-secret` (legacy receivers built for this API) and
+ * `Authorization: Bearer <secret>` (standard receivers / gateways), so
+ * either kind of consumer can authenticate. When signatureMode != "off" the
+ * body is additionally signed as `x-webhook-timestamp` +
+ * `x-webhook-signature: sha256=<hmac>` over "<timestamp>.<body>" — with the
+ * SAME secret, kept deliberately simple (shared-secret HMAC, not a separate
+ * signing key; documented in README).
+ *
+ * Returns { headers, error } — error is set only when signatureMode is
+ * "required" but no secret is available. Headers are still returned so the
+ * caller can log/diagnose; callers must abort when error is present.
+ */
+export function buildWebhookHeaders(
+  secret: string,
+  rawBody: string,
+): { headers: Record<string, string>; error?: string } {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (secret) {
+    headers["x-webhook-secret"] = secret;
+    headers.Authorization = `Bearer ${secret}`;
+  }
+  if (config.webhook.signatureMode !== "off") {
+    if (!secret && config.webhook.signatureMode === "required") {
+      return { headers, error: "Missing secret for required webhook signature mode" };
+    }
+    if (secret) {
+      const timestamp = String(Date.now());
+      const signature = createHmac("sha256", secret)
+        .update(`${timestamp}.${rawBody}`)
+        .digest("hex");
+      headers["x-webhook-timestamp"] = timestamp;
+      headers["x-webhook-signature"] = `sha256=${signature}`;
+    }
+  }
+  return { headers };
+}
+
 export async function deliverWebhookOnce(
   webhookUrl: string,
   payload: unknown,
@@ -1235,24 +1277,10 @@ export async function deliverWebhookOnce(
     return { ok: false, status: 0, error: invalid };
   }
   try {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
     const rawBody = JSON.stringify(payload);
-    if (secret) {
-      headers["x-webhook-secret"] = secret;
-      headers.Authorization = `Bearer ${secret}`;
-    }
-    if (config.webhook.signatureMode !== "off") {
-      if (!secret && config.webhook.signatureMode === "required") {
-        return { ok: false, status: 0, error: "Missing secret for required signature mode" };
-      }
-      if (secret) {
-        const timestamp = String(Date.now());
-        const signature = createHmac("sha256", secret)
-          .update(`${timestamp}.${rawBody}`)
-          .digest("hex");
-        headers["x-webhook-timestamp"] = timestamp;
-        headers["x-webhook-signature"] = `sha256=${signature}`;
-      }
+    const { headers, error: headerError } = buildWebhookHeaders(secret, rawBody);
+    if (headerError) {
+      return { ok: false, status: 0, error: headerError };
     }
 
     // Per-receiver-URL throttle (token bucket). Fails open after the cap.
