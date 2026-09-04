@@ -30,7 +30,7 @@ import config from "@/config";
 import eventBus from "@/dashboard/eventBus";
 import logger, { baileysLogger, deepSanitizeObject } from "@/lib/logger";
 import { addWebhookLog } from "@/services/webhookLog";
-import { webhookQueue } from "@/services/webhookQueue";
+import { webhookQueue, webhookRateLimiter } from "@/services/webhookQueue";
 import { asyncSleep } from "@/utils/asyncSleep";
 import { errorToString } from "@/utils/validation";
 
@@ -1034,6 +1034,18 @@ export class BaileysConnection {
               headers["x-webhook-timestamp"] = timestamp;
               headers["x-webhook-signature"] = `sha256=${signature}`;
             }
+          }
+
+          // Per-receiver-URL throttle (token bucket). Waits for a free slot
+          // when the endpoint is being hit too fast; fails open after cap.
+          const waitedMs = await webhookRateLimiter.waitForSlot(webhookUrl);
+          if (waitedMs > 100) {
+            logger.debug(
+              "[%s] Webhook rate limiter: waited %dms for slot on %s",
+              this.sessionId,
+              waitedMs,
+              webhookUrl,
+            );
           }
 
           const response = await fetch(webhookUrl, {

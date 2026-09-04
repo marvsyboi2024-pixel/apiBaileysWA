@@ -29,6 +29,8 @@ const {
   WEBHOOK_CONCURRENCY,
   WEBHOOK_RETRY_HTTP_429,
   WEBHOOK_RETRYABLE_STATUSES,
+  WEBHOOK_RATE_PER_MIN,
+  WEBHOOK_RATE_MAX_WAIT_MS,
   BROADCAST_MIN_DELAY_MS,
   BROADCAST_MAX_DELAY_MS,
   BROADCAST_BATCH_SIZE,
@@ -176,6 +178,15 @@ const config = {
           : [408, 425, 429, 500, 502, 503, 504],
       ),
     },
+    /**
+     * Outbound rate limit per receiver URL (token bucket). 0 = disabled
+     * (legacy). When > 0, at most N webhook requests per minute are sent to
+     * the same endpoint; extra events wait (bounded by rateMaxWaitMs) instead
+     * of being dropped.
+     */
+    ratePerMin: WEBHOOK_RATE_PER_MIN ? Number(WEBHOOK_RATE_PER_MIN) : 0,
+    /** Max ms an event waits for a free per-URL slot before proceeding anyway. */
+    rateMaxWaitMs: WEBHOOK_RATE_MAX_WAIT_MS ? Number(WEBHOOK_RATE_MAX_WAIT_MS) : 30000,
   },
 
   broadcast: {
