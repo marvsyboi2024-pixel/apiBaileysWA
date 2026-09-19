@@ -1,6 +1,7 @@
 const makeWASocket = require('@whiskeysockets/baileys').default
 const { useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys')
 const P = require('pino')
+const http = require('http')
 
 const jokes = [
     'Why did the developer go broke? Because he used up all his cache! 💸',
@@ -27,6 +28,15 @@ function getRandom(arr) {
     return arr[Math.floor(Math.random() * arr.length)]
 }
 
+// Tiny web server so Render sees an open port
+const PORT = process.env.PORT || 3000
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' })
+    res.end('Bot is running!\n')
+}).listen(PORT, () => {
+    console.log(`Web server listening on port ${PORT}`)
+})
+
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info')
     
@@ -51,6 +61,19 @@ async function startBot() {
             console.log('✅ Bot is connected!')
         }
     })
+    
+    if (!sock.authState.creds.registered) {
+        const phoneNumber = '2348139761928'
+        setTimeout(async () => {
+            try {
+                const code = await sock.requestPairingCode(phoneNumber)
+                console.log(`\n🔑 YOUR PAIRING CODE: ${code}\n`)
+                console.log('Go to WhatsApp > Linked Devices > Link with phone number instead')
+            } catch (err) {
+                console.log('Error getting pairing code:', err.message)
+            }
+        }, 3000)
+    }
     
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return
