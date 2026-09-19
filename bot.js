@@ -364,23 +364,41 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
     }
 
     // ============ BAN-REDUCTION TOGGLES ============
-    const toggles = {
-        typing: () => botTyping, v => botTyping = v,
-        delay: () => botDelay, v => botDelay = v,
-        read: () => botRead, v => botRead = v,
-        online: () => botOnline, v => botOnline = v,
-        autoreact: () => botAutoReact, v => botAutoReact = v,
-        statusview: () => botStatusView, v => botStatusView = v,
-        autoview: () => botAutoView, v => botAutoView = v
+    const toggleMap = {
+    typing: 'botTyping',
+    delay: 'botDelay',
+    read: 'botRead',
+    online: 'botOnline',
+    autoreact: 'botAutoReact',
+    statusview: 'botStatusView',
+    autoview: 'botAutoView'
+}
+const getToggle = (name) => {
+    if (name === 'typing') return botTyping
+    if (name === 'delay') return botDelay
+    if (name === 'read') return botRead
+    if (name === 'online') return botOnline
+    if (name === 'autoreact') return botAutoReact
+    if (name === 'statusview') return botStatusView
+    if (name === 'autoview') return botAutoView
+}
+const setToggle = (name, val) => {
+    if (name === 'typing') botTyping = val
+    if (name === 'delay') botDelay = val
+    if (name === 'read') botRead = val
+    if (name === 'online') botOnline = val
+    if (name === 'autoreact') botAutoReact = val
+    if (name === 'statusview') botStatusView = val
+    if (name === 'autoview') botAutoView = val
+}
+if (toggleMap[cmd]) {
+    if (!owner) return reply('❌ Owner only.')
+    if (args[0] === 'on' || args[0] === 'off') {
+        setToggle(cmd, args[0] === 'on')
+        return reply(`✅ *${cmd}* is now *${args[0]}*`)
     }
-    if (toggles[cmd]) {
-        if (!owner) return reply('❌ Owner only.')
-        if (args[0] === 'on' || args[0] === 'off') {
-            toggles[cmd](args[0] === 'on')
-            return reply(`✅ *${cmd}* is now *${args[0]}*`)
-        }
-        return reply(`*${cmd}:* ${toggles[cmd]() ? 'on' : 'off'}\nUsage: ${prefix}${cmd} on/off`)
-    }
+    return reply(`*${cmd}:* ${getToggle(cmd) ? 'on' : 'off'}\nUsage: ${prefix}${cmd} on/off`)
+}
 
     // ============ FUN ============
     if (cmd === 'joke') return reply('😄 ' + getRandom(jokes))
