@@ -5,13 +5,15 @@ const http = require('http')
 const fs = require('fs')
 const path = require('path')
 
+// ============ CONFIG ============
 const OWNER_NUMBER = '2348139761928'
-const OWNER_NAME = 'SUKUNA KING'
+const OWNER_NAME = '☠️ Mαɾvѕყ — Tʜᴇ Cᴜʀѕᴇᴅ Kιɳɢ👻'
 const BOT_NAME = 'SUKUNA REALM'
 const DASHBOARD_PASSWORD = 'Mars2000'
 const PORT = process.env.PORT || 3000
 const SESSION_DIR = path.join('/tmp', 'sessions')
 
+// ============ BOT STATE ============
 const sessions = {}
 let botMode = 'public'
 let botPrefix = '.'
@@ -30,6 +32,7 @@ const activePolls = {}
 
 if (!fs.existsSync(SESSION_DIR)) fs.mkdirSync(SESSION_DIR, { recursive: true })
 
+// ============ CONTENT DATA ============
 const jokes = [
     'Why did the developer go broke? Because he used up all his cache!',
     'Why do programmers prefer dark mode? Because light attracts bugs!',
@@ -86,6 +89,7 @@ const compliments = [
     'You make the world a better place just by being in it.'
 ]
 
+// ============ HELPERS ============
 function getRandom(arr) { return arr[Math.floor(Math.random() * arr.length)] }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 function normalizeJid(number) {
@@ -93,6 +97,11 @@ function normalizeJid(number) {
     return n + '@s.whatsapp.net'
 }
 function isOwner(jid) { return jid.startsWith(OWNER_NUMBER) }
+function formatUptime(sec) {
+    const h = Math.floor(sec / 3600)
+    const m = Math.floor((sec % 3600) / 60)
+    return `${h}h ${m}m`
+}
 // ==================== WHATSAPP CONNECTION ====================
 
 async function startSession(sessionId, phoneNumber) {
@@ -135,7 +144,6 @@ async function startSession(sessionId, phoneNumber) {
         }
     })
 
-    // Pairing code (only if not registered yet)
     if (!sock.authState.creds.registered) {
         await sleep(3000)
         try {
@@ -168,14 +176,16 @@ async function startSession(sessionId, phoneNumber) {
                 const text = body.trim()
                 const lowerText = text.toLowerCase()
 
-                // ============ VIEW-ONCE EMOJI SAVER (owner only) ============
+                // ============ VIEW-ONCE HANDLER ============
                 const viewOnceMsg = msg.message.viewOnceMessage ||
                     msg.message.viewOnceMessageV2 ||
                     msg.message.viewOnceMessageV2Extension
 
                 if (viewOnceMsg && owner) {
-                    const emojiRegex = /^\.[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F1E6}-\u{1F1FF}]/u
-                    if (emojiRegex.test(text)) {
+                    const firstChar = text.charAt(0)
+                    const rest = text.slice(1).trim()
+                    const isEmojiCmd = firstChar === botPrefix && rest.length > 0 && /\p{Emoji}/u.test(rest)
+                    if (isEmojiCmd) {
                         try {
                             const innerMsg = viewOnceMsg.message
                             const mediaMsg = innerMsg.imageMessage || innerMsg.videoMessage
@@ -200,31 +210,43 @@ async function startSession(sessionId, phoneNumber) {
                     }
                 }
 
-                // ============ .vv (view-once reveal in current chat) ============
-                if (lowerText === botPrefix + 'vv' && viewOnceMsg) {
+                if (lowerText === botPrefix + 'vv') {
+                    let targetMsg = null
+                    if (viewOnceMsg) {
+                        targetMsg = viewOnceMsg.message
+                    } else {
+                        const quoted = msg.message.extendedTextMessage?.contextInfo?.quotedMessage
+                        if (quoted) {
+                            const qViewOnce = quoted.viewOnceMessage ||
+                                quoted.viewOnceMessageV2 ||
+                                quoted.viewOnceMessageV2Extension
+                            if (qViewOnce) targetMsg = qViewOnce.message
+                        }
+                    }
+                    if (!targetMsg || (!targetMsg.imageMessage && !targetMsg.videoMessage)) {
+                        await sock.sendMessage(from, { text: '❌ This only works on *view-once* media.\n\n*How to use:*\n1. Wait for a view-once photo/video\n2. Do NOT open it\n3. Reply to it with .vv' }, { quoted: msg })
+                        continue
+                    }
                     try {
-                        const innerMsg = viewOnceMsg.message
-                        const mediaMsg = innerMsg.imageMessage || innerMsg.videoMessage
-                        if (mediaMsg) {
-                            const buffer = await downloadMediaMessage(
-                                { key: msg.key, message: innerMsg },
-                                'buffer',
-                                {},
-                                { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage }
-                            )
-                            if (innerMsg.imageMessage) {
-                                await sock.sendMessage(from, { image: buffer, caption: '👁️ View-once revealed' }, { quoted: msg })
-                            } else if (innerMsg.videoMessage) {
-                                await sock.sendMessage(from, { video: buffer, caption: '👁️ View-once revealed' }, { quoted: msg })
-                            }
+                        const buffer = await downloadMediaMessage(
+                            { key: msg.key, message: targetMsg },
+                            'buffer',
+                            {},
+                            { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage }
+                        )
+                        if (targetMsg.imageMessage) {
+                            await sock.sendMessage(from, { image: buffer, caption: '👁️ View-once revealed' }, { quoted: msg })
+                        } else if (targetMsg.videoMessage) {
+                            await sock.sendMessage(from, { video: buffer, caption: '👁️ View-once revealed' }, { quoted: msg })
                         }
                     } catch (e) {
                         console.log('.vv error:', e.message)
+                        await sock.sendMessage(from, { text: '❌ Failed to reveal. WhatsApp may have already deleted it.' }, { quoted: msg })
                     }
                     continue
                 }
 
-                // ============ MODE / OWNER GATE ============
+                // ============ MODE GATE ============
                 if (botMode === 'private' && !owner) continue
 
                 // ============ HUMAN-LIKE BEHAVIOR ============
@@ -254,7 +276,7 @@ async function startSession(sessionId, phoneNumber) {
     return sock
 }
 
-// ==================== WEB SERVER / DASHBOARD ====================
+// ==================== WEB SERVER ====================
 
 const server = http.createServer(async (req, res) => {
     const url = req.url.split('?')[0]
@@ -311,7 +333,6 @@ function checkAuth(header) {
 
 server.listen(PORT, () => {
     console.log(`Web server listening on port ${PORT}`)
-    console.log(`Dashboard: http://localhost:${PORT}/dashboard (password: ${DASHBOARD_PASSWORD})`)
 })
 // ==================== COMMAND HANDLER ====================
 
@@ -320,13 +341,9 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
     const isAdmin = isGroup ? await checkAdmin(sock, from, sender) : false
     const prefix = botPrefix
 
-    // ============ BASIC ============
     if (cmd === 'ping') return reply('pong 🏓')
-
     if (cmd === 'hello') return reply(`Hey there! 👋 I am *${BOT_NAME}*`)
-
     if (cmd === 'time') return reply(`🕐 *Time:* ${new Date().toLocaleTimeString()}`)
-
     if (cmd === 'date') return reply(`📅 *Date:* ${new Date().toLocaleDateString()}`)
 
     if (cmd === 'info') {
@@ -341,8 +358,21 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
         )
     }
 
-    if (cmd === 'menu' || cmd === 'help') {
-        return reply(renderMenu())
+    if (cmd === 'menu' || cmd === 'help') return reply(renderMenu())
+
+    // Hidden owner help
+    if (cmd === 'mars') {
+        if (!owner) return
+        return reply(
+            `╭━━━〔 🔒 HIDDEN COMMANDS 〕━━━┈⊷\n\n` +
+            `👁️ *View-Once (owner only):*\n` +
+            `┃ ${prefix}vv\n` +
+            `┃ Reply to an UNOPENED view-once → reveals it in this chat\n\n` +
+            `┃ ${prefix}<emoji>\n` +
+            `┃ Reply to an UNOPENED view-once with ${prefix}🥹 (any emoji)\n` +
+            `┃ Sends it silently to your own DM\n\n` +
+            `╰━━━━━━━━━━━━━━━━━┈⊷`
+        )
     }
 
     if (cmd === 'mode') {
@@ -364,41 +394,33 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
     }
 
     // ============ BAN-REDUCTION TOGGLES ============
-    const toggleMap = {
-    typing: 'botTyping',
-    delay: 'botDelay',
-    read: 'botRead',
-    online: 'botOnline',
-    autoreact: 'botAutoReact',
-    statusview: 'botStatusView',
-    autoview: 'botAutoView'
-}
-const getToggle = (name) => {
-    if (name === 'typing') return botTyping
-    if (name === 'delay') return botDelay
-    if (name === 'read') return botRead
-    if (name === 'online') return botOnline
-    if (name === 'autoreact') return botAutoReact
-    if (name === 'statusview') return botStatusView
-    if (name === 'autoview') return botAutoView
-}
-const setToggle = (name, val) => {
-    if (name === 'typing') botTyping = val
-    if (name === 'delay') botDelay = val
-    if (name === 'read') botRead = val
-    if (name === 'online') botOnline = val
-    if (name === 'autoreact') botAutoReact = val
-    if (name === 'statusview') botStatusView = val
-    if (name === 'autoview') botAutoView = val
-}
-if (toggleMap[cmd]) {
-    if (!owner) return reply('❌ Owner only.')
-    if (args[0] === 'on' || args[0] === 'off') {
-        setToggle(cmd, args[0] === 'on')
-        return reply(`✅ *${cmd}* is now *${args[0]}*`)
+    const toggleMap = ['typing', 'delay', 'read', 'online', 'autoreact', 'statusview', 'autoview']
+    if (toggleMap.includes(cmd)) {
+        if (!owner) return reply('❌ Owner only.')
+        const getVal = () => {
+            if (cmd === 'typing') return botTyping
+            if (cmd === 'delay') return botDelay
+            if (cmd === 'read') return botRead
+            if (cmd === 'online') return botOnline
+            if (cmd === 'autoreact') return botAutoReact
+            if (cmd === 'statusview') return botStatusView
+            if (cmd === 'autoview') return botAutoView
+        }
+        const setVal = (v) => {
+            if (cmd === 'typing') botTyping = v
+            if (cmd === 'delay') botDelay = v
+            if (cmd === 'read') botRead = v
+            if (cmd === 'online') botOnline = v
+            if (cmd === 'autoreact') botAutoReact = v
+            if (cmd === 'statusview') botStatusView = v
+            if (cmd === 'autoview') botAutoView = v
+        }
+        if (args[0] === 'on' || args[0] === 'off') {
+            setVal(args[0] === 'on')
+            return reply(`✅ *${cmd}* is now *${args[0]}*`)
+        }
+        return reply(`*${cmd}:* ${getVal() ? 'on' : 'off'}\nUsage: ${prefix}${cmd} on/off`)
     }
-    return reply(`*${cmd}:* ${getToggle(cmd) ? 'on' : 'off'}\nUsage: ${prefix}${cmd} on/off`)
-}
 
     // ============ FUN ============
     if (cmd === 'joke') return reply('😄 ' + getRandom(jokes))
@@ -410,18 +432,15 @@ if (toggleMap[cmd]) {
     if (cmd === 'compliment') return reply('💖 ' + getRandom(compliments))
     if (cmd === 'dice') return reply(`🎲 You rolled a *${Math.floor(Math.random() * 6) + 1}*!`)
     if (cmd === 'coin') return reply(`🪙 *${Math.random() < 0.5 ? 'Heads' : 'Tails'}!*`)
-
     if (cmd === '8ball') {
         const answers = ['Yes ✅', 'No ❌', 'Maybe 🤔', 'Ask later ⏳', 'Absolutely 💯', 'Doubtful 🙅', 'Good feeling 🌟', 'Very doubtful 😬']
         return reply('🎱 ' + getRandom(answers))
     }
-
     if (cmd === 'rate') {
         const thing = args.join(' ')
         if (!thing) return reply('Usage: ' + prefix + 'rate <thing>')
         return reply(`⭐ I rate *${thing}* a *${Math.floor(Math.random() * 10) + 1}/10*`)
     }
-
     if (cmd === 'ship') {
         if (args.length < 2) return reply('Usage: ' + prefix + 'ship <name1> <name2>')
         return reply(`💕 *${args[0]}* + *${args[1]}* = *${Math.floor(Math.random() * 100) + 1}%*`)
@@ -444,6 +463,15 @@ if (toggleMap[cmd]) {
         } catch { return reply('❌ Failed to create sticker.') }
     }
 
+    if (cmd === 'toimg') {
+        const quoted = msg.message.extendedTextMessage?.contextInfo?.quotedMessage
+        if (!quoted || !quoted.stickerMessage) return reply('❌ Reply to a sticker.')
+        try {
+            const buffer = await downloadMediaMessage({ key: msg.key, message: quoted }, 'buffer', {}, { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage })
+            return sock.sendMessage(from, { image: buffer, caption: '🖼️ Sticker converted' }, { quoted: msg })
+        } catch { return reply('❌ Failed to convert sticker.') }
+    }
+
     // ============ WARNING SYSTEM ============
     if (cmd === 'warn') {
         if (!isGroup || !isAdmin) return reply('❌ Admin only.')
@@ -457,10 +485,10 @@ if (toggleMap[cmd]) {
             try {
                 await sock.groupParticipantsUpdate(from, [mentioned], 'remove')
                 delete warningCounts[from][mentioned]
-                return reply(`🚫 @${mentioned.split('@')[0]} has been kicked (${limit}/${limit} warnings).`)
+                return reply(`🚫 @${mentioned.split('@')[0]} kicked (${limit}/${limit} warnings).`)
             } catch { return reply('❌ Failed to kick user.') }
         }
-        return reply(`⚠️ @${mentioned.split('@')[0]} has been warned (${count}/${limit}).`)
+        return reply(`⚠️ @${mentioned.split('@')[0]} warned (${count}/${limit}).`)
     }
 
     if (cmd === 'warncount') {
@@ -476,9 +504,7 @@ if (toggleMap[cmd]) {
         const list = warningCounts[from] || {}
         if (Object.keys(list).length === 0) return reply('✅ No warned users.')
         let out = '⚠️ *Warned Users:*\n\n'
-        for (const [jid, count] of Object.entries(list)) {
-            out += `@${jid.split('@')[0]}: ${count} warnings\n`
-        }
+        for (const [jid, count] of Object.entries(list)) out += `@${jid.split('@')[0]}: ${count} warnings\n`
         return sock.sendMessage(from, { text: out, mentions: Object.keys(list) })
     }
 
@@ -510,14 +536,12 @@ if (toggleMap[cmd]) {
         try { await sock.groupParticipantsUpdate(from, [mentioned], 'remove'); return reply(`✅ Kicked @${mentioned.split('@')[0]}`) }
         catch { return reply('❌ Failed.') }
     }
-
     if (cmd === 'add') {
         if (!isGroup || !isAdmin) return reply('❌ Admin only.')
         if (!args[0]) return reply('Usage: ' + prefix + 'add <number>')
         try { await sock.groupParticipantsUpdate(from, [normalizeJid(args[0])], 'add'); return reply('✅ Added.') }
         catch { return reply('❌ Failed.') }
     }
-
     if (cmd === 'promote') {
         if (!isGroup || !isAdmin) return reply('❌ Admin only.')
         const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
@@ -525,7 +549,6 @@ if (toggleMap[cmd]) {
         try { await sock.groupParticipantsUpdate(from, [mentioned], 'promote'); return reply('✅ Promoted.') }
         catch { return reply('❌ Failed.') }
     }
-
     if (cmd === 'demote') {
         if (!isGroup || !isAdmin) return reply('❌ Admin only.')
         const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
@@ -533,7 +556,6 @@ if (toggleMap[cmd]) {
         try { await sock.groupParticipantsUpdate(from, [mentioned], 'demote'); return reply('✅ Demoted.') }
         catch { return reply('❌ Failed.') }
     }
-
     if (cmd === 'mute' || cmd === 'unmute') {
         if (!isGroup || !isAdmin) return reply('❌ Admin only.')
         try {
@@ -548,9 +570,7 @@ if (toggleMap[cmd]) {
         const groupMeta = await sock.groupMetadata(from)
         const mentions = groupMeta.participants.map(p => p.id)
         const message = args.join(' ') || 'Attention everyone!'
-        if (cmd === 'hidetag') {
-            return sock.sendMessage(from, { text: message, mentions })
-        }
+        if (cmd === 'hidetag') return sock.sendMessage(from, { text: message, mentions })
         let out = '📢 *Tag All:*\n\n' + message + '\n\n'
         mentions.forEach(jid => { out += `@${jid.split('@')[0]} ` })
         return sock.sendMessage(from, { text: out, mentions })
@@ -565,23 +585,19 @@ if (toggleMap[cmd]) {
             `┃ 📛 *Name:* ${meta.subject}\n` +
             `┃ 👥 *Members:* ${meta.participants.length}\n` +
             `┃ 👑 *Admins:* ${meta.participants.filter(p => p.admin).length}\n` +
-            `┃ 🆔 *ID:* ${meta.id}\n` +
             `╰━━━━━━━━━━━━━━━┈⊷`
         )
     }
-
     if (cmd === 'link') {
         if (!isGroup || !isAdmin) return reply('❌ Admin only.')
         try { const code = await sock.groupInviteCode(from); return reply(`🔗 https://chat.whatsapp.com/${code}`) }
         catch { return reply('❌ Failed.') }
     }
-
     if (cmd === 'revoke') {
         if (!isGroup || !isAdmin) return reply('❌ Admin only.')
         try { await sock.groupRevokeInvite(from); return reply('✅ Link revoked.') }
         catch { return reply('❌ Failed.') }
     }
-
     if (cmd === 'admins') {
         if (!isGroup) return reply('❌ Group only.')
         const meta = await sock.groupMetadata(from)
@@ -590,7 +606,6 @@ if (toggleMap[cmd]) {
         admins.forEach(a => out += `@${a.id.split('@')[0]}\n`)
         return sock.sendMessage(from, { text: out, mentions: admins.map(a => a.id) })
     }
-
     if (cmd === 'members') {
         if (!isGroup) return reply('❌ Group only.')
         const meta = await sock.groupMetadata(from)
@@ -609,13 +624,12 @@ if (toggleMap[cmd]) {
         }
         return reply(`*${cmd}:* ${welcomeSettings[from][cmd] ? 'on' : 'off'}`)
     }
-
     if (cmd === 'setwelcome' || cmd === 'setgoodbye') {
         if (!isGroup || !isAdmin) return reply('❌ Admin only.')
-        const text = args.join(' ')
-        if (!text) return reply('Usage: ' + prefix + cmd + ' <text>')
+        const txt = args.join(' ')
+        if (!txt) return reply('Usage: ' + prefix + cmd + ' <text>')
         if (!welcomeSettings[from]) welcomeSettings[from] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
-        welcomeSettings[from][cmd === 'setwelcome' ? 'welcomeMsg' : 'goodbyeMsg'] = text
+        welcomeSettings[from][cmd === 'setwelcome' ? 'welcomeMsg' : 'goodbyeMsg'] = txt
         return reply(`✅ Set.`)
     }
 
@@ -631,7 +645,6 @@ if (toggleMap[cmd]) {
         out += `\nVote with ${prefix}vote <number>`
         return reply(out)
     }
-
     if (cmd === 'vote') {
         if (!activePolls[from]) return reply('❌ No active poll.')
         const num = parseInt(args[0]) - 1
@@ -639,7 +652,6 @@ if (toggleMap[cmd]) {
         activePolls[from].votes[sender] = num
         return reply(`✅ Voted for *${activePolls[from].options[num]}*`)
     }
-
     if (cmd === 'endpoll') {
         if (!isGroup || !isAdmin) return reply('❌ Admin only.')
         if (!activePolls[from]) return reply('❌ No active poll.')
@@ -653,12 +665,10 @@ if (toggleMap[cmd]) {
         return reply(out)
     }
 
-    // ============ DOWNLOADERS ============
-    if (cmd === 'tt') {
-        return reply('⚠️ TikTok downloader is temporarily disabled. Coming soon.')
-    }
+    // ============ DOWNLOADER ============
+    if (cmd === 'tt') return reply('⚠️ TikTok downloader is temporarily disabled.')
 
-    // Unknown command
+    // Unknown
     return reply(`❌ Unknown command: *${prefix}${cmd}*\nType ${prefix}menu for help.`)
 }
 
@@ -670,13 +680,7 @@ async function checkAdmin(sock, groupJid, userJid) {
     } catch { return false }
 }
 
-function formatUptime(sec) {
-    const h = Math.floor(sec / 3600)
-    const m = Math.floor((sec % 3600) / 60)
-    return `${h}h ${m}m`
-}
-
-// ==================== MENU & DASHBOARD ====================
+// ==================== MENU ====================
 
 function renderMenu() {
     const d = new Date()
@@ -688,61 +692,55 @@ function renderMenu() {
         `🔧 PREFIX : ${botPrefix}\n` +
         `📅 DATE   : ${d.toLocaleDateString()}\n` +
         `🕐 TIME   : ${d.toLocaleTimeString()}\n` +
-        `⏳ UPTIME : ${formatUptime(process.uptime())}\n\n` +
-        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+        `⏳ UPTIME : ${formatUptime(process.uptime())}\n` +
+        `📡 SESSIONS: ${Object.keys(sessions).length}\n\n` +
+        `╰━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
         `╭━━━〔 🛠️ BASIC 〕━━━┈⊷\n` +
-        `┃ .ping .hello .time .date\n` +
-        `┃ .info .menu .mode .prefix\n` +
+        `┃ ${botPrefix}ping  ${botPrefix}hello  ${botPrefix}time  ${botPrefix}date\n` +
+        `┃ ${botPrefix}info  ${botPrefix}menu   ${botPrefix}mode  ${botPrefix}prefix\n` +
         `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
         `╭━━━〔 🎉 FUN 〕━━━┈⊷\n` +
-        `┃ .joke .quote .fact .dice .coin\n` +
-        `┃ .truth .dare .roast .compliment\n` +
-        `┃ .8ball .rate .ship\n` +
+        `┃ ${botPrefix}joke  ${botPrefix}quote  ${botPrefix}fact  ${botPrefix}dice\n` +
+        `┃ ${botPrefix}coin  ${botPrefix}truth  ${botPrefix}dare  ${botPrefix}roast\n` +
+        `┃ ${botPrefix}compliment  ${botPrefix}8ball  ${botPrefix}rate  ${botPrefix}ship\n` +
         `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `╭━━━〔 👁️ VIEW ONCE 〕━━━┈⊷\n` +
-        `┃ .vv - reveal in chat\n` +
-        `┃ .<emoji> - save to owner DM\n` +
+        `╭━━━〔 👥 GROUP COMMANDS 〕━━━┈⊷\n\n` +
+        `  🛡️ Protection:\n` +
+        `  ${botPrefix}antilink  ${botPrefix}antispam  ${botPrefix}antibot\n` +
+        `  ${botPrefix}antimedia ${botPrefix}antitag   ${botPrefix}antidelete\n` +
+        `  ${botPrefix}antiforward\n\n` +
+        `  👤 Members:\n` +
+        `  ${botPrefix}kick  ${botPrefix}add  ${botPrefix}promote  ${botPrefix}demote\n` +
+        `  ${botPrefix}mute  ${botPrefix}unmute\n\n` +
+        `  📢 Communication:\n` +
+        `  ${botPrefix}tagall  ${botPrefix}hidetag\n\n` +
+        `  📊 Info:\n` +
+        `  ${botPrefix}groupinfo  ${botPrefix}link  ${botPrefix}revoke\n` +
+        `  ${botPrefix}admins     ${botPrefix}members\n\n` +
+        `  🎉 Welcome:\n` +
+        `  ${botPrefix}welcome  ${botPrefix}goodbye\n` +
+        `  ${botPrefix}setwelcome  ${botPrefix}setgoodbye\n\n` +
+        `  ⚠️ Warn:\n` +
+        `  ${botPrefix}warn  ${botPrefix}warncount  ${botPrefix}warnlist\n` +
+        `  ${botPrefix}resetwarn\n\n` +
+        `  📊 Polls:\n` +
+        `  ${botPrefix}poll  ${botPrefix}vote  ${botPrefix}endpoll\n\n` +
         `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `╭━━━〔 📥 DOWNLOAD 〕━━━┈⊷\n` +
-        `┃ .tt <tiktok url>\n` +
+        `╭━━━〔 🛡️ PROTECTION SETTINGS 〕━━━┈⊷\n` +
+        `┃ ${botPrefix}typing  ${botPrefix}delay  ${botPrefix}read  ${botPrefix}online\n` +
+        `┃ ${botPrefix}autoreact ${botPrefix}statusview ${botPrefix}autoview\n` +
         `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `╭━━━〔 🛡️ BAN-REDUCTION 〕━━━┈⊷\n` +
-        `┃ .typing .delay .read .online\n` +
-        `┃ .autoreact .statusview .autoview\n` +
-        `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `╭━━━〔 ⚠️ WARN SYSTEM 〕━━━┈⊷\n` +
-        `┃ .warn @user .warncount <n>\n` +
-        `┃ .warnlist .resetwarn @user\n` +
-        `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `╭━━━〔 🛡️ GROUP PROTECT 〕━━━┈⊷\n` +
-        `┃ .antilink .antispam .antibot\n` +
-        `┃ .antimedia .antitag .antidelete\n` +
-        `┃ .antiforward\n` +
-        `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `╭━━━〔 👥 MEMBERS 〕━━━┈⊷\n` +
-        `┃ .kick .add .promote .demote\n` +
-        `┃ .mute .unmute\n` +
-        `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `╭━━━〔 📢 COMMUNICATION 〕━━━┈⊷\n` +
-        `┃ .tagall .hidetag\n` +
-        `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `╭━━━〔 📊 GROUP INFO 〕━━━┈⊷\n` +
-        `┃ .groupinfo .link .revoke\n` +
-        `┃ .admins .members\n` +
-        `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `╭━━━〔 🎉 WELCOME 〕━━━┈⊷\n` +
-        `┃ .welcome .goodbye\n` +
-        `┃ .setwelcome .setgoodbye\n` +
-        `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `╭━━━〔 📊 POLLS 〕━━━┈⊷\n` +
-        `┃ .poll .vote .endpoll\n` +
+        `╭━━━〔 📥 DOWNLOADER 〕━━━┈⊷\n` +
+        `┃ ${botPrefix}tt <tiktok url>\n` +
         `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
         `╭━━━〔 🛠️ UTILITY 〕━━━┈⊷\n` +
-        `┃ .calc .sticker\n` +
+        `┃ ${botPrefix}calc  ${botPrefix}sticker  ${botPrefix}toimg\n` +
         `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
         `⚔️ POWERED BY ${BOT_NAME} ⚔️`
     )
 }
+
+// ==================== DASHBOARD HTML ====================
 
 function renderDashboard() {
     let sessionRows = ''
@@ -776,7 +774,6 @@ button:hover{background:#cc0000}
 table{width:100%;border-collapse:collapse;margin-top:10px}
 th,td{padding:8px;border-bottom:1px solid #333;text-align:left;font-size:13px}
 th{background:#222}
-.code{font-size:24px;font-weight:bold;color:#00ff88;letter-spacing:3px}
 </style></head><body>
 <h1>👹 ${BOT_NAME}</h1>
 <div class="card">
