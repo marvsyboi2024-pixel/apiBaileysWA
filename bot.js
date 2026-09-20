@@ -5,7 +5,6 @@ const http = require('http')
 const fs = require('fs')
 const path = require('path')
 
-// ============ CONFIG ============
 const OWNER_NUMBER = '2348139761928'
 const OWNER_NAME = '☠️ Mαɾvѕყ — Tʜᴇ Cᴜʀѕᴇᴅ Kιɳɢ👻'
 const BOT_NAME = 'SUKUNA REALM'
@@ -13,7 +12,6 @@ const DASHBOARD_PASSWORD = 'Mars2000'
 const PORT = process.env.PORT || 3000
 const SESSION_DIR = path.join('/tmp', 'sessions')
 
-// ============ BOT STATE ============
 const sessions = {}
 let botMode = 'public'
 let botPrefix = '.'
@@ -32,7 +30,13 @@ const activePolls = {}
 
 if (!fs.existsSync(SESSION_DIR)) fs.mkdirSync(SESSION_DIR, { recursive: true })
 
-// ============ CONTENT DATA ============
+process.on('unhandledRejection', (reason) => {
+    console.log('Unhandled rejection:', reason?.message || reason)
+})
+process.on('uncaughtException', (err) => {
+    console.log('Uncaught exception:', err?.message || err)
+})
+
 const jokes = [
     'Why did the developer go broke? Because he used up all his cache!',
     'Why do programmers prefer dark mode? Because light attracts bugs!',
@@ -89,7 +93,6 @@ const compliments = [
     'You make the world a better place just by being in it.'
 ]
 
-// ============ HELPERS ============
 function getRandom(arr) { return arr[Math.floor(Math.random() * arr.length)] }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 function normalizeJid(number) {
@@ -102,8 +105,22 @@ function formatUptime(sec) {
     const m = Math.floor((sec % 3600) / 60)
     return `${h}h ${m}m`
 }
-// ==================== WHATSAPP CONNECTION ====================
 
+function extractViewOnceMedia(message) {
+    if (!message) return null
+    const wrapper = message.viewOnceMessage || message.viewOnceMessageV2 || message.viewOnceMessageV2Extension
+    const inner = wrapper?.message
+    if (inner?.imageMessage) return { type: 'image', message: inner }
+    if (inner?.videoMessage) return { type: 'video', message: inner }
+    if (message.imageMessage?.viewOnce) return { type: 'image', message: { imageMessage: message.imageMessage } }
+    if (message.videoMessage?.viewOnce) return { type: 'video', message: { videoMessage: message.videoMessage } }
+    return null
+}
+
+const EMOJI_ONLY_REGEX = /^(?:\p{Extended_Pictographic}\uFE0F?(?:\p{Emoji_Modifier})?(?:\u200D\p{Extended_Pictographic}\uFE0F?)*)+$/u
+function isEmojiOnly(str) {
+    return EMOJI_ONLY_REGEX.test(str)
+}
 async function startSession(sessionId, phoneNumber) {
     const sessionPath = path.join(SESSION_DIR, sessionId)
     if (!fs.existsSync(sessionPath)) fs.mkdirSync(sessionPath, { recursive: true })
@@ -155,7 +172,6 @@ async function startSession(sessionId, phoneNumber) {
         }
     }
 
-    // ============ MESSAGE HANDLER ============
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return
 
@@ -163,6 +179,7 @@ async function startSession(sessionId, phoneNumber) {
             try {
                 if (!msg.message) continue
                 const from = msg.key.remoteJid
+                if (!from) continue
                 const isGroup = from.endsWith('@g.us')
                 const sender = isGroup ? msg.key.participant : from
                 const senderNumber = sender ? sender.split('@')[0] : ''
@@ -176,32 +193,26 @@ async function startSession(sessionId, phoneNumber) {
                 const text = body.trim()
                 const lowerText = text.toLowerCase()
 
-                // ============ VIEW-ONCE HANDLER ============
-                const viewOnceMsg = msg.message.viewOnceMessage ||
-                    msg.message.viewOnceMessageV2 ||
-                    msg.message.viewOnceMessageV2Extension
+                const contextInfo = msg.message.extendedTextMessage?.contextInfo
+                const quotedMessage = contextInfo?.quotedMessage || null
+                const viewOnceTarget = extractViewOnceMedia(quotedMessage) || extractViewOnceMedia(msg.message)
 
-                if (viewOnceMsg && owner) {
-                    const firstChar = text.charAt(0)
-                    const rest = text.slice(1).trim()
-                    const isEmojiCmd = firstChar === botPrefix && rest.length > 0 && /\p{Emoji}/u.test(rest)
+                if (owner && viewOnceTarget && text.startsWith(botPrefix)) {
+                    const rest = text.slice(botPrefix.length).trim()
+                    const isEmojiCmd = rest.length > 0 && rest.toLowerCase() !== 'vv' && isEmojiOnly(rest)
                     if (isEmojiCmd) {
                         try {
-                            const innerMsg = viewOnceMsg.message
-                            const mediaMsg = innerMsg.imageMessage || innerMsg.videoMessage
-                            if (mediaMsg) {
-                                const buffer = await downloadMediaMessage(
-                                    { key: msg.key, message: innerMsg },
-                                    'buffer',
-                                    {},
-                                    { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage }
-                                )
-                                const ownerJid = normalizeJid(OWNER_NUMBER)
-                                if (innerMsg.imageMessage) {
-                                    await sock.sendMessage(ownerJid, { image: buffer, caption: '📥 Saved view-once' })
-                                } else if (innerMsg.videoMessage) {
-                                    await sock.sendMessage(ownerJid, { video: buffer, caption: '📥 Saved view-once' })
-                                }
+                            const ownerJid = normalizeJid(OWNER_NUMBER)
+                            const buffer = await downloadMediaMessage(
+                                { key: msg.key, message: viewOnceTarget.message },
+                                'buffer',
+                                {},
+                                { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage }
+                            )
+                            if (viewOnceTarget.type === 'image') {
+                                await sock.sendMessage(ownerJid, { image: buffer, caption: '📥 Saved view-once' })
+                            } else {
+                                await sock.sendMessage(ownerJid, { video: buffer, caption: '📥 Saved view-once' })
                             }
                         } catch (e) {
                             console.log('Emoji save error:', e.message)
@@ -211,32 +222,20 @@ async function startSession(sessionId, phoneNumber) {
                 }
 
                 if (lowerText === botPrefix + 'vv') {
-                    let targetMsg = null
-                    if (viewOnceMsg) {
-                        targetMsg = viewOnceMsg.message
-                    } else {
-                        const quoted = msg.message.extendedTextMessage?.contextInfo?.quotedMessage
-                        if (quoted) {
-                            const qViewOnce = quoted.viewOnceMessage ||
-                                quoted.viewOnceMessageV2 ||
-                                quoted.viewOnceMessageV2Extension
-                            if (qViewOnce) targetMsg = qViewOnce.message
-                        }
-                    }
-                    if (!targetMsg || (!targetMsg.imageMessage && !targetMsg.videoMessage)) {
+                    if (!viewOnceTarget) {
                         await sock.sendMessage(from, { text: '❌ This only works on *view-once* media.\n\n*How to use:*\n1. Wait for a view-once photo/video\n2. Do NOT open it\n3. Reply to it with .vv' }, { quoted: msg })
                         continue
                     }
                     try {
                         const buffer = await downloadMediaMessage(
-                            { key: msg.key, message: targetMsg },
+                            { key: msg.key, message: viewOnceTarget.message },
                             'buffer',
                             {},
                             { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage }
                         )
-                        if (targetMsg.imageMessage) {
+                        if (viewOnceTarget.type === 'image') {
                             await sock.sendMessage(from, { image: buffer, caption: '👁️ View-once revealed' }, { quoted: msg })
-                        } else if (targetMsg.videoMessage) {
+                        } else {
                             await sock.sendMessage(from, { video: buffer, caption: '👁️ View-once revealed' }, { quoted: msg })
                         }
                     } catch (e) {
@@ -246,10 +245,8 @@ async function startSession(sessionId, phoneNumber) {
                     continue
                 }
 
-                // ============ MODE GATE ============
                 if (botMode === 'private' && !owner) continue
 
-                // ============ HUMAN-LIKE BEHAVIOR ============
                 if (botRead && msg.key) {
                     try { await sock.readMessages([msg.key]) } catch (e) {}
                 }
@@ -261,7 +258,6 @@ async function startSession(sessionId, phoneNumber) {
                     try { await sock.sendPresenceUpdate('composing', from) } catch (e) {}
                 }
 
-                // ============ COMMAND DISPATCH ============
                 if (!text.startsWith(botPrefix)) continue
                 const args = text.slice(botPrefix.length).trim().split(/\s+/)
                 const cmd = args.shift().toLowerCase()
@@ -275,9 +271,6 @@ async function startSession(sessionId, phoneNumber) {
 
     return sock
 }
-
-// ==================== WEB SERVER ====================
-
 const server = http.createServer(async (req, res) => {
     const url = req.url.split('?')[0]
 
@@ -326,15 +319,18 @@ const server = http.createServer(async (req, res) => {
 })
 
 function checkAuth(header) {
-    const b64 = header.split(' ')[1]
-    const [user, pass] = Buffer.from(b64, 'base64').toString().split(':')
-    return pass === DASHBOARD_PASSWORD
+    try {
+        const b64 = header.split(' ')[1]
+        const [user, pass] = Buffer.from(b64, 'base64').toString().split(':')
+        return pass === DASHBOARD_PASSWORD
+    } catch (e) {
+        return false
+    }
 }
 
 server.listen(PORT, () => {
     console.log(`Web server listening on port ${PORT}`)
 })
-// ==================== COMMAND HANDLER ====================
 
 async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, owner, cmd, args, rawText) {
     const reply = (text) => sock.sendMessage(from, { text }, { quoted: msg })
@@ -360,7 +356,6 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
 
     if (cmd === 'menu' || cmd === 'help') return reply(renderMenu())
 
-    // Hidden owner help
     if (cmd === 'mars') {
         if (!owner) return
         return reply(
@@ -371,6 +366,8 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
             `┃ ${prefix}<emoji>\n` +
             `┃ Reply to an UNOPENED view-once with ${prefix}🥹 (any emoji)\n` +
             `┃ Sends it silently to your own DM\n\n` +
+            `┃ ${prefix}save\n` +
+            `┃ Reply to a WhatsApp Status → saves to your DM\n\n` +
             `╰━━━━━━━━━━━━━━━━━┈⊷`
         )
     }
@@ -393,7 +390,6 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
         return reply(`Current prefix: *${botPrefix}*`)
     }
 
-    // ============ BAN-REDUCTION TOGGLES ============
     const toggleMap = ['typing', 'delay', 'read', 'online', 'autoreact', 'statusview', 'autoview']
     if (toggleMap.includes(cmd)) {
         if (!owner) return reply('❌ Owner only.')
@@ -417,12 +413,37 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
         }
         if (args[0] === 'on' || args[0] === 'off') {
             setVal(args[0] === 'on')
-            return reply(`✅ *${cmd}* is now *${args[0]}*`)
+            return reply(`✅ *\( {cmd}* is now * \){args[0]}*`)
         }
-        return reply(`*${cmd}:* ${getVal() ? 'on' : 'off'}\nUsage: ${prefix}${cmd} on/off`)
+        return reply(`*${cmd}:* ${getVal() ? 'on' : 'off'}\nUsage: \( {prefix} \){cmd} on/off`)
     }
 
-    // ============ FUN ============
+    if (cmd === 'save') {
+        if (!owner) return reply('❌ Owner only.')
+        const quoted = msg.message.extendedTextMessage?.contextInfo?.quotedMessage
+        if (!quoted) return reply('❌ Reply to a WhatsApp Status with this command.')
+        try {
+            const ownerJid = normalizeJid(OWNER_NUMBER)
+            const buffer = await downloadMediaMessage(
+                { key: msg.key, message: quoted },
+                'buffer',
+                {},
+                { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage }
+            )
+            if (quoted.imageMessage) {
+                await sock.sendMessage(ownerJid, { image: buffer, caption: quoted.imageMessage.caption || '📥 Saved status' })
+            } else if (quoted.videoMessage) {
+                await sock.sendMessage(ownerJid, { video: buffer, caption: quoted.videoMessage.caption || '📥 Saved status' })
+            } else {
+                await sock.sendMessage(ownerJid, { text: '📥 Saved status text:\n\n' + (quoted.conversation || quoted.extendedTextMessage?.text || '') })
+            }
+            return reply('✅ Status saved to your DM.')
+        } catch (e) {
+            console.log('Save status error:', e.message)
+            return reply('❌ Failed to save. Make sure you reply to an actual status (not a normal message).')
+        }
+    }
+
     if (cmd === 'joke') return reply('😄 ' + getRandom(jokes))
     if (cmd === 'quote') return reply('💬 ' + getRandom(quotes))
     if (cmd === 'fact') return reply('🧠 ' + getRandom(facts))
@@ -439,14 +460,13 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
     if (cmd === 'rate') {
         const thing = args.join(' ')
         if (!thing) return reply('Usage: ' + prefix + 'rate <thing>')
-        return reply(`⭐ I rate *${thing}* a *${Math.floor(Math.random() * 10) + 1}/10*`)
+        return reply(`⭐ I rate *\( {thing}* a * \){Math.floor(Math.random() * 10) + 1}/10*`)
     }
     if (cmd === 'ship') {
         if (args.length < 2) return reply('Usage: ' + prefix + 'ship <name1> <name2>')
-        return reply(`💕 *${args[0]}* + *${args[1]}* = *${Math.floor(Math.random() * 100) + 1}%*`)
+        return reply(`💕 *\( {args[0]}* + * \){args[1]}* = *${Math.floor(Math.random() * 100) + 1}%*`)
     }
 
-    // ============ UTILITY ============
     if (cmd === 'calc') {
         try {
             const result = eval(args.join(' ').replace(/[^0-9+\-*/().]/g, ''))
@@ -472,7 +492,6 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
         } catch { return reply('❌ Failed to convert sticker.') }
     }
 
-    // ============ WARNING SYSTEM ============
     if (cmd === 'warn') {
         if (!isGroup || !isAdmin) return reply('❌ Admin only.')
         const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
@@ -485,10 +504,10 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
             try {
                 await sock.groupParticipantsUpdate(from, [mentioned], 'remove')
                 delete warningCounts[from][mentioned]
-                return reply(`🚫 @${mentioned.split('@')[0]} kicked (${limit}/${limit} warnings).`)
+                return reply(`🚫 @\( {mentioned.split('@')[0]} kicked ( \){limit}/${limit} warnings).`)
             } catch { return reply('❌ Failed to kick user.') }
         }
-        return reply(`⚠️ @${mentioned.split('@')[0]} warned (${count}/${limit}).`)
+        return reply(`⚠️ @\( {mentioned.split('@')[0]} warned ( \){count}/${limit}).`)
     }
 
     if (cmd === 'warncount') {
@@ -516,19 +535,17 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
         return reply(`✅ Warnings reset for @${mentioned.split('@')[0]}`)
     }
 
-    // ============ GROUP PROTECTION ============
     const protectCmds = ['antilink', 'antispam', 'antibot', 'antimedia', 'antitag', 'antidelete', 'antiforward']
     if (protectCmds.includes(cmd)) {
         if (!isGroup || !isAdmin) return reply('❌ Admin only.')
         if (!groupSettings[from]) groupSettings[from] = {}
         if (args[0] === 'on' || args[0] === 'off') {
             groupSettings[from][cmd] = args[0] === 'on'
-            return reply(`✅ *${cmd}* is now *${args[0]}*`)
+            return reply(`✅ *\( {cmd}* is now * \){args[0]}*`)
         }
-        return reply(`*${cmd}:* ${groupSettings[from][cmd] ? 'on' : 'off'}\nUsage: ${prefix}${cmd} on/off`)
+        return reply(`*${cmd}:* ${groupSettings[from][cmd] ? 'on' : 'off'}\nUsage: \( {prefix} \){cmd} on/off`)
     }
 
-    // ============ MEMBER MANAGEMENT ============
     if (cmd === 'kick') {
         if (!isGroup || !isAdmin) return reply('❌ Admin only.')
         const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
@@ -564,7 +581,6 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
         } catch { return reply('❌ Failed.') }
     }
 
-    // ============ COMMUNICATION ============
     if (cmd === 'tagall' || cmd === 'hidetag') {
         if (!isGroup || !isAdmin) return reply('❌ Admin only.')
         const groupMeta = await sock.groupMetadata(from)
@@ -576,7 +592,6 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
         return sock.sendMessage(from, { text: out, mentions })
     }
 
-    // ============ GROUP INFO ============
     if (cmd === 'groupinfo') {
         if (!isGroup) return reply('❌ Group only.')
         const meta = await sock.groupMetadata(from)
@@ -614,13 +629,12 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
         return sock.sendMessage(from, { text: out, mentions: meta.participants.map(p => p.id) })
     }
 
-    // ============ WELCOME / GOODBYE ============
     if (cmd === 'welcome' || cmd === 'goodbye') {
         if (!isGroup || !isAdmin) return reply('❌ Admin only.')
         if (!welcomeSettings[from]) welcomeSettings[from] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
         if (args[0] === 'on' || args[0] === 'off') {
             welcomeSettings[from][cmd] = args[0] === 'on'
-            return reply(`✅ *${cmd}* is now *${args[0]}*`)
+            return reply(`✅ *\( {cmd}* is now * \){args[0]}*`)
         }
         return reply(`*${cmd}:* ${welcomeSettings[from][cmd] ? 'on' : 'off'}`)
     }
@@ -633,7 +647,6 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
         return reply(`✅ Set.`)
     }
 
-    // ============ POLLS ============
     if (cmd === 'poll') {
         if (!isGroup) return reply('❌ Group only.')
         const parts = args.join(' ').split('|').map(s => s.trim())
@@ -665,11 +678,9 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
         return reply(out)
     }
 
-    // ============ DOWNLOADER ============
     if (cmd === 'tt') return reply('⚠️ TikTok downloader is temporarily disabled.')
 
-    // Unknown
-    return reply(`❌ Unknown command: *${prefix}${cmd}*\nType ${prefix}menu for help.`)
+    return reply(`❌ Unknown command: *\( {prefix} \){cmd}*\nType ${prefix}menu for help.`)
 }
 
 async function checkAdmin(sock, groupJid, userJid) {
@@ -680,7 +691,45 @@ async function checkAdmin(sock, groupJid, userJid) {
     } catch { return false }
 }
 
-// ==================== MENU ====================
+function buildSubBox(emoji, title, lines) {
+    let box = `┃ ╭─〔 ${emoji} ${title} 〕─┈\n`
+    lines.forEach(line => { box += `┃ │ ${line}\n` })
+    box += `┃ ╰─────────────┈\n`
+    return box
+}
+
+function renderGroupCommandsBox() {
+    return (
+        `╭━━━〔 👥 GROUP COMMANDS 〕━━━┈⊷\n┃\n` +
+        buildSubBox('🛡️', 'Protection', [
+            `${botPrefix}antilink  ${botPrefix}antispam  ${botPrefix}antibot`,
+            `${botPrefix}antimedia ${botPrefix}antitag   ${botPrefix}antidelete`,
+            `${botPrefix}antiforward`
+        ]) + `┃\n` +
+        buildSubBox('👤', 'Members', [
+            `${botPrefix}kick  ${botPrefix}add  ${botPrefix}promote  ${botPrefix}demote`,
+            `${botPrefix}mute  ${botPrefix}unmute`
+        ]) + `┃\n` +
+        buildSubBox('📢', 'Communication', [
+            `${botPrefix}tagall  ${botPrefix}hidetag`
+        ]) + `┃\n` +
+        buildSubBox('📊', 'Info', [
+            `${botPrefix}groupinfo  ${botPrefix}link  ${botPrefix}revoke`,
+            `${botPrefix}admins     ${botPrefix}members`
+        ]) + `┃\n` +
+        buildSubBox('🎉', 'Welcome', [
+            `${botPrefix}welcome  ${botPrefix}goodbye`,
+            `${botPrefix}setwelcome  ${botPrefix}setgoodbye`
+        ]) + `┃\n` +
+        buildSubBox('⚠️', 'Warn', [
+            `${botPrefix}warn  ${botPrefix}warncount  ${botPrefix}warnlist`,
+            `${botPrefix}resetwarn`
+        ]) + `┃\n` +
+        buildSubBox('📊', 'Polls', [
+            `${botPrefix}poll  ${botPrefix}vote  ${botPrefix}endpoll`
+        ]) + `┃\n╰━━━━━━━━━━━━━━━┈⊷`
+    )
+}
 
 function renderMenu() {
     const d = new Date()
@@ -704,28 +753,7 @@ function renderMenu() {
         `┃ ${botPrefix}coin  ${botPrefix}truth  ${botPrefix}dare  ${botPrefix}roast\n` +
         `┃ ${botPrefix}compliment  ${botPrefix}8ball  ${botPrefix}rate  ${botPrefix}ship\n` +
         `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `╭━━━〔 👥 GROUP COMMANDS 〕━━━┈⊷\n\n` +
-        `  🛡️ Protection:\n` +
-        `  ${botPrefix}antilink  ${botPrefix}antispam  ${botPrefix}antibot\n` +
-        `  ${botPrefix}antimedia ${botPrefix}antitag   ${botPrefix}antidelete\n` +
-        `  ${botPrefix}antiforward\n\n` +
-        `  👤 Members:\n` +
-        `  ${botPrefix}kick  ${botPrefix}add  ${botPrefix}promote  ${botPrefix}demote\n` +
-        `  ${botPrefix}mute  ${botPrefix}unmute\n\n` +
-        `  📢 Communication:\n` +
-        `  ${botPrefix}tagall  ${botPrefix}hidetag\n\n` +
-        `  📊 Info:\n` +
-        `  ${botPrefix}groupinfo  ${botPrefix}link  ${botPrefix}revoke\n` +
-        `  ${botPrefix}admins     ${botPrefix}members\n\n` +
-        `  🎉 Welcome:\n` +
-        `  ${botPrefix}welcome  ${botPrefix}goodbye\n` +
-        `  ${botPrefix}setwelcome  ${botPrefix}setgoodbye\n\n` +
-        `  ⚠️ Warn:\n` +
-        `  ${botPrefix}warn  ${botPrefix}warncount  ${botPrefix}warnlist\n` +
-        `  ${botPrefix}resetwarn\n\n` +
-        `  📊 Polls:\n` +
-        `  ${botPrefix}poll  ${botPrefix}vote  ${botPrefix}endpoll\n\n` +
-        `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
+        renderGroupCommandsBox() + `\n\n` +
         `╭━━━〔 🛡️ PROTECTION SETTINGS 〕━━━┈⊷\n` +
         `┃ ${botPrefix}typing  ${botPrefix}delay  ${botPrefix}read  ${botPrefix}online\n` +
         `┃ ${botPrefix}autoreact ${botPrefix}statusview ${botPrefix}autoview\n` +
@@ -739,8 +767,6 @@ function renderMenu() {
         `⚔️ POWERED BY ${BOT_NAME} ⚔️`
     )
 }
-
-// ==================== DASHBOARD HTML ====================
 
 function renderDashboard() {
     let sessionRows = ''
@@ -790,7 +816,7 @@ th{background:#222}
 <input type="text" name="number" placeholder="Enter number with country code (e.g. 2348139761928)" required>
 <button type="submit">Generate Pairing Code</button>
 </form>
-<p style="font-size:12px;color:#999">After submitting, wait ~5 seconds and refresh this page to see the pairing code below.</p>
+<p style="font-size:12px;color:#999">After submitting, wait \~5 seconds and refresh this page to see the pairing code below.</p>
 </div>
 <div class="card">
 <h3>📱 Connected Sessions</h3>
@@ -802,8 +828,6 @@ ${sessionRows}
 </div>
 </body></html>`
 }
-
-// ==================== AUTO-START SAVED SESSIONS ====================
 
 async function restoreSessions() {
     if (!fs.existsSync(SESSION_DIR)) return
