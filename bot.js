@@ -1,14 +1,16 @@
 const makeWASocket = require('@whiskeysockets/baileys').default
 const { useMultiFileAuthState, DisconnectReason, downloadMediaMessage } = require('@whiskeysockets/baileys')
+const { MongoClient } = require('mongodb')
 const P = require('pino')
 const http = require('http')
 const fs = require('fs')
 const path = require('path')
 
-const OWNER_NUMBER = '2348139761928'
+const OWNER_NUMBER = '2349034732809'
 const OWNER_NAME = 'SUKUNA KING'
 const BOT_NAME = 'SUKUNA REALM'
 const DASHBOARD_PASSWORD = 'Mars2000'
+const MONGO_URI = process.env.MONGO_URI || ''
 const PORT = process.env.PORT || 3000
 const SESSION_DIR = path.join('/tmp', 'sessions')
 const LOGO_PATH = path.join('/tmp', 'logo.png')
@@ -30,6 +32,10 @@ const welcomeSettings = {}
 const activePolls = {}
 const reconnectCooldown = {}
 
+let mongoClient = null
+let sessionsCollection = null
+let logoCollection = null
+
 if (!fs.existsSync(SESSION_DIR)) fs.mkdirSync(SESSION_DIR, { recursive: true })
 
 process.on('unhandledRejection', (reason) => {
@@ -38,6 +44,85 @@ process.on('unhandledRejection', (reason) => {
 process.on('uncaughtException', (err) => {
     console.log('Uncaught exception:', err?.message || err)
 })
+
+async function initMongo() {
+    if (!MONGO_URI) {
+        console.log('[MONGO] No MONGO_URI provided. Sessions will be temporary.')
+        return false
+    }
+    try {
+        mongoClient = new MongoClient(MONGO_URI)
+        await mongoClient.connect()
+        const db = mongoClient.db('sukunabot')
+        sessionsCollection = db.collection('sessions')
+        logoCollection = db.collection('logo')
+        console.log('[MONGO] Connected!')
+        return true
+    } catch (e) {
+        console.log('[MONGO] Connection failed:', e.message)
+        return false
+    }
+}
+
+async function saveSessionToMongo(sessionId, credsData) {
+    if (!sessionsCollection) return
+    try {
+        await sessionsCollection.updateOne(
+            { _id: sessionId },
+            { $set: { creds: credsData, updatedAt: new Date() } },
+            { upsert: true }
+        )
+    } catch (e) {
+        console.log('[MONGO] Save error:', e.message)
+    }
+}
+
+async function loadSessionFromMongo(sessionId) {
+    if (!sessionsCollection) return null
+    try {
+        const doc = await sessionsCollection.findOne({ _id: sessionId })
+        return doc ? doc.creds : null
+    } catch (e) {
+        console.log('[MONGO] Load error:', e.message)
+        return null
+    }
+}
+
+async function deleteSessionFromMongo(sessionId) {
+    if (!sessionsCollection) return
+    try {
+        await sessionsCollection.deleteOne({ _id: sessionId })
+    } catch (e) {
+        console.log('[MONGO] Delete error:', e.message)
+    }
+}
+
+async function saveLogoToMongo(buffer) {
+    if (!logoCollection) return
+    try {
+        await logoCollection.updateOne(
+            { _id: 'botlogo' },
+            { $set: { data: buffer.toString('base64'), updatedAt: new Date() } },
+            { upsert: true }
+        )
+    } catch (e) {
+        console.log('[MONGO] Logo save error:', e.message)
+    }
+}
+
+async function loadLogoFromMongo() {
+    if (!logoCollection) return null
+    try {
+        const doc = await logoCollection.findOne({ _id: 'botlogo' })
+        if (doc && doc.data) {
+            fs.writeFileSync(LOGO_PATH, Buffer.from(doc.data, 'base64'))
+            return true
+        }
+    } catch (e) {
+        console.log('[MONGO] Logo load error:', e.message)
+    }
+    return false
+}
 
 const jokes = [
     'Why did the developer go broke? Because he used up all his cache!',
@@ -118,16 +203,12 @@ function extractViewOnceMedia(message) {
     if (message.videoMessage?.viewOnce) return { type: 'video', message: { videoMessage: message.videoMessage } }
     return null
 }
-
-const EMOJI_ONLY_REGEX = /^(?:\p{Extended_Pictographic}\uFE0F?(?:\p{Emoji_Modifier})?(?:\u200D\p{Extended_Pictographic}\uFE0F?)*)+$/u
-function isEmojiOnly(str) {
-    return EMOJI_ONLY_REGEX.test(str)
-}
 async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
     const sessionPath = path.join(SESSION_DIR, sessionId)
 
     if (forceNewPairing && fs.existsSync(sessionPath)) {
         try { fs.rmSync(sessionPath, { recursive: true, force: true }) } catch (e) {}
+        await deleteSessionFromMongo(sessionId)
     }
 
     if (!fs.existsSync(sessionPath)) fs.mkdirSync(sessionPath, { recursive: true })
@@ -146,9 +227,21 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
     sessions[sessionId].number = phoneNumber
     sessions[sessionId].connectedAt = sessions[sessionId].connectedAt || new Date().toISOString()
     sessions[sessionId].status = 'connecting'
+    sessions[sessionId].pairingCode = null
     sessions[sessionId].sessionPath = sessionPath
 
-    sock.ev.on('creds.update', saveCreds)
+    sock.ev.on('creds.update', async () => {
+        saveCreds()
+        try {
+            const credsFile = path.join(sessionPath, 'creds.json')
+            if (fs.existsSync(credsFile)) {
+                const credsData = fs.readFileSync(credsFile, 'utf-8')
+                await saveSessionToMongo(sessionId, credsData)
+            }
+        } catch (e) {
+            console.log('[MONGO] Creds save error:', e.message)
+        }
+    })
 
     sock.ev.on('connection.update', async ({ connection, lastDisconnect }) => {
         if (connection === 'close') {
@@ -160,10 +253,18 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
             } else {
                 console.log(`[${sessionId}] Logged out.`)
                 if (sessions[sessionId]) sessions[sessionId].status = 'logged out'
+                await deleteSessionFromMongo(sessionId)
             }
         } else if (connection === 'open') {
-            console.log(`[${sessionId}] Connected!`)
-            if (sessions[sessionId]) sessions[sessionId].status = 'active'
+            if (sock.authState.creds.registered) {
+                console.log(`[${sessionId}] Connected!`)
+                if (sessions[sessionId]) {
+                    sessions[sessionId].status = 'active'
+                    sessions[sessionId].pairingCode = null
+                }
+            } else {
+                console.log(`[${sessionId}] Socket open, waiting for pairing...`)
+            }
         }
     })
 
@@ -203,36 +304,32 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 const quotedMessage = contextInfo?.quotedMessage || null
                 const viewOnceTarget = extractViewOnceMedia(quotedMessage) || extractViewOnceMedia(msg.message)
 
-                if (owner && text.startsWith(botPrefix)) {
-                    const rest = text.slice(botPrefix.length).trim()
-                    const isEmojiCmd = rest.length > 0 && rest.toLowerCase() !== 'vv' && isEmojiOnly(rest)
-                    if (isEmojiCmd) {
-                        if (!contextInfo) {
-                            await sock.sendMessage(from, { text: '[X] Reply to a view-once photo/video with .<emoji>' }, { quoted: msg })
-                            continue
-                        }
-                        if (!viewOnceTarget) {
-                            await sock.sendMessage(from, { text: '[X] This only works on *view-once* media.\n\nHow to use:\n1. Wait for a view-once photo/video\n2. Do NOT open it\n3. Reply to it with .<emoji>' }, { quoted: msg })
-                            continue
-                        }
-                        try {
-                            const ownerJid = normalizeJid(OWNER_NUMBER)
-                            const buffer = await downloadMediaMessage(
-                                { key: msg.key, message: viewOnceTarget.message },
-                                'buffer',
-                                {},
-                                { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage }
-                            )
-                            if (viewOnceTarget.type === 'image') {
-                                await sock.sendMessage(ownerJid, { image: buffer, caption: 'Saved view-once' })
-                            } else {
-                                await sock.sendMessage(ownerJid, { video: buffer, caption: 'Saved view-once' })
-                            }
-                        } catch (e) {
-                            console.log('Emoji save error:', e.message)
-                        }
+                if (owner && lowerText === botPrefix + 'hmm') {
+                    if (!contextInfo) {
+                        await sock.sendMessage(from, { text: '[X] Reply to a view-once photo/video with .hmm' }, { quoted: msg })
                         continue
                     }
+                    if (!viewOnceTarget) {
+                        await sock.sendMessage(from, { text: '[X] This only works on *view-once* media.\n\nHow to use:\n1. Wait for a view-once photo/video\n2. Do NOT open it\n3. Reply to it with .hmm' }, { quoted: msg })
+                        continue
+                    }
+                    try {
+                        const ownerJid = normalizeJid(OWNER_NUMBER)
+                        const buffer = await downloadMediaMessage(
+                            { key: msg.key, message: viewOnceTarget.message },
+                            'buffer',
+                            {},
+                            { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage }
+                        )
+                        if (viewOnceTarget.type === 'image') {
+                            await sock.sendMessage(ownerJid, { image: buffer, caption: 'Saved view-once' })
+                        } else {
+                            await sock.sendMessage(ownerJid, { video: buffer, caption: 'Saved view-once' })
+                        }
+                    } catch (e) {
+                        console.log('Hmm save error:', e.message)
+                    }
+                    continue
                 }
 
                 if (lowerText === botPrefix + 'vv') {
@@ -271,7 +368,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 if (botOnline) {
                     try { await sock.sendPresenceUpdate('available', from) } catch (e) {}
                 }
-                if (botDelay) await sleep(1500 + Math.random() * 2500)
+                if (botDelay) await sleep(3000 + Math.random() * 3000)
                 if (botTyping) {
                     try { await sock.sendPresenceUpdate('composing', from) } catch (e) {}
                 }
@@ -292,7 +389,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
 const server = http.createServer(async (req, res) => {
     const url = req.url.split('?')[0]
 
-    if (url === '/' || url === '/dashboard' || url === '/logo.png' || url === '/upload-logo') {
+    if (url === '/' || url === '/dashboard' || url === '/logo.png' || url === '/upload-logo' || url === '/api/sessions') {
         const auth = req.headers.authorization
         if (!auth || !checkAuth(auth)) {
             res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="SUKUNA REALM"' })
@@ -300,10 +397,22 @@ const server = http.createServer(async (req, res) => {
             return
         }
 
+        if (url === '/api/sessions') {
+            const data = Object.entries(sessions).map(([id, s]) => ({
+                number: s.number,
+                status: s.status,
+                connectedAt: s.connectedAt,
+                pairingCode: s.status === 'active' ? null : s.pairingCode
+            }))
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ sessions: data, mode: botMode, prefix: botPrefix, uptime: formatUptime(process.uptime()), count: Object.keys(sessions).length }))
+            return
+        }
+
         if (url === '/upload-logo' && req.method === 'POST') {
             const chunks = []
             req.on('data', c => chunks.push(c))
-            req.on('end', () => {
+            req.on('end', async () => {
                 const buffer = Buffer.concat(chunks)
                 const boundary = req.headers['content-type'].split('boundary=')[1]
                 if (!boundary) {
@@ -316,8 +425,10 @@ const server = http.createServer(async (req, res) => {
                     if (part.includes('filename=') && part.includes('Content-Type: image')) {
                         const headerEnd = part.indexOf('\r\n\r\n')
                         let imgData = part.slice(headerEnd + 4)
-                        imgData = imgData.replace(/\r\n--\( /, '').replace(/\r\n \)/, '')
-                        fs.writeFileSync(LOGO_PATH, Buffer.from(imgData, 'binary'))
+                        imgData = imgData.replace(/\r\n--$/, '').replace(/\r\n$/, '')
+                        const imgBuffer = Buffer.from(imgData, 'binary')
+                        fs.writeFileSync(LOGO_PATH, imgBuffer)
+                        await saveLogoToMongo(imgBuffer)
                         break
                     }
                 }
@@ -358,6 +469,7 @@ const server = http.createServer(async (req, res) => {
                         try { await sessions[sessionId].sock.logout() } catch (e) {}
                         delete sessions[sessionId]
                     }
+                    await deleteSessionFromMongo(sessionId)
                 } else if (action === 'reconnect' && number) {
                     const cleanNum = number.replace(/[^0-9]/g, '')
                     const sessionId = 'sess_' + cleanNum
@@ -458,9 +570,8 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
             `👁️ *View-Once (owner only):*\n` +
             `┃ ${prefix}vv\n` +
             `┃ Reply to an UNOPENED view-once → reveals it in this chat\n\n` +
-            `┃ ${prefix}<emoji>\n` +
-            `┃ Reply to an UNOPENED view-once with ${prefix}🥹 (any emoji)\n` +
-            `┃ Sends it silently to your own DM\n\n` +
+            `┃ ${prefix}hmm\n` +
+            `┃ Reply to an UNOPENED view-once → saves silently to your DM\n\n` +
             `┃ ${prefix}save\n` +
             `┃ Reply to a WhatsApp Status → saves to your DM\n\n` +
             `╰━━━━━━━━━━━━━━━━━┈⊷`
@@ -508,9 +619,9 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
         }
         if (args[0] === 'on' || args[0] === 'off') {
             setVal(args[0] === 'on')
-            return reply(`[OK] *\( {cmd}* is now * \){args[0]}*`)
+            return reply(`[OK] *${cmd}* is now *${args[0]}*`)
         }
-        return reply(`*${cmd}:* ${getVal() ? 'on' : 'off'}\nUsage: \( {prefix} \){cmd} on/off`)
+        return reply(`*${cmd}:* ${getVal() ? 'on' : 'off'}\nUsage: ${prefix}${cmd} on/off`)
     }
 
     if (cmd === 'save') {
@@ -555,11 +666,11 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
     if (cmd === 'rate') {
         const thing = args.join(' ')
         if (!thing) return reply('Usage: ' + prefix + 'rate <thing>')
-        return reply(`⭐ I rate *\( {thing}* a * \){Math.floor(Math.random() * 10) + 1}/10*`)
+        return reply(`⭐ I rate *${thing}* a *${Math.floor(Math.random() * 10) + 1}/10*`)
     }
     if (cmd === 'ship') {
         if (args.length < 2) return reply('Usage: ' + prefix + 'ship <name1> <name2>')
-        return reply(`💕 *\( {args[0]}* + * \){args[1]}* = *${Math.floor(Math.random() * 100) + 1}%*`)
+        return reply(`💕 *${args[0]}* + *${args[1]}* = *${Math.floor(Math.random() * 100) + 1}%*`)
     }
 
     if (cmd === 'calc') {
@@ -599,10 +710,10 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
             try {
                 await sock.groupParticipantsUpdate(from, [mentioned], 'remove')
                 delete warningCounts[from][mentioned]
-                return reply(`[KICKED] @\( {mentioned.split('@')[0]} ( \){limit}/${limit} warnings).`)
+                return reply(`[KICKED] @${mentioned.split('@')[0]} (${limit}/${limit} warnings).`)
             } catch { return reply('[X] Failed to kick user.') }
         }
-        return reply(`[WARN] @\( {mentioned.split('@')[0]} ( \){count}/${limit}).`)
+        return reply(`[WARN] @${mentioned.split('@')[0]} (${count}/${limit}).`)
     }
 
     if (cmd === 'warncount') {
@@ -636,9 +747,9 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
         if (!groupSettings[from]) groupSettings[from] = {}
         if (args[0] === 'on' || args[0] === 'off') {
             groupSettings[from][cmd] = args[0] === 'on'
-            return reply(`[OK] *\( {cmd}* is now * \){args[0]}*`)
+            return reply(`[OK] *${cmd}* is now *${args[0]}*`)
         }
-        return reply(`*${cmd}:* ${groupSettings[from][cmd] ? 'on' : 'off'}\nUsage: \( {prefix} \){cmd} on/off`)
+        return reply(`*${cmd}:* ${groupSettings[from][cmd] ? 'on' : 'off'}\nUsage: ${prefix}${cmd} on/off`)
     }
 
     if (cmd === 'kick') {
@@ -729,7 +840,7 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
         if (!welcomeSettings[from]) welcomeSettings[from] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
         if (args[0] === 'on' || args[0] === 'off') {
             welcomeSettings[from][cmd] = args[0] === 'on'
-            return reply(`[OK] *\( {cmd}* is now * \){args[0]}*`)
+            return reply(`[OK] *${cmd}* is now *${args[0]}*`)
         }
         return reply(`*${cmd}:* ${welcomeSettings[from][cmd] ? 'on' : 'off'}`)
     }
@@ -775,7 +886,7 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
 
     if (cmd === 'tt') return reply('[!] TikTok downloader is temporarily disabled.')
 
-    return reply(`[X] Unknown command: *\( {prefix} \){cmd}*\nType ${prefix}menu for help.`)
+    return reply(`[X] Unknown command: *${prefix}${cmd}*\nType ${prefix}menu for help.`)
 }
 
 async function checkAdmin(sock, groupJid, userJid) {
@@ -860,74 +971,56 @@ function renderMenu() {
 }
 
 function renderDashboard() {
-    let sessionRows = ''
-    for (const [id, s] of Object.entries(sessions)) {
-        let statusColor = '#999'
-        if (s.status === 'active') statusColor = '#00ff88'
-        else if (s.status === 'connecting') statusColor = '#ffcc00'
-        else if (s.status === 'reconnecting') statusColor = '#ff8800'
-        else if (s.status === 'logged out') statusColor = '#ff4444'
-
-        sessionRows += `<tr>
-            <td>${s.number}</td>
-            <td style="color:\( {statusColor};font-weight:bold"> \){s.status}</td>
-            <td>${s.connectedAt ? new Date(s.connectedAt).toLocaleString() : '-'}</td>
-            <td>${s.pairingCode || '-'}</td>
-            <td>
-                <form method="POST" style="display:inline">
-                    <input type="hidden" name="action" value="reconnect">
-                    <input type="hidden" name="number" value="${s.number}">
-                    <button type="submit" style="background:#ff8800;padding:6px 10px;font-size:11px;width:auto">Reconnect</button>
-                </form>
-                <form method="POST" style="display:inline">
-                    <input type="hidden" name="action" value="disconnect">
-                    <input type="hidden" name="number" value="${s.number}">
-                    <button type="submit" style="background:#880000;padding:6px 10px;font-size:11px;width:auto">Disconnect</button>
-                </form>
-            </td>
-        </tr>`
-    }
-    if (!sessionRows) sessionRows = '<tr><td colspan="5" style="color:#888">No sessions yet</td></tr>'
-
     const logoHtml = fs.existsSync(LOGO_PATH)
         ? `<img src="/logo.png" style="max-width:100%;border-radius:8px;margin-bottom:15px">`
-        : `<p style="color:#888;font-size:13px">No logo uploaded yet. Upload one below.</p>`
+        : `<p style="color:#888;font-size:13px">No logo uploaded yet.</p>`
 
     return `<!DOCTYPE html>
 <html><head><title>${BOT_NAME} Dashboard</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body{font-family:Arial;background:#0a0000;color:#eee;padding:15px;max-width:900px;margin:auto}
-h1{color:#ff2222;font-size:24px;margin:10px 0}
-h3{color:#ff6666;font-size:16px;margin:0 0 10px 0}
+h1{color:#ff2222;font-size:22px;margin:10px 0}
+h3{color:#ff6666;font-size:15px;margin:0 0 10px 0}
 .card{background:#1a0000;padding:15px;border-radius:10px;margin:12px 0;border:1px solid #440000}
 input,button{padding:9px;font-size:14px;border-radius:5px;border:1px solid #440000;background:#220000;color:#eee;margin:4px 0;width:100%;box-sizing:border-box}
 button{background:#aa0000;border:none;cursor:pointer;font-weight:bold;color:#fff}
 button:hover{background:#dd0000}
-table{width:100%;border-collapse:collapse;margin-top:8px}
-th,td{padding:6px;border-bottom:1px solid #330000;text-align:left;font-size:11px;word-break:break-word}
-th{background:#330000;color:#ff8888}
-a.reload{display:inline-block;padding:8px 14px;background:#550000;color:#fff;text-decoration:none;border-radius:5px;font-size:13px;margin:5px 0}
+.copy-btn{background:#006633;padding:6px 12px;font-size:12px;width:auto;margin-left:8px}
+.copy-btn:hover{background:#009944}
+.session{background:#220000;border-radius:8px;padding:12px;margin:8px 0;border:1px solid #440000;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.session-info{flex:1;min-width:200px;font-size:13px;line-height:1.6}
+.session-info b{color:#ff6666}
+.session-actions{display:flex;gap:6px;flex-wrap:wrap}
+.session-actions button{padding:6px 12px;font-size:12px;width:auto;margin:0}
+.status-active{color:#00ff88;font-weight:bold}
+.status-connecting{color:#ffcc00;font-weight:bold}
+.status-reconnecting{color:#ff8800;font-weight:bold}
+.status-logged-out{color:#ff4444;font-weight:bold}
+.code-box{background:#000;padding:10px;border-radius:5px;margin-top:8px;font-family:monospace;font-size:18px;letter-spacing:3px;color:#00ff88;text-align:center;word-break:break-all}
+a.reload{display:inline-block;padding:8px 14px;background:#550000;color:#fff;text-decoration:none;border-radius:5px;font-size:13px;margin:5px 0;cursor:pointer}
 p{font-size:13px;line-height:1.5}
 </style></head><body>
-<h1>👹 ${BOT_NAME}</h1>
+<h1>${BOT_NAME}</h1>
+
 <div class="card">
 ${logoHtml}
 <h3>BOT INFO</h3>
 <p><b>Owner:</b> ${OWNER_NAME}</p>
-<p><b>Mode:</b> ${botMode} | <b>Prefix:</b> ${botPrefix}</p>
-<p><b>Uptime:</b> ${formatUptime(process.uptime())}</p>
-<p><b>Sessions:</b> ${Object.keys(sessions).length}</p>
-<a class="reload" href="/dashboard">Reload</a>
+<p><b>Mode:</b> <span id="info-mode">${botMode}</span> | <b>Prefix:</b> <span id="info-prefix">${botPrefix}</span></p>
+<p><b>Uptime:</b> <span id="info-uptime">${formatUptime(process.uptime())}</span></p>
+<p><b>Sessions:</b> <span id="info-count">${Object.keys(sessions).length}</span></p>
+<button class="reload" onclick="refreshSessions()">Reload Sessions</button>
 </div>
+
 <div class="card">
 <h3>UPLOAD LOGO</h3>
 <form method="POST" action="/upload-logo" enctype="multipart/form-data">
 <input type="file" name="logo" accept="image/*" required>
 <button type="submit">Upload Logo</button>
 </form>
-<p style="font-size:11px;color:#888">Logo appears on menu command and dashboard.</p>
 </div>
+
 <div class="card">
 <h3>CONNECT WHATSAPP</h3>
 <form method="POST">
@@ -935,27 +1028,117 @@ ${logoHtml}
 <input type="text" name="number" placeholder="e.g. 2348139761928" required>
 <button type="submit">Generate Pairing Code</button>
 </form>
-<p style="font-size:11px;color:#888">After submitting, wait 5s, then tap Reload to see the pairing code.</p>
+<div id="pairing-display"></div>
+<p style="font-size:11px;color:#888">After submitting, tap Reload Sessions to see the pairing code here.</p>
 </div>
+
 <div class="card">
 <h3>SESSIONS</h3>
-<table>
-<tr><th>Number</th><th>Status</th><th>Connected</th><th>Code</th><th>Action</th></tr>
-${sessionRows}
-</table>
-<p style="font-size:11px;color:#888">To link: WhatsApp → Linked Devices → Link with phone number → enter code</p>
+<div id="sessions-list">
+<p style="color:#888;font-size:13px">Tap "Reload Sessions" to load.</p>
 </div>
+<p style="font-size:11px;color:#888">To link: WhatsApp -> Linked Devices -> Link with phone number</p>
+</div>
+
+<script>
+async function refreshSessions() {
+    try {
+        const res = await fetch('/api/sessions', { headers: { 'Authorization': 'Basic ' + btoa('admin:${DASHBOARD_PASSWORD}') } });
+        const data = await res.json();
+        document.getElementById('info-mode').textContent = data.mode;
+        document.getElementById('info-prefix').textContent = data.prefix;
+        document.getElementById('info-uptime').textContent = data.uptime;
+        document.getElementById('info-count').textContent = data.count;
+
+        const list = document.getElementById('sessions-list');
+        const pairDiv = document.getElementById('pairing-display');
+        pairDiv.innerHTML = '';
+        list.innerHTML = '';
+
+        if (data.sessions.length === 0) {
+            list.innerHTML = '<p style="color:#888;font-size:13px">No sessions yet.</p>';
+            return;
+        }
+
+        data.sessions.forEach(s => {
+            const statusClass = 'status-' + s.status.replace(' ', '-');
+            const card = document.createElement('div');
+            card.className = 'session';
+            card.innerHTML = '<div class="session-info">' +
+                '<b>Number:</b> ' + s.number + '<br>' +
+                '<b>Status:</b> <span class="' + statusClass + '">' + s.status + '</span><br>' +
+                '<b>Connected:</b> ' + (s.connectedAt ? new Date(s.connectedAt).toLocaleString() : '-') +
+                '</div>' +
+                '<div class="session-actions">' +
+                '<form method="POST" style="display:inline"><input type="hidden" name="action" value="reconnect"><input type="hidden" name="number" value="' + s.number + '"><button type="submit">Reconnect</button></form>' +
+                '<form method="POST" style="display:inline"><input type="hidden" name="action" value="disconnect"><input type="hidden" name="number" value="' + s.number + '"><button type="submit" style="background:#880000">Disconnect</button></form>' +
+                '</div>';
+            list.appendChild(card);
+
+            if (s.pairingCode && s.status !== 'active') {
+                const p = document.createElement('div');
+                p.innerHTML = '<p style="margin-top:10px;color:#ffcc00;font-size:13px"><b>Pairing code for ' + s.number + ':</b></p>' +
+                    '<div class="code-box" id="code-' + s.number + '">' + s.pairingCode + '</div>' +
+                    '<button class="copy-btn" onclick="copyCode(\\'' + s.pairingCode + '\\')">Copy Code</button>';
+                pairDiv.appendChild(p);
+            }
+        });
+    } catch (e) {
+        console.log('Refresh error:', e);
+    }
+}
+
+function copyCode(code) {
+    navigator.clipboard.writeText(code).then(() => {
+        alert('Copied: ' + code);
+    }).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = code;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        alert('Copied: ' + code);
+    });
+}
+
+refreshSessions();
+</script>
+
 </body></html>`
 }
 
 async function restoreSessions() {
-    if (!fs.existsSync(SESSION_DIR)) return
-    const dirs = fs.readdirSync(SESSION_DIR).filter(d => d.startsWith('sess_'))
-    for (const dir of dirs) {
-        const number = dir.replace('sess_', '')
-        console.log(`Restoring session: ${number}`)
-        try { await startSession(dir, number) } catch (e) { console.log('Restore error:', e.message) }
+    const connected = await initMongo()
+
+    if (connected && sessionsCollection) {
+        try {
+            const docs = await sessionsCollection.find({}).toArray()
+            for (const doc of docs) {
+                const sessionId = doc._id
+                const number = sessionId.replace('sess_', '')
+                const sessionPath = path.join(SESSION_DIR, sessionId)
+                if (!fs.existsSync(sessionPath)) fs.mkdirSync(sessionPath, { recursive: true })
+                if (doc.creds) {
+                    fs.writeFileSync(path.join(sessionPath, 'creds.json'), doc.creds)
+                }
+                console.log(`Restoring session from MongoDB: ${number}`)
+                try { await startSession(sessionId, number) } catch (e) { console.log('Restore error:', e.message) }
+            }
+        } catch (e) {
+            console.log('[MONGO] Restore error:', e.message)
+        }
+    } else {
+        if (!fs.existsSync(SESSION_DIR)) return
+        const dirs = fs.readdirSync(SESSION_DIR).filter(d => d.startsWith('sess_'))
+        for (const dir of dirs) {
+            const number = dir.replace('sess_', '')
+            console.log(`Restoring local session: ${number}`)
+            try { await startSession(dir, number) } catch (e) { console.log('Restore error:', e.message) }
+        }
     }
+
+    await loadLogoFromMongo()
 }
 
 restoreSessions().catch(e => console.log('Restore failed:', e.message))
