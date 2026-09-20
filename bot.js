@@ -6,11 +6,12 @@ const fs = require('fs')
 const path = require('path')
 
 const OWNER_NUMBER = '2348139761928'
-const OWNER_NAME = '☠️ Mαɾvѕყ — Tʜᴇ Cᴜʀѕᴇᴅ Kιɳɢ👻'
+const OWNER_NAME = 'SUKUNA KING'
 const BOT_NAME = 'SUKUNA REALM'
 const DASHBOARD_PASSWORD = 'Mars2000'
 const PORT = process.env.PORT || 3000
 const SESSION_DIR = path.join('/tmp', 'sessions')
+const LOGO_PATH = path.join('/tmp', 'logo.png')
 
 const sessions = {}
 let botMode = 'public'
@@ -27,6 +28,7 @@ const warnLimit = {}
 const groupSettings = {}
 const welcomeSettings = {}
 const activePolls = {}
+const reconnectCooldown = {}
 
 if (!fs.existsSync(SESSION_DIR)) fs.mkdirSync(SESSION_DIR, { recursive: true })
 
@@ -46,11 +48,11 @@ const jokes = [
 ]
 
 const quotes = [
-    'The only way to do great work is to love what you do. — Steve Jobs',
-    'Believe you can and you are halfway there. — Theodore Roosevelt',
-    'It always seems impossible until it is done. — Nelson Mandela',
-    'The future belongs to those who believe in the beauty of their dreams. — Eleanor Roosevelt',
-    'Success is not final, failure is not fatal. — Winston Churchill'
+    'The only way to do great work is to love what you do. - Steve Jobs',
+    'Believe you can and you are halfway there. - Theodore Roosevelt',
+    'It always seems impossible until it is done. - Nelson Mandela',
+    'The future belongs to those who believe in the beauty of their dreams. - Eleanor Roosevelt',
+    'Success is not final, failure is not fatal. - Winston Churchill'
 ]
 
 const facts = [
@@ -121,8 +123,13 @@ const EMOJI_ONLY_REGEX = /^(?:\p{Extended_Pictographic}\uFE0F?(?:\p{Emoji_Modifi
 function isEmojiOnly(str) {
     return EMOJI_ONLY_REGEX.test(str)
 }
-async function startSession(sessionId, phoneNumber) {
+async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
     const sessionPath = path.join(SESSION_DIR, sessionId)
+
+    if (forceNewPairing && fs.existsSync(sessionPath)) {
+        try { fs.rmSync(sessionPath, { recursive: true, force: true }) } catch (e) {}
+    }
+
     if (!fs.existsSync(sessionPath)) fs.mkdirSync(sessionPath, { recursive: true })
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath)
@@ -134,13 +141,12 @@ async function startSession(sessionId, phoneNumber) {
         browser: ['Ubuntu', 'Chrome', '20.0.04']
     })
 
-    sessions[sessionId] = {
-        sock,
-        number: phoneNumber,
-        connectedAt: new Date().toISOString(),
-        status: 'connecting',
-        sessionPath
-    }
+    sessions[sessionId] = sessions[sessionId] || {}
+    sessions[sessionId].sock = sock
+    sessions[sessionId].number = phoneNumber
+    sessions[sessionId].connectedAt = sessions[sessionId].connectedAt || new Date().toISOString()
+    sessions[sessionId].status = 'connecting'
+    sessions[sessionId].sessionPath = sessionPath
 
     sock.ev.on('creds.update', saveCreds)
 
@@ -149,15 +155,15 @@ async function startSession(sessionId, phoneNumber) {
             const code = lastDisconnect?.error?.output?.statusCode
             if (code !== DisconnectReason.loggedOut) {
                 console.log(`[${sessionId}] Reconnecting...`)
-                sessions[sessionId].status = 'reconnecting'
+                if (sessions[sessionId]) sessions[sessionId].status = 'reconnecting'
                 setTimeout(() => startSession(sessionId, phoneNumber), 5000)
             } else {
                 console.log(`[${sessionId}] Logged out.`)
-                sessions[sessionId].status = 'logged out'
+                if (sessions[sessionId]) sessions[sessionId].status = 'logged out'
             }
         } else if (connection === 'open') {
             console.log(`[${sessionId}] Connected!`)
-            sessions[sessionId].status = 'active'
+            if (sessions[sessionId]) sessions[sessionId].status = 'active'
         }
     })
 
@@ -197,10 +203,18 @@ async function startSession(sessionId, phoneNumber) {
                 const quotedMessage = contextInfo?.quotedMessage || null
                 const viewOnceTarget = extractViewOnceMedia(quotedMessage) || extractViewOnceMedia(msg.message)
 
-                if (owner && viewOnceTarget && text.startsWith(botPrefix)) {
+                if (owner && text.startsWith(botPrefix)) {
                     const rest = text.slice(botPrefix.length).trim()
                     const isEmojiCmd = rest.length > 0 && rest.toLowerCase() !== 'vv' && isEmojiOnly(rest)
                     if (isEmojiCmd) {
+                        if (!contextInfo) {
+                            await sock.sendMessage(from, { text: '[X] Reply to a view-once photo/video with .<emoji>' }, { quoted: msg })
+                            continue
+                        }
+                        if (!viewOnceTarget) {
+                            await sock.sendMessage(from, { text: '[X] This only works on *view-once* media.\n\nHow to use:\n1. Wait for a view-once photo/video\n2. Do NOT open it\n3. Reply to it with .<emoji>' }, { quoted: msg })
+                            continue
+                        }
                         try {
                             const ownerJid = normalizeJid(OWNER_NUMBER)
                             const buffer = await downloadMediaMessage(
@@ -210,9 +224,9 @@ async function startSession(sessionId, phoneNumber) {
                                 { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage }
                             )
                             if (viewOnceTarget.type === 'image') {
-                                await sock.sendMessage(ownerJid, { image: buffer, caption: '📥 Saved view-once' })
+                                await sock.sendMessage(ownerJid, { image: buffer, caption: 'Saved view-once' })
                             } else {
-                                await sock.sendMessage(ownerJid, { video: buffer, caption: '📥 Saved view-once' })
+                                await sock.sendMessage(ownerJid, { video: buffer, caption: 'Saved view-once' })
                             }
                         } catch (e) {
                             console.log('Emoji save error:', e.message)
@@ -222,8 +236,12 @@ async function startSession(sessionId, phoneNumber) {
                 }
 
                 if (lowerText === botPrefix + 'vv') {
+                    if (!contextInfo) {
+                        await sock.sendMessage(from, { text: '[X] Reply to a view-once photo/video with .vv' }, { quoted: msg })
+                        continue
+                    }
                     if (!viewOnceTarget) {
-                        await sock.sendMessage(from, { text: '❌ This only works on *view-once* media.\n\n*How to use:*\n1. Wait for a view-once photo/video\n2. Do NOT open it\n3. Reply to it with .vv' }, { quoted: msg })
+                        await sock.sendMessage(from, { text: '[X] This only works on *view-once* media.\n\nHow to use:\n1. Wait for a view-once photo/video\n2. Do NOT open it\n3. Reply to it with .vv' }, { quoted: msg })
                         continue
                     }
                     try {
@@ -234,13 +252,13 @@ async function startSession(sessionId, phoneNumber) {
                             { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage }
                         )
                         if (viewOnceTarget.type === 'image') {
-                            await sock.sendMessage(from, { image: buffer, caption: '👁️ View-once revealed' }, { quoted: msg })
+                            await sock.sendMessage(from, { image: buffer, caption: 'View-once revealed' }, { quoted: msg })
                         } else {
-                            await sock.sendMessage(from, { video: buffer, caption: '👁️ View-once revealed' }, { quoted: msg })
+                            await sock.sendMessage(from, { video: buffer, caption: 'View-once revealed' }, { quoted: msg })
                         }
                     } catch (e) {
                         console.log('.vv error:', e.message)
-                        await sock.sendMessage(from, { text: '❌ Failed to reveal. WhatsApp may have already deleted it.' }, { quoted: msg })
+                        await sock.sendMessage(from, { text: '[X] Failed to reveal. WhatsApp may have already deleted it.' }, { quoted: msg })
                     }
                     continue
                 }
@@ -274,11 +292,49 @@ async function startSession(sessionId, phoneNumber) {
 const server = http.createServer(async (req, res) => {
     const url = req.url.split('?')[0]
 
-    if (url === '/' || url === '/dashboard') {
+    if (url === '/' || url === '/dashboard' || url === '/logo.png' || url === '/upload-logo') {
         const auth = req.headers.authorization
         if (!auth || !checkAuth(auth)) {
             res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="SUKUNA REALM"' })
             res.end('Authentication required')
+            return
+        }
+
+        if (url === '/upload-logo' && req.method === 'POST') {
+            const chunks = []
+            req.on('data', c => chunks.push(c))
+            req.on('end', () => {
+                const buffer = Buffer.concat(chunks)
+                const boundary = req.headers['content-type'].split('boundary=')[1]
+                if (!boundary) {
+                    res.writeHead(302, { Location: '/dashboard' })
+                    res.end()
+                    return
+                }
+                const parts = buffer.toString('binary').split('--' + boundary)
+                for (const part of parts) {
+                    if (part.includes('filename=') && part.includes('Content-Type: image')) {
+                        const headerEnd = part.indexOf('\r\n\r\n')
+                        let imgData = part.slice(headerEnd + 4)
+                        imgData = imgData.replace(/\r\n--\( /, '').replace(/\r\n \)/, '')
+                        fs.writeFileSync(LOGO_PATH, Buffer.from(imgData, 'binary'))
+                        break
+                    }
+                }
+                res.writeHead(302, { Location: '/dashboard' })
+                res.end()
+            })
+            return
+        }
+
+        if (url === '/logo.png') {
+            if (fs.existsSync(LOGO_PATH)) {
+                res.writeHead(200, { 'Content-Type': 'image/png' })
+                res.end(fs.readFileSync(LOGO_PATH))
+            } else {
+                res.writeHead(404)
+                res.end('No logo')
+            }
             return
         }
 
@@ -301,6 +357,36 @@ const server = http.createServer(async (req, res) => {
                     if (sessions[sessionId]) {
                         try { await sessions[sessionId].sock.logout() } catch (e) {}
                         delete sessions[sessionId]
+                    }
+                } else if (action === 'reconnect' && number) {
+                    const cleanNum = number.replace(/[^0-9]/g, '')
+                    const sessionId = 'sess_' + cleanNum
+                    const now = Date.now()
+                    if (reconnectCooldown[sessionId] && now - reconnectCooldown[sessionId] < 30000) {
+                        res.writeHead(302, { Location: '/dashboard' })
+                        res.end()
+                        return
+                    }
+                    reconnectCooldown[sessionId] = now
+
+                    if (sessions[sessionId]) {
+                        try { await sessions[sessionId].sock.end(undefined) } catch (e) {}
+                        delete sessions[sessionId]
+                    }
+
+                    const sessionPath = path.join(SESSION_DIR, sessionId)
+                    const credsExist = fs.existsSync(path.join(sessionPath, 'creds.json'))
+
+                    if (credsExist) {
+                        await startSession(sessionId, cleanNum, false)
+                        setTimeout(async () => {
+                            if (sessions[sessionId] && sessions[sessionId].status !== 'active') {
+                                console.log(`[${sessionId}] Silent reconnect failed, forcing new pairing`)
+                                await startSession(sessionId, cleanNum, true)
+                            }
+                        }, 10000)
+                    } else {
+                        await startSession(sessionId, cleanNum, true)
                     }
                 }
                 res.writeHead(302, { Location: '/dashboard' })
@@ -354,7 +440,16 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
         )
     }
 
-    if (cmd === 'menu' || cmd === 'help') return reply(renderMenu())
+    if (cmd === 'menu' || cmd === 'help') {
+        const menuText = renderMenu()
+        if (fs.existsSync(LOGO_PATH)) {
+            try {
+                const buffer = fs.readFileSync(LOGO_PATH)
+                return sock.sendMessage(from, { image: buffer, caption: menuText }, { quoted: msg })
+            } catch (e) {}
+        }
+        return reply(menuText)
+    }
 
     if (cmd === 'mars') {
         if (!owner) return
@@ -373,26 +468,26 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
     }
 
     if (cmd === 'mode') {
-        if (!owner) return reply('❌ Owner only.')
+        if (!owner) return reply('[X] Owner only.')
         if (args[0] === 'public' || args[0] === 'private') {
             botMode = args[0]
-            return reply(`✅ Mode set to *${botMode}*`)
+            return reply(`[OK] Mode set to *${botMode}*`)
         }
         return reply(`Current mode: *${botMode}*\nUsage: ${prefix}mode public/private`)
     }
 
     if (cmd === 'prefix') {
-        if (!owner) return reply('❌ Owner only.')
+        if (!owner) return reply('[X] Owner only.')
         if (args[0]) {
             botPrefix = args[0]
-            return reply(`✅ Prefix changed to *${botPrefix}*`)
+            return reply(`[OK] Prefix changed to *${botPrefix}*`)
         }
         return reply(`Current prefix: *${botPrefix}*`)
     }
 
     const toggleMap = ['typing', 'delay', 'read', 'online', 'autoreact', 'statusview', 'autoview']
     if (toggleMap.includes(cmd)) {
-        if (!owner) return reply('❌ Owner only.')
+        if (!owner) return reply('[X] Owner only.')
         const getVal = () => {
             if (cmd === 'typing') return botTyping
             if (cmd === 'delay') return botDelay
@@ -413,15 +508,15 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
         }
         if (args[0] === 'on' || args[0] === 'off') {
             setVal(args[0] === 'on')
-            return reply(`✅ *\( {cmd}* is now * \){args[0]}*`)
+            return reply(`[OK] *\( {cmd}* is now * \){args[0]}*`)
         }
         return reply(`*${cmd}:* ${getVal() ? 'on' : 'off'}\nUsage: \( {prefix} \){cmd} on/off`)
     }
 
     if (cmd === 'save') {
-        if (!owner) return reply('❌ Owner only.')
+        if (!owner) return reply('[X] Owner only.')
         const quoted = msg.message.extendedTextMessage?.contextInfo?.quotedMessage
-        if (!quoted) return reply('❌ Reply to a WhatsApp Status with this command.')
+        if (!quoted) return reply('[X] Reply to a WhatsApp Status with this command.')
         try {
             const ownerJid = normalizeJid(OWNER_NUMBER)
             const buffer = await downloadMediaMessage(
@@ -431,16 +526,16 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
                 { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage }
             )
             if (quoted.imageMessage) {
-                await sock.sendMessage(ownerJid, { image: buffer, caption: quoted.imageMessage.caption || '📥 Saved status' })
+                await sock.sendMessage(ownerJid, { image: buffer, caption: quoted.imageMessage.caption || 'Saved status' })
             } else if (quoted.videoMessage) {
-                await sock.sendMessage(ownerJid, { video: buffer, caption: quoted.videoMessage.caption || '📥 Saved status' })
+                await sock.sendMessage(ownerJid, { video: buffer, caption: quoted.videoMessage.caption || 'Saved status' })
             } else {
-                await sock.sendMessage(ownerJid, { text: '📥 Saved status text:\n\n' + (quoted.conversation || quoted.extendedTextMessage?.text || '') })
+                await sock.sendMessage(ownerJid, { text: 'Saved status text:\n\n' + (quoted.conversation || quoted.extendedTextMessage?.text || '') })
             }
-            return reply('✅ Status saved to your DM.')
+            return reply('[OK] Status saved to your DM.')
         } catch (e) {
             console.log('Save status error:', e.message)
-            return reply('❌ Failed to save. Make sure you reply to an actual status (not a normal message).')
+            return reply('[X] Failed to save. Make sure you reply to an actual status.')
         }
     }
 
@@ -454,7 +549,7 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
     if (cmd === 'dice') return reply(`🎲 You rolled a *${Math.floor(Math.random() * 6) + 1}*!`)
     if (cmd === 'coin') return reply(`🪙 *${Math.random() < 0.5 ? 'Heads' : 'Tails'}!*`)
     if (cmd === '8ball') {
-        const answers = ['Yes ✅', 'No ❌', 'Maybe 🤔', 'Ask later ⏳', 'Absolutely 💯', 'Doubtful 🙅', 'Good feeling 🌟', 'Very doubtful 😬']
+        const answers = ['Yes', 'No', 'Maybe', 'Ask later', 'Absolutely', 'Doubtful', 'Good feeling', 'Very doubtful']
         return reply('🎱 ' + getRandom(answers))
     }
     if (cmd === 'rate') {
@@ -471,31 +566,31 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
         try {
             const result = eval(args.join(' ').replace(/[^0-9+\-*/().]/g, ''))
             return reply(`🧮 *Result:* ${result}`)
-        } catch { return reply('❌ Invalid math') }
+        } catch { return reply('[X] Invalid math') }
     }
 
     if (cmd === 'sticker') {
         const quoted = msg.message.extendedTextMessage?.contextInfo?.quotedMessage
-        if (!quoted || !quoted.imageMessage) return reply('❌ Reply to an image.')
+        if (!quoted || !quoted.imageMessage) return reply('[X] Reply to an image.')
         try {
             const buffer = await downloadMediaMessage({ key: msg.key, message: quoted }, 'buffer', {}, { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage })
             return sock.sendMessage(from, { sticker: buffer }, { quoted: msg })
-        } catch { return reply('❌ Failed to create sticker.') }
+        } catch { return reply('[X] Failed to create sticker.') }
     }
 
     if (cmd === 'toimg') {
         const quoted = msg.message.extendedTextMessage?.contextInfo?.quotedMessage
-        if (!quoted || !quoted.stickerMessage) return reply('❌ Reply to a sticker.')
+        if (!quoted || !quoted.stickerMessage) return reply('[X] Reply to a sticker.')
         try {
             const buffer = await downloadMediaMessage({ key: msg.key, message: quoted }, 'buffer', {}, { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage })
-            return sock.sendMessage(from, { image: buffer, caption: '🖼️ Sticker converted' }, { quoted: msg })
-        } catch { return reply('❌ Failed to convert sticker.') }
+            return sock.sendMessage(from, { image: buffer, caption: 'Sticker converted' }, { quoted: msg })
+        } catch { return reply('[X] Failed to convert sticker.') }
     }
 
     if (cmd === 'warn') {
-        if (!isGroup || !isAdmin) return reply('❌ Admin only.')
+        if (!isGroup || !isAdmin) return reply('[X] Admin only.')
         const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
-        if (!mentioned) return reply('❌ Mention a user.')
+        if (!mentioned) return reply('[X] Mention a user.')
         if (!warningCounts[from]) warningCounts[from] = {}
         warningCounts[from][mentioned] = (warningCounts[from][mentioned] || 0) + 1
         const limit = warnLimit[from] || 3
@@ -504,183 +599,183 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
             try {
                 await sock.groupParticipantsUpdate(from, [mentioned], 'remove')
                 delete warningCounts[from][mentioned]
-                return reply(`🚫 @\( {mentioned.split('@')[0]} kicked ( \){limit}/${limit} warnings).`)
-            } catch { return reply('❌ Failed to kick user.') }
+                return reply(`[KICKED] @\( {mentioned.split('@')[0]} ( \){limit}/${limit} warnings).`)
+            } catch { return reply('[X] Failed to kick user.') }
         }
-        return reply(`⚠️ @\( {mentioned.split('@')[0]} warned ( \){count}/${limit}).`)
+        return reply(`[WARN] @\( {mentioned.split('@')[0]} ( \){count}/${limit}).`)
     }
 
     if (cmd === 'warncount') {
-        if (!isGroup || !owner) return reply('❌ Owner only.')
+        if (!isGroup || !owner) return reply('[X] Owner only.')
         const num = parseInt(args[0])
         if (!num || num < 1) return reply('Usage: ' + prefix + 'warncount <number>')
         warnLimit[from] = num
-        return reply(`✅ Warning limit set to *${num}*`)
+        return reply(`[OK] Warning limit set to *${num}*`)
     }
 
     if (cmd === 'warnlist') {
-        if (!isGroup || !isAdmin) return reply('❌ Admin only.')
+        if (!isGroup || !isAdmin) return reply('[X] Admin only.')
         const list = warningCounts[from] || {}
-        if (Object.keys(list).length === 0) return reply('✅ No warned users.')
-        let out = '⚠️ *Warned Users:*\n\n'
+        if (Object.keys(list).length === 0) return reply('[OK] No warned users.')
+        let out = '[WARN] *Warned Users:*\n\n'
         for (const [jid, count] of Object.entries(list)) out += `@${jid.split('@')[0]}: ${count} warnings\n`
         return sock.sendMessage(from, { text: out, mentions: Object.keys(list) })
     }
 
     if (cmd === 'resetwarn') {
-        if (!isGroup || !isAdmin) return reply('❌ Admin only.')
+        if (!isGroup || !isAdmin) return reply('[X] Admin only.')
         const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
-        if (!mentioned) return reply('❌ Mention a user.')
+        if (!mentioned) return reply('[X] Mention a user.')
         if (warningCounts[from]) delete warningCounts[from][mentioned]
-        return reply(`✅ Warnings reset for @${mentioned.split('@')[0]}`)
+        return reply(`[OK] Warnings reset for @${mentioned.split('@')[0]}`)
     }
 
     const protectCmds = ['antilink', 'antispam', 'antibot', 'antimedia', 'antitag', 'antidelete', 'antiforward']
     if (protectCmds.includes(cmd)) {
-        if (!isGroup || !isAdmin) return reply('❌ Admin only.')
+        if (!isGroup || !isAdmin) return reply('[X] Admin only.')
         if (!groupSettings[from]) groupSettings[from] = {}
         if (args[0] === 'on' || args[0] === 'off') {
             groupSettings[from][cmd] = args[0] === 'on'
-            return reply(`✅ *\( {cmd}* is now * \){args[0]}*`)
+            return reply(`[OK] *\( {cmd}* is now * \){args[0]}*`)
         }
         return reply(`*${cmd}:* ${groupSettings[from][cmd] ? 'on' : 'off'}\nUsage: \( {prefix} \){cmd} on/off`)
     }
 
     if (cmd === 'kick') {
-        if (!isGroup || !isAdmin) return reply('❌ Admin only.')
+        if (!isGroup || !isAdmin) return reply('[X] Admin only.')
         const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
-        if (!mentioned) return reply('❌ Mention a user.')
-        try { await sock.groupParticipantsUpdate(from, [mentioned], 'remove'); return reply(`✅ Kicked @${mentioned.split('@')[0]}`) }
-        catch { return reply('❌ Failed.') }
+        if (!mentioned) return reply('[X] Mention a user.')
+        try { await sock.groupParticipantsUpdate(from, [mentioned], 'remove'); return reply(`[OK] Kicked @${mentioned.split('@')[0]}`) }
+        catch { return reply('[X] Failed.') }
     }
     if (cmd === 'add') {
-        if (!isGroup || !isAdmin) return reply('❌ Admin only.')
+        if (!isGroup || !isAdmin) return reply('[X] Admin only.')
         if (!args[0]) return reply('Usage: ' + prefix + 'add <number>')
-        try { await sock.groupParticipantsUpdate(from, [normalizeJid(args[0])], 'add'); return reply('✅ Added.') }
-        catch { return reply('❌ Failed.') }
+        try { await sock.groupParticipantsUpdate(from, [normalizeJid(args[0])], 'add'); return reply('[OK] Added.') }
+        catch { return reply('[X] Failed.') }
     }
     if (cmd === 'promote') {
-        if (!isGroup || !isAdmin) return reply('❌ Admin only.')
+        if (!isGroup || !isAdmin) return reply('[X] Admin only.')
         const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
-        if (!mentioned) return reply('❌ Mention a user.')
-        try { await sock.groupParticipantsUpdate(from, [mentioned], 'promote'); return reply('✅ Promoted.') }
-        catch { return reply('❌ Failed.') }
+        if (!mentioned) return reply('[X] Mention a user.')
+        try { await sock.groupParticipantsUpdate(from, [mentioned], 'promote'); return reply('[OK] Promoted.') }
+        catch { return reply('[X] Failed.') }
     }
     if (cmd === 'demote') {
-        if (!isGroup || !isAdmin) return reply('❌ Admin only.')
+        if (!isGroup || !isAdmin) return reply('[X] Admin only.')
         const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
-        if (!mentioned) return reply('❌ Mention a user.')
-        try { await sock.groupParticipantsUpdate(from, [mentioned], 'demote'); return reply('✅ Demoted.') }
-        catch { return reply('❌ Failed.') }
+        if (!mentioned) return reply('[X] Mention a user.')
+        try { await sock.groupParticipantsUpdate(from, [mentioned], 'demote'); return reply('[OK] Demoted.') }
+        catch { return reply('[X] Failed.') }
     }
     if (cmd === 'mute' || cmd === 'unmute') {
-        if (!isGroup || !isAdmin) return reply('❌ Admin only.')
+        if (!isGroup || !isAdmin) return reply('[X] Admin only.')
         try {
             await sock.groupSettingUpdate(from, cmd === 'mute' ? 'announcement' : 'not_announcement')
-            return reply(`✅ Group ${cmd === 'mute' ? 'muted' : 'unmuted'}.`)
-        } catch { return reply('❌ Failed.') }
+            return reply(`[OK] Group ${cmd === 'mute' ? 'muted' : 'unmuted'}.`)
+        } catch { return reply('[X] Failed.') }
     }
 
     if (cmd === 'tagall' || cmd === 'hidetag') {
-        if (!isGroup || !isAdmin) return reply('❌ Admin only.')
+        if (!isGroup || !isAdmin) return reply('[X] Admin only.')
         const groupMeta = await sock.groupMetadata(from)
         const mentions = groupMeta.participants.map(p => p.id)
         const message = args.join(' ') || 'Attention everyone!'
         if (cmd === 'hidetag') return sock.sendMessage(from, { text: message, mentions })
-        let out = '📢 *Tag All:*\n\n' + message + '\n\n'
+        let out = '*Tag All:*\n\n' + message + '\n\n'
         mentions.forEach(jid => { out += `@${jid.split('@')[0]} ` })
         return sock.sendMessage(from, { text: out, mentions })
     }
 
     if (cmd === 'groupinfo') {
-        if (!isGroup) return reply('❌ Group only.')
+        if (!isGroup) return reply('[X] Group only.')
         const meta = await sock.groupMetadata(from)
         return reply(
             `╭━━━〔 *GROUP INFO* 〕━━━┈⊷\n` +
-            `┃ 📛 *Name:* ${meta.subject}\n` +
-            `┃ 👥 *Members:* ${meta.participants.length}\n` +
-            `┃ 👑 *Admins:* ${meta.participants.filter(p => p.admin).length}\n` +
+            `┃ *Name:* ${meta.subject}\n` +
+            `┃ *Members:* ${meta.participants.length}\n` +
+            `┃ *Admins:* ${meta.participants.filter(p => p.admin).length}\n` +
             `╰━━━━━━━━━━━━━━━┈⊷`
         )
     }
     if (cmd === 'link') {
-        if (!isGroup || !isAdmin) return reply('❌ Admin only.')
-        try { const code = await sock.groupInviteCode(from); return reply(`🔗 https://chat.whatsapp.com/${code}`) }
-        catch { return reply('❌ Failed.') }
+        if (!isGroup || !isAdmin) return reply('[X] Admin only.')
+        try { const code = await sock.groupInviteCode(from); return reply(`https://chat.whatsapp.com/${code}`) }
+        catch { return reply('[X] Failed.') }
     }
     if (cmd === 'revoke') {
-        if (!isGroup || !isAdmin) return reply('❌ Admin only.')
-        try { await sock.groupRevokeInvite(from); return reply('✅ Link revoked.') }
-        catch { return reply('❌ Failed.') }
+        if (!isGroup || !isAdmin) return reply('[X] Admin only.')
+        try { await sock.groupRevokeInvite(from); return reply('[OK] Link revoked.') }
+        catch { return reply('[X] Failed.') }
     }
     if (cmd === 'admins') {
-        if (!isGroup) return reply('❌ Group only.')
+        if (!isGroup) return reply('[X] Group only.')
         const meta = await sock.groupMetadata(from)
         const admins = meta.participants.filter(p => p.admin)
-        let out = '👑 *Admins:*\n\n'
+        let out = '*Admins:*\n\n'
         admins.forEach(a => out += `@${a.id.split('@')[0]}\n`)
         return sock.sendMessage(from, { text: out, mentions: admins.map(a => a.id) })
     }
     if (cmd === 'members') {
-        if (!isGroup) return reply('❌ Group only.')
+        if (!isGroup) return reply('[X] Group only.')
         const meta = await sock.groupMetadata(from)
-        let out = `👥 *Members (${meta.participants.length}):*\n\n`
+        let out = `*Members (${meta.participants.length}):*\n\n`
         meta.participants.forEach(p => out += `@${p.id.split('@')[0]}\n`)
         return sock.sendMessage(from, { text: out, mentions: meta.participants.map(p => p.id) })
     }
 
     if (cmd === 'welcome' || cmd === 'goodbye') {
-        if (!isGroup || !isAdmin) return reply('❌ Admin only.')
+        if (!isGroup || !isAdmin) return reply('[X] Admin only.')
         if (!welcomeSettings[from]) welcomeSettings[from] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
         if (args[0] === 'on' || args[0] === 'off') {
             welcomeSettings[from][cmd] = args[0] === 'on'
-            return reply(`✅ *\( {cmd}* is now * \){args[0]}*`)
+            return reply(`[OK] *\( {cmd}* is now * \){args[0]}*`)
         }
         return reply(`*${cmd}:* ${welcomeSettings[from][cmd] ? 'on' : 'off'}`)
     }
     if (cmd === 'setwelcome' || cmd === 'setgoodbye') {
-        if (!isGroup || !isAdmin) return reply('❌ Admin only.')
+        if (!isGroup || !isAdmin) return reply('[X] Admin only.')
         const txt = args.join(' ')
         if (!txt) return reply('Usage: ' + prefix + cmd + ' <text>')
         if (!welcomeSettings[from]) welcomeSettings[from] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
         welcomeSettings[from][cmd === 'setwelcome' ? 'welcomeMsg' : 'goodbyeMsg'] = txt
-        return reply(`✅ Set.`)
+        return reply('[OK] Set.')
     }
 
     if (cmd === 'poll') {
-        if (!isGroup) return reply('❌ Group only.')
+        if (!isGroup) return reply('[X] Group only.')
         const parts = args.join(' ').split('|').map(s => s.trim())
         if (parts.length < 3) return reply('Usage: ' + prefix + 'poll Question | Opt1 | Opt2')
         const [question, ...options] = parts
         activePolls[from] = { question, options, votes: {} }
-        let out = `📊 *Poll:* ${question}\n\n`
+        let out = `*Poll:* ${question}\n\n`
         options.forEach((opt, i) => out += `${i + 1}. ${opt}\n`)
         out += `\nVote with ${prefix}vote <number>`
         return reply(out)
     }
     if (cmd === 'vote') {
-        if (!activePolls[from]) return reply('❌ No active poll.')
+        if (!activePolls[from]) return reply('[X] No active poll.')
         const num = parseInt(args[0]) - 1
-        if (isNaN(num) || num < 0 || num >= activePolls[from].options.length) return reply('❌ Invalid vote.')
+        if (isNaN(num) || num < 0 || num >= activePolls[from].options.length) return reply('[X] Invalid vote.')
         activePolls[from].votes[sender] = num
-        return reply(`✅ Voted for *${activePolls[from].options[num]}*`)
+        return reply(`[OK] Voted for *${activePolls[from].options[num]}*`)
     }
     if (cmd === 'endpoll') {
-        if (!isGroup || !isAdmin) return reply('❌ Admin only.')
-        if (!activePolls[from]) return reply('❌ No active poll.')
+        if (!isGroup || !isAdmin) return reply('[X] Admin only.')
+        if (!activePolls[from]) return reply('[X] No active poll.')
         const poll = activePolls[from]
         const tally = {}
         poll.options.forEach((_, i) => tally[i] = 0)
         Object.values(poll.votes).forEach(v => tally[v]++)
-        let out = `📊 *Poll Results:* ${poll.question}\n\n`
+        let out = `*Poll Results:* ${poll.question}\n\n`
         poll.options.forEach((opt, i) => out += `${opt}: ${tally[i]} votes\n`)
         delete activePolls[from]
         return reply(out)
     }
 
-    if (cmd === 'tt') return reply('⚠️ TikTok downloader is temporarily disabled.')
+    if (cmd === 'tt') return reply('[!] TikTok downloader is temporarily disabled.')
 
-    return reply(`❌ Unknown command: *\( {prefix} \){cmd}*\nType ${prefix}menu for help.`)
+    return reply(`[X] Unknown command: *\( {prefix} \){cmd}*\nType ${prefix}menu for help.`)
 }
 
 async function checkAdmin(sock, groupJid, userJid) {
@@ -691,43 +786,39 @@ async function checkAdmin(sock, groupJid, userJid) {
     } catch { return false }
 }
 
-function buildSubBox(emoji, title, lines) {
-    let box = `┃ ╭─〔 ${emoji} ${title} 〕─┈\n`
-    lines.forEach(line => { box += `┃ │ ${line}\n` })
-    box += `┃ ╰─────────────┈\n`
-    return box
-}
-
 function renderGroupCommandsBox() {
     return (
-        `╭━━━〔 👥 GROUP COMMANDS 〕━━━┈⊷\n┃\n` +
-        buildSubBox('🛡️', 'Protection', [
-            `${botPrefix}antilink  ${botPrefix}antispam  ${botPrefix}antibot`,
-            `${botPrefix}antimedia ${botPrefix}antitag   ${botPrefix}antidelete`,
-            `${botPrefix}antiforward`
-        ]) + `┃\n` +
-        buildSubBox('👤', 'Members', [
-            `${botPrefix}kick  ${botPrefix}add  ${botPrefix}promote  ${botPrefix}demote`,
-            `${botPrefix}mute  ${botPrefix}unmute`
-        ]) + `┃\n` +
-        buildSubBox('📢', 'Communication', [
-            `${botPrefix}tagall  ${botPrefix}hidetag`
-        ]) + `┃\n` +
-        buildSubBox('📊', 'Info', [
-            `${botPrefix}groupinfo  ${botPrefix}link  ${botPrefix}revoke`,
-            `${botPrefix}admins     ${botPrefix}members`
-        ]) + `┃\n` +
-        buildSubBox('🎉', 'Welcome', [
-            `${botPrefix}welcome  ${botPrefix}goodbye`,
-            `${botPrefix}setwelcome  ${botPrefix}setgoodbye`
-        ]) + `┃\n` +
-        buildSubBox('⚠️', 'Warn', [
-            `${botPrefix}warn  ${botPrefix}warncount  ${botPrefix}warnlist`,
-            `${botPrefix}resetwarn`
-        ]) + `┃\n` +
-        buildSubBox('📊', 'Polls', [
-            `${botPrefix}poll  ${botPrefix}vote  ${botPrefix}endpoll`
-        ]) + `┃\n╰━━━━━━━━━━━━━━━┈⊷`
+        `╭━━━〔 👥 GROUP COMMANDS 〕━━━┈⊷\n` +
+        `┃ *Protection:*\n` +
+        `┃ ${botPrefix}antilink  ${botPrefix}antispam\n` +
+        `┃ ${botPrefix}antibot   ${botPrefix}antimedia\n` +
+        `┃ ${botPrefix}antitag   ${botPrefix}antidelete\n` +
+        `┃ ${botPrefix}antiforward\n` +
+        `┃\n` +
+        `┃ *Members:*\n` +
+        `┃ ${botPrefix}kick  ${botPrefix}add\n` +
+        `┃ ${botPrefix}promote  ${botPrefix}demote\n` +
+        `┃ ${botPrefix}mute  ${botPrefix}unmute\n` +
+        `┃\n` +
+        `┃ *Communication:*\n` +
+        `┃ ${botPrefix}tagall  ${botPrefix}hidetag\n` +
+        `┃\n` +
+        `┃ *Info:*\n` +
+        `┃ ${botPrefix}groupinfo  ${botPrefix}link\n` +
+        `┃ ${botPrefix}revoke  ${botPrefix}admins\n` +
+        `┃ ${botPrefix}members\n` +
+        `┃\n` +
+        `┃ *Welcome:*\n` +
+        `┃ ${botPrefix}welcome  ${botPrefix}goodbye\n` +
+        `┃ ${botPrefix}setwelcome  ${botPrefix}setgoodbye\n` +
+        `┃\n` +
+        `┃ *Warn:*\n` +
+        `┃ ${botPrefix}warn  ${botPrefix}warncount\n` +
+        `┃ ${botPrefix}warnlist  ${botPrefix}resetwarn\n` +
+        `┃\n` +
+        `┃ *Polls:*\n` +
+        `┃ ${botPrefix}poll  ${botPrefix}vote  ${botPrefix}endpoll\n` +
+        `╰━━━━━━━━━━━━━━━┈⊷`
     )
 }
 
@@ -735,7 +826,7 @@ function renderMenu() {
     const d = new Date()
     return (
         `╭━━━━━━━〔 👹 ${BOT_NAME} 〕━━━━━━━╮\n\n` +
-        `      ⚔️ BOT INFO ⚔️\n\n` +
+        `      BOT INFO\n\n` +
         `👤 OWNER  : ${OWNER_NAME}\n` +
         `⚙️ MODE   : ${botMode}\n` +
         `🔧 PREFIX : ${botPrefix}\n` +
@@ -744,87 +835,115 @@ function renderMenu() {
         `⏳ UPTIME : ${formatUptime(process.uptime())}\n` +
         `📡 SESSIONS: ${Object.keys(sessions).length}\n\n` +
         `╰━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-        `╭━━━〔 🛠️ BASIC 〕━━━┈⊷\n` +
+        `╭━━━〔 BASIC 〕━━━┈⊷\n` +
         `┃ ${botPrefix}ping  ${botPrefix}hello  ${botPrefix}time  ${botPrefix}date\n` +
         `┃ ${botPrefix}info  ${botPrefix}menu   ${botPrefix}mode  ${botPrefix}prefix\n` +
         `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `╭━━━〔 🎉 FUN 〕━━━┈⊷\n` +
+        `╭━━━〔 FUN 〕━━━┈⊷\n` +
         `┃ ${botPrefix}joke  ${botPrefix}quote  ${botPrefix}fact  ${botPrefix}dice\n` +
         `┃ ${botPrefix}coin  ${botPrefix}truth  ${botPrefix}dare  ${botPrefix}roast\n` +
         `┃ ${botPrefix}compliment  ${botPrefix}8ball  ${botPrefix}rate  ${botPrefix}ship\n` +
         `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
         renderGroupCommandsBox() + `\n\n` +
-        `╭━━━〔 🛡️ PROTECTION SETTINGS 〕━━━┈⊷\n` +
+        `╭━━━〔 PROTECTION SETTINGS 〕━━━┈⊷\n` +
         `┃ ${botPrefix}typing  ${botPrefix}delay  ${botPrefix}read  ${botPrefix}online\n` +
         `┃ ${botPrefix}autoreact ${botPrefix}statusview ${botPrefix}autoview\n` +
         `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `╭━━━〔 📥 DOWNLOADER 〕━━━┈⊷\n` +
+        `╭━━━〔 DOWNLOADER 〕━━━┈⊷\n` +
         `┃ ${botPrefix}tt <tiktok url>\n` +
         `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `╭━━━〔 🛠️ UTILITY 〕━━━┈⊷\n` +
+        `╭━━━〔 UTILITY 〕━━━┈⊷\n` +
         `┃ ${botPrefix}calc  ${botPrefix}sticker  ${botPrefix}toimg\n` +
         `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `⚔️ POWERED BY ${BOT_NAME} ⚔️`
+        `POWERED BY ${BOT_NAME}`
     )
 }
 
 function renderDashboard() {
     let sessionRows = ''
     for (const [id, s] of Object.entries(sessions)) {
+        let statusColor = '#999'
+        if (s.status === 'active') statusColor = '#00ff88'
+        else if (s.status === 'connecting') statusColor = '#ffcc00'
+        else if (s.status === 'reconnecting') statusColor = '#ff8800'
+        else if (s.status === 'logged out') statusColor = '#ff4444'
+
         sessionRows += `<tr>
             <td>${s.number}</td>
-            <td>${s.status}</td>
+            <td style="color:\( {statusColor};font-weight:bold"> \){s.status}</td>
             <td>${s.connectedAt ? new Date(s.connectedAt).toLocaleString() : '-'}</td>
             <td>${s.pairingCode || '-'}</td>
             <td>
                 <form method="POST" style="display:inline">
+                    <input type="hidden" name="action" value="reconnect">
+                    <input type="hidden" name="number" value="${s.number}">
+                    <button type="submit" style="background:#ff8800;padding:6px 10px;font-size:11px;width:auto">Reconnect</button>
+                </form>
+                <form method="POST" style="display:inline">
                     <input type="hidden" name="action" value="disconnect">
                     <input type="hidden" name="number" value="${s.number}">
-                    <button type="submit">Disconnect</button>
+                    <button type="submit" style="background:#880000;padding:6px 10px;font-size:11px;width:auto">Disconnect</button>
                 </form>
             </td>
         </tr>`
     }
-    if (!sessionRows) sessionRows = '<tr><td colspan="5">No sessions yet</td></tr>'
+    if (!sessionRows) sessionRows = '<tr><td colspan="5" style="color:#888">No sessions yet</td></tr>'
+
+    const logoHtml = fs.existsSync(LOGO_PATH)
+        ? `<img src="/logo.png" style="max-width:100%;border-radius:8px;margin-bottom:15px">`
+        : `<p style="color:#888;font-size:13px">No logo uploaded yet. Upload one below.</p>`
 
     return `<!DOCTYPE html>
 <html><head><title>${BOT_NAME} Dashboard</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-body{font-family:Arial;background:#0a0a0a;color:#eee;padding:20px;max-width:900px;margin:auto}
-h1{color:#ff4444}
-.card{background:#1a1a1a;padding:20px;border-radius:10px;margin:15px 0;border:1px solid #333}
-input,button{padding:10px;font-size:16px;border-radius:5px;border:1px solid #444;background:#222;color:#eee;margin:5px 0;width:100%;box-sizing:border-box}
-button{background:#ff4444;border:none;cursor:pointer;font-weight:bold}
-button:hover{background:#cc0000}
-table{width:100%;border-collapse:collapse;margin-top:10px}
-th,td{padding:8px;border-bottom:1px solid #333;text-align:left;font-size:13px}
-th{background:#222}
+body{font-family:Arial;background:#0a0000;color:#eee;padding:15px;max-width:900px;margin:auto}
+h1{color:#ff2222;font-size:24px;margin:10px 0}
+h3{color:#ff6666;font-size:16px;margin:0 0 10px 0}
+.card{background:#1a0000;padding:15px;border-radius:10px;margin:12px 0;border:1px solid #440000}
+input,button{padding:9px;font-size:14px;border-radius:5px;border:1px solid #440000;background:#220000;color:#eee;margin:4px 0;width:100%;box-sizing:border-box}
+button{background:#aa0000;border:none;cursor:pointer;font-weight:bold;color:#fff}
+button:hover{background:#dd0000}
+table{width:100%;border-collapse:collapse;margin-top:8px}
+th,td{padding:6px;border-bottom:1px solid #330000;text-align:left;font-size:11px;word-break:break-word}
+th{background:#330000;color:#ff8888}
+a.reload{display:inline-block;padding:8px 14px;background:#550000;color:#fff;text-decoration:none;border-radius:5px;font-size:13px;margin:5px 0}
+p{font-size:13px;line-height:1.5}
 </style></head><body>
 <h1>👹 ${BOT_NAME}</h1>
 <div class="card">
-<h3>📊 Bot Info</h3>
+${logoHtml}
+<h3>BOT INFO</h3>
 <p><b>Owner:</b> ${OWNER_NAME}</p>
 <p><b>Mode:</b> ${botMode} | <b>Prefix:</b> ${botPrefix}</p>
 <p><b>Uptime:</b> ${formatUptime(process.uptime())}</p>
 <p><b>Sessions:</b> ${Object.keys(sessions).length}</p>
+<a class="reload" href="/dashboard">Reload</a>
 </div>
 <div class="card">
-<h3>🔗 Connect a WhatsApp Number</h3>
+<h3>UPLOAD LOGO</h3>
+<form method="POST" action="/upload-logo" enctype="multipart/form-data">
+<input type="file" name="logo" accept="image/*" required>
+<button type="submit">Upload Logo</button>
+</form>
+<p style="font-size:11px;color:#888">Logo appears on menu command and dashboard.</p>
+</div>
+<div class="card">
+<h3>CONNECT WHATSAPP</h3>
 <form method="POST">
 <input type="hidden" name="action" value="connect">
-<input type="text" name="number" placeholder="Enter number with country code (e.g. 2348139761928)" required>
+<input type="text" name="number" placeholder="e.g. 2348139761928" required>
 <button type="submit">Generate Pairing Code</button>
 </form>
-<p style="font-size:12px;color:#999">After submitting, wait \~5 seconds and refresh this page to see the pairing code below.</p>
+<p style="font-size:11px;color:#888">After submitting, wait 5s, then tap Reload to see the pairing code.</p>
 </div>
 <div class="card">
-<h3>📱 Connected Sessions</h3>
+<h3>SESSIONS</h3>
 <table>
-<tr><th>Number</th><th>Status</th><th>Connected</th><th>Pairing Code</th><th>Action</th></tr>
+<tr><th>Number</th><th>Status</th><th>Connected</th><th>Code</th><th>Action</th></tr>
 ${sessionRows}
 </table>
-<p style="font-size:12px;color:#999">To link: WhatsApp → Linked Devices → Link with phone number → enter code above</p>
+<p style="font-size:11px;color:#888">To link: WhatsApp → Linked Devices → Link with phone number → enter code</p>
 </div>
 </body></html>`
 }
