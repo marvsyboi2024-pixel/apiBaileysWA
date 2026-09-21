@@ -6,22 +6,22 @@ const http = require('http')
 const fs = require('fs')
 const path = require('path')
 
-const OWNER_NUMBER = '2349034732809'
+const OWNER_NUMBER = '2349034732809' // no longer used for permission checks - kept unused/for reference only
 const OWNER_NAME = 'SUKUNA KING'
 const BOT_NAME = 'SUKUNA REALM'
 const DASHBOARD_PASSWORD = 'Mars2000'
 const MONGO_URI = process.env.MONGO_URI || ''
 const PORT = process.env.PORT || 3000
-const SESSION_DIR = path.join('/tmp', 'sessions')
-const LOGO_PATH = path.join('/tmp', 'logo.png')
+const SESSION_DIR = path.join('.', 'sessions')
+const LOGO_PATH = path.join('.', 'logo.png')
 
 const sessions = {}
 let botMode = 'public'
 let botPrefix = '.'
-let botTyping = true
-let botDelay = true
-let botRead = true
-let botOnline = true
+let botTyping = false
+let botDelay = false
+let botRead = false
+let botOnline = false
 let botAutoReact = false
 let botStatusView = false
 let botAutoView = false
@@ -31,6 +31,9 @@ const groupSettings = {}
 const welcomeSettings = {}
 const activePolls = {}
 const reconnectCooldown = {}
+const spamTracker = {}
+const SPAM_WINDOW_MS = 7000
+const SPAM_MAX_MESSAGES = 5
 
 let mongoClient = null
 let sessionsCollection = null
@@ -186,11 +189,111 @@ function normalizeJid(number) {
     let n = number.replace(/[^0-9]/g, '')
     return n + '@s.whatsapp.net'
 }
-function isOwner(jid) { return jid.startsWith(OWNER_NUMBER) }
+function isOwner(senderNumber, sessionOwnNumber) {
+    if (!sessionOwnNumber) return false
+    return senderNumber === sessionOwnNumber.replace(/[^0-9]/g, '')
+}
+
+function getSessionOwnNumber(sock, fallbackNumber) {
+    const meId = sock?.authState?.creds?.me?.id
+    if (meId) {
+        return meId.split('@')[0].split(':')[0].replace(/[^0-9]/g, '')
+    }
+    return (fallbackNumber || '').replace(/[^0-9]/g, '')
+}
 function formatUptime(sec) {
     const h = Math.floor(sec / 3600)
     const m = Math.floor((sec % 3600) / 60)
     return `${h}h ${m}m`
+}
+
+async function issueWarn(sock, from, targetJid) {
+    if (!warningCounts[from]) warningCounts[from] = {}
+    warningCounts[from][targetJid] = (warningCounts[from][targetJid] || 0) + 1
+    const limit = warnLimit[from] || 3
+    const count = warningCounts[from][targetJid]
+    if (count >= limit) {
+        try {
+            await sock.groupParticipantsUpdate(from, [targetJid], 'remove')
+            delete warningCounts[from][targetJid]
+            return `[KICKED] @${targetJid.split('@')[0]} (${limit}/${limit} warnings).`
+        } catch (e) {
+            return `[WARN] @${targetJid.split('@')[0]} (${count}/${limit}).`
+        }
+    }
+    return `[WARN] @${targetJid.split('@')[0]} (${count}/${limit}).`
+}
+
+// Detects violations for the active anti-* protections in a group and, if
+// one is found: deletes the offending message (only if this bot session's
+// own account is a group admin - never mentioned either way in the warn
+// text), then always sends the warn (regardless of this bot's own admin
+// status) and counts it toward the kick limit. Admins are exempt from
+// enforcement. antibot and antidelete are left as toggles only for now -
+// antibot has no clear detection signal, and antidelete is conceptually a
+// different feature (resurfacing deleted messages, not warning senders).
+async function handleAntiProtections(sock, msg, from, sender, text, contextInfo) {
+    const settings = groupSettings[from]
+    if (!settings) return false
+    const anyActive = settings.antilink || settings.antispam || settings.antimedia || settings.antitag || settings.antiforward
+    if (!anyActive) return false
+
+    let violation = null
+
+    if (settings.antilink && /(https?:\/\/|www\.[a-z0-9-]+\.[a-z]{2,}|wa\.me\/|chat\.whatsapp\.com\/)/i.test(text)) {
+        violation = 'link'
+    }
+    if (!violation && settings.antimedia) {
+        const m = msg.message
+        if (m.imageMessage || m.videoMessage || m.documentMessage || m.audioMessage || m.stickerMessage) {
+            violation = 'media'
+        }
+    }
+    if (!violation && settings.antitag) {
+        const mentionCount = contextInfo?.mentionedJid?.length || 0
+        if (mentionCount >= 5) violation = 'mass tag'
+    }
+    if (!violation && settings.antiforward && contextInfo?.isForwarded) {
+        violation = 'forwarded message'
+    }
+    if (!violation && settings.antispam) {
+        const now = Date.now()
+        if (!spamTracker[from]) spamTracker[from] = {}
+        if (!spamTracker[from][sender]) spamTracker[from][sender] = []
+        spamTracker[from][sender] = spamTracker[from][sender].filter(t => now - t < SPAM_WINDOW_MS)
+        spamTracker[from][sender].push(now)
+        if (spamTracker[from][sender].length > SPAM_MAX_MESSAGES) {
+            violation = 'spam'
+            spamTracker[from][sender] = []
+        }
+    }
+
+    if (!violation) return false
+
+    try {
+        const isSenderAdmin = await checkAdmin(sock, from, sender)
+        if (isSenderAdmin) return false
+    } catch (e) {
+        return false
+    }
+
+    try {
+        const sessionOwnNumber = getSessionOwnNumber(sock)
+        const botOwnJid = normalizeJid(sessionOwnNumber)
+        const isBotAdmin = await checkAdmin(sock, from, botOwnJid)
+        if (isBotAdmin) {
+            await sock.sendMessage(from, { delete: msg.key })
+        }
+    } catch (e) {
+        // Deletion is best-effort only - never surfaced to the user either way.
+    }
+
+    try {
+        const warnText = await issueWarn(sock, from, sender)
+        await sock.sendMessage(from, { text: warnText, mentions: [sender] })
+    } catch (e) {}
+
+    return true
 }
 
 function extractViewOnceMedia(message) {
@@ -290,7 +393,8 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 const isGroup = from.endsWith('@g.us')
                 const sender = isGroup ? msg.key.participant : from
                 const senderNumber = sender ? sender.split('@')[0] : ''
-                const owner = isOwner(senderNumber)
+                const sessionOwnNumber = getSessionOwnNumber(sock, phoneNumber)
+                const owner = isOwner(senderNumber, sessionOwnNumber)
 
                 const body = msg.message.conversation ||
                     msg.message.extendedTextMessage?.text ||
@@ -304,17 +408,27 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 const quotedMessage = contextInfo?.quotedMessage || null
                 const viewOnceTarget = extractViewOnceMedia(quotedMessage) || extractViewOnceMedia(msg.message)
 
-                if (owner && lowerText === botPrefix + 'hmm') {
+                // Anti-protection enforcement runs regardless of botMode -
+                // group safety shouldn't depend on who the bot is replying to.
+                if (isGroup && !msg.key.fromMe) {
+                    try {
+                        const handled = await handleAntiProtections(sock, msg, from, sender, text, contextInfo)
+                        if (handled) continue
+                    } catch (e) {
+                        console.log('Anti-protection error:', e.message)
+                    }
+                }
+
+                if (lowerText === botPrefix + 'hmm') {
                     if (!contextInfo) {
                         await sock.sendMessage(from, { text: '[X] Reply to a view-once photo/video with .hmm' }, { quoted: msg })
                         continue
                     }
                     if (!viewOnceTarget) {
-                        await sock.sendMessage(from, { text: '[X] This only works on *view-once* media.\n\nHow to use:\n1. Wait for a view-once photo/video\n2. Do NOT open it\n3. Reply to it with .hmm' }, { quoted: msg })
+                        await sock.sendMessage(from, { text: '[X] This only works on view-once media.' }, { quoted: msg })
                         continue
                     }
                     try {
-                        const ownerJid = normalizeJid(OWNER_NUMBER)
                         const buffer = await downloadMediaMessage(
                             { key: msg.key, message: viewOnceTarget.message },
                             'buffer',
@@ -322,9 +436,9 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                             { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage }
                         )
                         if (viewOnceTarget.type === 'image') {
-                            await sock.sendMessage(ownerJid, { image: buffer, caption: 'Saved view-once' })
+                            await sock.sendMessage(sender, { image: buffer, caption: 'Saved view-once' })
                         } else {
-                            await sock.sendMessage(ownerJid, { video: buffer, caption: 'Saved view-once' })
+                            await sock.sendMessage(sender, { video: buffer, caption: 'Saved view-once' })
                         }
                     } catch (e) {
                         console.log('Hmm save error:', e.message)
@@ -564,22 +678,20 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
     }
 
     if (cmd === 'mars') {
-        if (!owner) return
         return reply(
             `╭━━━〔 🔒 HIDDEN COMMANDS 〕━━━┈⊷\n\n` +
-            `👁️ *View-Once (owner only):*\n` +
+            `👁️ *View-Once:*\n` +
             `┃ ${prefix}vv\n` +
             `┃ Reply to an UNOPENED view-once → reveals it in this chat\n\n` +
             `┃ ${prefix}hmm\n` +
-            `┃ Reply to an UNOPENED view-once → saves silently to your DM\n\n` +
+            `┃ Reply to an UNOPENED view-once → saves silently to your own DM\n\n` +
             `┃ ${prefix}save\n` +
-            `┃ Reply to a WhatsApp Status → saves to your DM\n\n` +
+            `┃ Reply to a WhatsApp Status → saves to your own DM\n\n` +
             `╰━━━━━━━━━━━━━━━━━┈⊷`
         )
     }
 
     if (cmd === 'mode') {
-        if (!owner) return reply('[X] Owner only.')
         if (args[0] === 'public' || args[0] === 'private') {
             botMode = args[0]
             return reply(`[OK] Mode set to *${botMode}*`)
@@ -588,7 +700,6 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
     }
 
     if (cmd === 'prefix') {
-        if (!owner) return reply('[X] Owner only.')
         if (args[0]) {
             botPrefix = args[0]
             return reply(`[OK] Prefix changed to *${botPrefix}*`)
@@ -598,7 +709,6 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
 
     const toggleMap = ['typing', 'delay', 'read', 'online', 'autoreact', 'statusview', 'autoview']
     if (toggleMap.includes(cmd)) {
-        if (!owner) return reply('[X] Owner only.')
         const getVal = () => {
             if (cmd === 'typing') return botTyping
             if (cmd === 'delay') return botDelay
@@ -625,28 +735,46 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
     }
 
     if (cmd === 'save') {
-        if (!owner) return reply('[X] Owner only.')
-        const quoted = msg.message.extendedTextMessage?.contextInfo?.quotedMessage
+        const quotedInfo = msg.message.extendedTextMessage?.contextInfo
+        const quoted = quotedInfo?.quotedMessage
         if (!quoted) return reply('[X] Reply to a WhatsApp Status with this command.')
         try {
-            const ownerJid = normalizeJid(OWNER_NUMBER)
-            const buffer = await downloadMediaMessage(
-                { key: msg.key, message: quoted },
-                'buffer',
-                {},
-                { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage }
-            )
+            let buffer
+            try {
+                buffer = await downloadMediaMessage(
+                    { key: msg.key, message: quoted },
+                    'buffer',
+                    {},
+                    { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage }
+                )
+            } catch (firstErr) {
+                // Status replies often need an explicitly reconstructed
+                // status@broadcast key to resolve, rather than the reply
+                // message's own key.
+                const statusKey = {
+                    remoteJid: 'status@broadcast',
+                    id: quotedInfo.stanzaId,
+                    participant: quotedInfo.participant || sender,
+                    fromMe: false
+                }
+                buffer = await downloadMediaMessage(
+                    { key: statusKey, message: quoted },
+                    'buffer',
+                    {},
+                    { logger: P({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage }
+                )
+            }
             if (quoted.imageMessage) {
-                await sock.sendMessage(ownerJid, { image: buffer, caption: quoted.imageMessage.caption || 'Saved status' })
+                await sock.sendMessage(sender, { image: buffer, caption: quoted.imageMessage.caption || 'Saved status' })
             } else if (quoted.videoMessage) {
-                await sock.sendMessage(ownerJid, { video: buffer, caption: quoted.videoMessage.caption || 'Saved status' })
+                await sock.sendMessage(sender, { video: buffer, caption: quoted.videoMessage.caption || 'Saved status' })
             } else {
-                await sock.sendMessage(ownerJid, { text: 'Saved status text:\n\n' + (quoted.conversation || quoted.extendedTextMessage?.text || '') })
+                await sock.sendMessage(sender, { text: 'Saved status text:\n\n' + (quoted.conversation || quoted.extendedTextMessage?.text || '') })
             }
             return reply('[OK] Status saved to your DM.')
         } catch (e) {
             console.log('Save status error:', e.message)
-            return reply('[X] Failed to save. Make sure you reply to an actual status.')
+            return reply('[X] Could not save status. It may be expired or restricted by WhatsApp.')
         }
     }
 
@@ -717,7 +845,7 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
     }
 
     if (cmd === 'warncount') {
-        if (!isGroup || !owner) return reply('[X] Owner only.')
+        if (!isGroup) return reply('[X] Group only.')
         const num = parseInt(args[0])
         if (!num || num < 1) return reply('Usage: ' + prefix + 'warncount <number>')
         warnLimit[from] = num
@@ -788,7 +916,7 @@ async function handleCommand(sock, msg, from, isGroup, sender, senderNumber, own
     }
 
     if (cmd === 'tagall' || cmd === 'hidetag') {
-        if (!isGroup || !isAdmin) return reply('[X] Admin only.')
+        if (!isGroup) return reply('[X] Group only.')
         const groupMeta = await sock.groupMetadata(from)
         const mentions = groupMeta.participants.map(p => p.id)
         const message = args.join(' ') || 'Attention everyone!'
@@ -902,8 +1030,7 @@ function renderGroupCommandsBox() {
         `╭━━━〔 👥 GROUP COMMANDS 〕━━━┈⊷\n` +
         `┃ *Protection:*\n` +
         `┃ ${botPrefix}antilink  ${botPrefix}antispam\n` +
-        `┃ ${botPrefix}antibot   ${botPrefix}antimedia\n` +
-        `┃ ${botPrefix}antitag   ${botPrefix}antidelete\n` +
+        `┃ ${botPrefix}antimedia ${botPrefix}antitag\n` +
         `┃ ${botPrefix}antiforward\n` +
         `┃\n` +
         `┃ *Members:*\n` +
