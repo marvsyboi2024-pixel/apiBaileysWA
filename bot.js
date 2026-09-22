@@ -10,14 +10,19 @@
  *   BOT_NAME            display name of the bot (default: WhatsApp Bot)
  *   BOT_TIMEZONE        e.g. Africa/Lagos, used by .time and .date (default: server timezone)
  *   PORT                web server port (default: 3000)
+ *   TELEGRAM_TOKEN      Telegram bot token from @BotFather. If unset, Telegram control is skipped entirely.
  *
- * Optional package: `sharp` (needed for .sticker and better .toimg)
+ * Optional packages: `sharp` (needed for .sticker and better .toimg), `node-telegram-bot-api` (needed for Telegram control)
+ *
+ * Telegram control bot: @DarkMatrix_XBot. Only Telegram user id 7959585602 may use it.
  */
 
 const fs = require('fs')
 const path = require('path')
+const os = require('os')
 const http = require('http')
 const crypto = require('crypto')
+const { execFile } = require('child_process')
 const P = require('pino')
 const { MongoClient } = require('mongodb')
 const baileys = require('@whiskeysockets/baileys')
@@ -88,16 +93,35 @@ async function initMongo() {
 // Full auth state (creds + signal keys) in MongoDB, so sessions survive redeploys.
 async function useMongoAuthState(sessionId, legacyCredsStr) {
     const id = (name) => `${sessionId}:${name}`
-    const writeData = (name, data) => authCollection.updateOne(
-        { _id: id(name) },
-        { $set: { sid: sessionId, data: JSON.stringify(data, BufferJSON.replacer) } },
-        { upsert: true }
-    )
-    const readData = async (name) => {
-        const d = await authCollection.findOne({ _id: id(name) })
-        return d ? JSON.parse(d.data, BufferJSON.reviver) : null
+    const writeData = async (name, data) => {
+        try {
+            return await authCollection.updateOne(
+                { _id: id(name) },
+                { $set: { sid: sessionId, data: JSON.stringify(data, BufferJSON.replacer) } },
+                { upsert: true }
+            )
+        } catch (e) {
+            console.log('[MONGO] writeData error:', e?.message || e)
+            return null
+        }
     }
-    const removeData = (name) => authCollection.deleteOne({ _id: id(name) })
+    const readData = async (name) => {
+        try {
+            const d = await authCollection.findOne({ _id: id(name) })
+            return d ? JSON.parse(d.data, BufferJSON.reviver) : null
+        } catch (e) {
+            console.log('[MONGO] readData error:', e?.message || e)
+            return null
+        }
+    }
+    const removeData = async (name) => {
+        try {
+            return await authCollection.deleteOne({ _id: id(name) })
+        } catch (e) {
+            console.log('[MONGO] removeData error:', e?.message || e)
+            return null
+        }
+    }
 
     let creds = await readData('creds')
     if (!creds && legacyCredsStr) {
@@ -432,6 +456,7 @@ function createCtx(sessionId, sessionPath) {
         spam: {},
         metaCache: {},
         statusCache: new Map(),
+        ttUsage: [],
         saveTimer: null
     }
 }
@@ -1100,6 +1125,39 @@ server.listen(PORT, () => {
     console.log(`Web server listening on port ${PORT}`)
 })
 
+// ─────────────────────────── tiktok downloader (.tt) ───────────────────────────
+let YTDLP_AVAILABLE = false
+function checkYtDlp() {
+    execFile('yt-dlp', ['--version'], { timeout: 10000 }, (err) => {
+        YTDLP_AVAILABLE = !err
+        if (err) console.log('[TT] yt-dlp not found. Install with: pip install yt-dlp')
+    })
+}
+
+function isTikTokUrl(str) {
+    try {
+        const u = new URL(str)
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return false
+        const host = u.hostname.toLowerCase()
+        return host === 'tiktok.com' || host.endsWith('.tiktok.com')
+    } catch (e) {
+        return false
+    }
+}
+
+// Runs yt-dlp as a subprocess with an argument array (never a shell string), so the
+// URL can never be interpreted as shell syntax regardless of its content.
+function runYtDlp(url, outPath) {
+    return new Promise((resolve, reject) => {
+        execFile(
+            'yt-dlp',
+            ['-o', outPath, '--no-playlist', '--max-filesize', '30M', '--', url],
+            { timeout: 60000, maxBuffer: 20 * 1024 * 1024 },
+            (err) => { if (err) reject(err); else resolve() }
+        )
+    })
+}
+
 // ─────────────────────────── commands ───────────────────────────
 async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, senderNumber, owner, cmd, args) {
     const prefix = ctx.cfg.prefix
@@ -1264,6 +1322,38 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             if (sharp) buffer = await sharp(buffer).png().toBuffer()
             return sock.sendMessage(from, { image: buffer, caption: 'Sticker converted' }, { quoted: msg })
         } catch (e) { return reply('[X] Failed to convert sticker.') }
+    }
+
+    if (cmd === 'tt') {
+        if (!YTDLP_AVAILABLE) return // disabled silently: yt-dlp is not installed on this server
+        if (isGroup) return reply('[X] .tt only works in private chat.')
+        if (!owner) return reply('[X] Owner only.')
+        const url = args[0]
+        if (!url || !isTikTokUrl(url)) return reply('[X] Please send a valid TikTok URL.')
+
+        const now = Date.now()
+        ctx.ttUsage = (ctx.ttUsage || []).filter(t => now - t < 3600000)
+        if (ctx.ttUsage.length >= 2) return reply('[X] TikTok download limit reached. Try again later.')
+        ctx.ttUsage.push(now)
+
+        await reply('[OK] Downloading TikTok...')
+        const outPath = path.join(os.tmpdir(), `tt_${crypto.randomBytes(6).toString('hex')}.mp4`)
+        try {
+            await runYtDlp(url, outPath)
+            if (!fs.existsSync(outPath)) throw new Error('yt-dlp produced no output file')
+            if (fs.statSync(outPath).size > 30 * 1024 * 1024) {
+                return reply('[X] Video is larger than 30MB, cannot send.')
+            }
+            await sleep(10000)
+            const buffer = fs.readFileSync(outPath)
+            await sock.sendMessage(from, { video: buffer, caption: 'TikTok download' }, { quoted: msg })
+        } catch (e) {
+            console.log('.tt error:', e?.message || e)
+            return reply('[X] Download failed. The video may be private, deleted, or yt-dlp is not installed.')
+        } finally {
+            try { fs.unlinkSync(outPath) } catch (e) {}
+        }
+        return
     }
 
     // ── warnings ──
@@ -1564,6 +1654,9 @@ function renderMenu(ctx, sock) {
         `╭━━━〔 UTILITY 〕━━━┈⊷\n` +
         `┃ ${p}calc  ${p}sticker  ${p}toimg\n` +
         `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
+        `╭━━━〔 DOWNLOADER 〕━━━┈⊷\n` +
+        `┃ ${p}tt <url>  (owner only)\n` +
+        `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
         `POWERED BY ${BOT_NAME}`
     )
 }
@@ -1739,6 +1832,343 @@ refreshSessions();
 </body></html>`
 }
 
+// ─────────────────────────── telegram control bot ───────────────────────────
+// Bot: @DarkMatrix_XBot. Token comes from TELEGRAM_TOKEN; if unset, this whole
+// section is skipped (no crash). Only TELEGRAM_ALLOWED_USER_ID may use it.
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || ''
+const TELEGRAM_ALLOWED_USER_ID = 7959585602
+let tgBot = null
+const tgPending = new Map() // chatId -> pending action ('connect')
+
+function tgAuth(id) {
+    return Number(id) === TELEGRAM_ALLOWED_USER_ID
+}
+
+function tgMainKeyboard() {
+    return {
+        inline_keyboard: [
+            [{ text: '🔗 Connect WhatsApp', callback_data: 'connect' }, { text: '📊 Status', callback_data: 'status' }],
+            [{ text: '📋 Sessions', callback_data: 'sessions' }, { text: '🔄 Reconnect', callback_data: 'reconnect' }],
+            [{ text: '❌ Disconnect', callback_data: 'disconnect' }, { text: '📁 WhatsApp Menu', callback_data: 'wa_menu' }]
+        ]
+    }
+}
+function tgBackKeyboard() {
+    return { inline_keyboard: [[{ text: '🔙 Back to Menu', callback_data: 'menu' }]] }
+}
+
+// Edits the tapped message in place when possible (nicer UX), falls back to a new message.
+// Retries once without parse_mode if Markdown parsing fails on unpredictable content.
+async function tgEditOrSend(chatId, messageId, text, keyboard, parseMode = 'Markdown') {
+    const opts = { reply_markup: keyboard }
+    if (parseMode) opts.parse_mode = parseMode
+    if (messageId) {
+        try { await tgBot.editMessageText(text, { ...opts, chat_id: chatId, message_id: messageId }); return } catch (e) {}
+    }
+    try {
+        await tgBot.sendMessage(chatId, text, opts)
+    } catch (e) {
+        console.log('[TELEGRAM] send error, retrying without parse_mode:', e?.message || e)
+        try { await tgBot.sendMessage(chatId, text, { reply_markup: keyboard }) }
+        catch (e2) { console.log('[TELEGRAM] send failed:', e2?.message || e2) }
+    }
+}
+
+async function tgShowMenu(chatId, messageId) {
+    await tgEditOrSend(chatId, messageId, `🤖 *${BOT_NAME} — Control Panel*\n\nChoose an option below:`, tgMainKeyboard())
+}
+
+async function tgShowStatus(chatId, messageId) {
+    const list = Object.values(sessions)
+    let text
+    if (list.length === 0) {
+        text = '📊 *Status*\n\nNo sessions yet.'
+    } else {
+        const active = list.filter(s => s.status === 'active')
+        text = `📊 *Status*\n\nActive: ${active.length} / ${list.length} total\n\n`
+        text += active.length
+            ? active.map(s => `• *${s.number}* — up ${s.connectedAt ? formatUptime((Date.now() - new Date(s.connectedAt).getTime()) / 1000) : '-'}`).join('\n')
+            : '_No active sessions._'
+    }
+    await tgEditOrSend(chatId, messageId, text, tgBackKeyboard())
+}
+
+async function tgShowSessions(chatId, messageId) {
+    const entries = Object.entries(sessions)
+    let text
+    if (entries.length === 0) {
+        text = '📋 *Sessions*\n\nNo sessions yet.'
+    } else {
+        text = '📋 *Sessions*\n\n' + entries.map(([, s]) =>
+            `*${s.number}*\nStatus: ${s.status}\nMode: ${s.ctx?.cfg?.mode || '-'}\nConnected: ${s.connectedAt ? new Date(s.connectedAt).toLocaleString() : '-'}`
+        ).join('\n\n')
+    }
+    await tgEditOrSend(chatId, messageId, text, tgBackKeyboard())
+}
+
+async function tgShowReconnectList(chatId, messageId) {
+    const ids = Object.keys(sessions)
+    if (ids.length === 0) { await tgEditOrSend(chatId, messageId, '🔄 *Reconnect*\n\nNo sessions yet.', tgBackKeyboard()); return }
+    const rows = ids.map(id => [{ text: `🔄 ${sessions[id].number} (${sessions[id].status})`, callback_data: `reconnect:${id}` }])
+    rows.push([{ text: '🔙 Back to Menu', callback_data: 'menu' }])
+    await tgEditOrSend(chatId, messageId, '🔄 *Reconnect*\n\nSelect a number:', { inline_keyboard: rows })
+}
+
+async function tgShowDisconnectList(chatId, messageId) {
+    const ids = Object.keys(sessions)
+    if (ids.length === 0) { await tgEditOrSend(chatId, messageId, '❌ *Disconnect*\n\nNo sessions yet.', tgBackKeyboard()); return }
+    const rows = ids.map(id => [{ text: `❌ ${sessions[id].number} (${sessions[id].status})`, callback_data: `disconnect:${id}` }])
+    rows.push([{ text: '🔙 Back to Menu', callback_data: 'menu' }])
+    await tgEditOrSend(chatId, messageId, '❌ *Disconnect*\n\nSelect a number to disconnect:', { inline_keyboard: rows })
+}
+
+async function tgShowWaMenu(chatId, messageId) {
+    const active = Object.values(sessions).find(s => s.status === 'active' && s.sock && s.ctx)
+    if (!active) {
+        await tgEditOrSend(chatId, messageId, '[X] No active WhatsApp session yet. Connect one first.', tgBackKeyboard())
+        return
+    }
+    await tgEditOrSend(chatId, messageId, renderMenu(active.ctx, active.sock), tgBackKeyboard())
+}
+
+// Polls up to `timeoutMs` for the pairing code to appear. Tracks the session's `gen` so a
+// poll started by an earlier attempt stops reporting once a newer startSession() supersedes it.
+async function tgPollPairingCode(sessionId, gen, timeoutMs = 15000, intervalMs = 1000) {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+        const s = sessions[sessionId]
+        if (!s || s.gen !== gen) return null // session gone or superseded by a newer attempt
+        if (s.pairingCode) return s.pairingCode
+        if (s.status === 'active') return null // already linked, no code to show
+        await sleep(intervalMs)
+    }
+    return null
+}
+
+// Mirrors the dashboard's "connect" action, then polls for the pairing code (startSession's
+// own 3s delay means it isn't set the instant startSession() resolves).
+async function tgConnectNumber(chatId, rawNumber) {
+    const cleanNum = String(rawNumber || '').replace(/[^0-9]/g, '')
+    if (cleanNum.length < 7) {
+        await tgBot.sendMessage(chatId, '[X] Invalid number. Send digits only, with country code.', { reply_markup: tgBackKeyboard() })
+        return
+    }
+    const sessionId = 'sess_' + cleanNum
+    try {
+        const existing = sessions[sessionId]
+        if (existing?.status === 'active') {
+            await tgBot.sendMessage(chatId, `[OK] *${cleanNum}* is already connected.`, { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
+            return
+        }
+        if (!existing) {
+            await startSession(sessionId, cleanNum)
+        } else if (existing.status === 'logged out') {
+            stopSocket(sessionId)
+            await startSession(sessionId, cleanNum, true)
+        }
+        const gen = sessions[sessionId]?.gen
+        await tgBot.sendMessage(chatId, `⏳ Connecting *${cleanNum}*... waiting for pairing code.`, { parse_mode: 'Markdown' })
+        const code = await tgPollPairingCode(sessionId, gen)
+        const s = sessions[sessionId]
+        if (code) {
+            await tgBot.sendMessage(chatId, `🔗 *Pairing code for ${cleanNum}:*\n\n\`${code}\`\n\nWhatsApp → Linked Devices → Link with phone number.`, { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
+        } else if (s?.status === 'active') {
+            await tgBot.sendMessage(chatId, `[OK] *${cleanNum}* connected.`, { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
+        } else {
+            await tgBot.sendMessage(chatId, `[X] Pairing code was not generated in time (current status: ${s?.status || 'unknown'}). Try /reconnect ${cleanNum}.`, { reply_markup: tgBackKeyboard() })
+        }
+    } catch (e) {
+        console.log('[TELEGRAM] connect error:', e?.message || e)
+        await tgBot.sendMessage(chatId, '[X] Failed to start session: ' + (e?.message || 'unknown error'), { reply_markup: tgBackKeyboard() })
+    }
+}
+
+// Mirrors the dashboard's "reconnect" action (same cooldown map, same hasCreds check), then
+// polls for a pairing code the same way tgConnectNumber does.
+async function tgReconnectSession(chatId, sessionId) {
+    const existing = sessions[sessionId]
+    if (!existing) { await tgBot.sendMessage(chatId, '[X] Session not found.', { reply_markup: tgBackKeyboard() }); return }
+    const number = existing.number
+    const now = Date.now()
+    if (reconnectCooldown[sessionId] && now - reconnectCooldown[sessionId] < 30000) {
+        await tgBot.sendMessage(chatId, '[X] Please wait before reconnecting again.', { reply_markup: tgBackKeyboard() })
+        return
+    }
+    reconnectCooldown[sessionId] = now
+    try {
+        const wasLoggedOut = existing.status === 'logged out'
+        stopSocket(sessionId)
+        const hasCreds = authCollection
+            ? !!(await authCollection.findOne({ _id: `${sessionId}:creds` }).catch(() => null)) && !wasLoggedOut
+            : fs.existsSync(path.join(SESSION_DIR, sessionId, 'creds.json'))
+        await startSession(sessionId, number, !hasCreds)
+        const gen = sessions[sessionId]?.gen
+        await tgBot.sendMessage(chatId, `⏳ Reconnecting *${number}*... waiting for pairing code (if needed).`, { parse_mode: 'Markdown' })
+        const code = await tgPollPairingCode(sessionId, gen)
+        const s = sessions[sessionId]
+        if (code) {
+            await tgBot.sendMessage(chatId, `🔗 *New pairing code for ${number}:*\n\n\`${code}\``, { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
+        } else if (s?.status === 'active') {
+            await tgBot.sendMessage(chatId, `[OK] *${number}* reconnected.`, { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
+        } else {
+            await tgBot.sendMessage(chatId, `[X] Pairing code was not generated in time (current status: ${s?.status || 'unknown'}). Try /reconnect ${number} again.`, { reply_markup: tgBackKeyboard() })
+        }
+    } catch (e) {
+        console.log('[TELEGRAM] reconnect error:', e?.message || e)
+        await tgBot.sendMessage(chatId, '[X] Reconnect failed.', { reply_markup: tgBackKeyboard() })
+    }
+}
+
+// Mirrors the dashboard's "disconnect" action exactly.
+async function tgDisconnectSession(chatId, sessionId) {
+    const existing = sessions[sessionId]
+    if (!existing) { await tgBot.sendMessage(chatId, '[X] Session not found.', { reply_markup: tgBackKeyboard() }); return }
+    const number = existing.number
+    try { await existing.sock.logout() } catch (e) {}
+    stopSocket(sessionId)
+    delete sessions[sessionId]
+    try { fs.rmSync(path.join(SESSION_DIR, sessionId), { recursive: true, force: true }) } catch (e) {}
+    await deleteSessionFromMongo(sessionId)
+    await tgBot.sendMessage(chatId, `[OK] Disconnected *${number}*.`, { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
+}
+
+function tgHelpText() {
+    return '*Commands:*\n\n' +
+        '/start - main menu\n' +
+        '/connect <number> - link a WhatsApp number\n' +
+        '/status - show session statuses\n' +
+        '/sessions - list all sessions\n' +
+        '/reconnect <number> - reconnect a session\n' +
+        '/disconnect <number> - disconnect a session\n' +
+        '/menu - main menu\n' +
+        '/help - this message'
+}
+
+function initTelegram() {
+    if (!TELEGRAM_TOKEN) {
+        console.log('[TELEGRAM] TELEGRAM_TOKEN not set. Skipping Telegram integration.')
+        return
+    }
+    let TelegramBot
+    try {
+        TelegramBot = require('node-telegram-bot-api')
+    } catch (e) {
+        console.log('[TELEGRAM] node-telegram-bot-api not found. Run: npm install node-telegram-bot-api')
+        return
+    }
+    try {
+        tgBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true })
+    } catch (e) {
+        console.log('[TELEGRAM] Failed to start bot:', e?.message || e)
+        return
+    }
+
+    let tgPollErrorCount = 0
+    let tgLastPollError = ''
+    tgBot.on('polling_error', (e) => {
+        const errMsg = e?.message || String(e)
+        console.log('[TELEGRAM] Polling error:', errMsg)
+        if (errMsg === tgLastPollError) tgPollErrorCount++
+        else { tgLastPollError = errMsg; tgPollErrorCount = 1 }
+        if (tgPollErrorCount === 3) {
+            console.log('[TELEGRAM] Polling has failed 3 times in a row with the same error. TELEGRAM_TOKEN is likely invalid or revoked.')
+        }
+    })
+
+    tgBot.onText(/^\/start\b/, async (msg) => {
+        if (!tgAuth(msg.from.id)) return
+        tgPending.delete(msg.chat.id)
+        await tgShowMenu(msg.chat.id)
+    })
+    tgBot.onText(/^\/menu\b/, async (msg) => {
+        if (!tgAuth(msg.from.id)) return
+        tgPending.delete(msg.chat.id)
+        await tgShowMenu(msg.chat.id)
+    })
+    tgBot.onText(/^\/help\b/, async (msg) => {
+        if (!tgAuth(msg.from.id)) return
+        tgPending.delete(msg.chat.id)
+        await tgBot.sendMessage(msg.chat.id, tgHelpText(), { parse_mode: 'Markdown' })
+    })
+    tgBot.onText(/^\/connect(?:\s+(.+))?/, async (msg, match) => {
+        if (!tgAuth(msg.from.id)) return
+        const num = match?.[1]
+        if (!num) {
+            tgPending.set(msg.chat.id, 'connect')
+            await tgBot.sendMessage(msg.chat.id, '🔗 Send me the WhatsApp number (digits only, with country code).', { reply_markup: tgBackKeyboard() })
+            return
+        }
+        tgPending.delete(msg.chat.id)
+        await tgConnectNumber(msg.chat.id, num)
+    })
+    tgBot.onText(/^\/status\b/, async (msg) => {
+        if (!tgAuth(msg.from.id)) return
+        tgPending.delete(msg.chat.id)
+        await tgShowStatus(msg.chat.id)
+    })
+    tgBot.onText(/^\/sessions\b/, async (msg) => {
+        if (!tgAuth(msg.from.id)) return
+        tgPending.delete(msg.chat.id)
+        await tgShowSessions(msg.chat.id)
+    })
+    tgBot.onText(/^\/reconnect(?:\s+(.+))?/, async (msg, match) => {
+        if (!tgAuth(msg.from.id)) return
+        tgPending.delete(msg.chat.id)
+        const num = match?.[1]?.replace(/[^0-9]/g, '')
+        if (!num) { await tgShowReconnectList(msg.chat.id); return }
+        await tgReconnectSession(msg.chat.id, 'sess_' + num)
+    })
+    tgBot.onText(/^\/disconnect(?:\s+(.+))?/, async (msg, match) => {
+        if (!tgAuth(msg.from.id)) return
+        tgPending.delete(msg.chat.id)
+        const num = match?.[1]?.replace(/[^0-9]/g, '')
+        if (!num) { await tgShowDisconnectList(msg.chat.id); return }
+        await tgDisconnectSession(msg.chat.id, 'sess_' + num)
+    })
+
+    // Plain-text follow-up, used after "Connect WhatsApp" asks for a number.
+    tgBot.on('message', async (msg) => {
+        if (!msg.text || msg.text.startsWith('/')) return
+        if (!tgAuth(msg.from.id)) return
+        const pending = tgPending.get(msg.chat.id)
+        if (pending === 'connect') {
+            tgPending.delete(msg.chat.id)
+            await tgConnectNumber(msg.chat.id, msg.text)
+        }
+    })
+
+    tgBot.on('callback_query', async (query) => {
+        const chatId = query.message?.chat?.id
+        const messageId = query.message?.message_id
+        if (!chatId) return
+        if (!tgAuth(query.from.id)) {
+            try { await tgBot.answerCallbackQuery(query.id, { text: '🚫 Not authorized.', show_alert: true }) } catch (e) {}
+            return
+        }
+        try { await tgBot.answerCallbackQuery(query.id) } catch (e) {}
+        const data = query.data || ''
+        try {
+            if (data === 'menu') { await tgShowMenu(chatId, messageId); return }
+            if (data === 'status') { await tgShowStatus(chatId, messageId); return }
+            if (data === 'sessions') { await tgShowSessions(chatId, messageId); return }
+            if (data === 'wa_menu') { await tgShowWaMenu(chatId, messageId); return }
+            if (data === 'connect') {
+                tgPending.set(chatId, 'connect')
+                await tgEditOrSend(chatId, messageId, '🔗 Send me the WhatsApp number to connect (digits only, with country code).', tgBackKeyboard())
+                return
+            }
+            if (data === 'reconnect') { await tgShowReconnectList(chatId, messageId); return }
+            if (data === 'disconnect') { await tgShowDisconnectList(chatId, messageId); return }
+            if (data.startsWith('reconnect:')) { await tgReconnectSession(chatId, data.slice('reconnect:'.length)); return }
+            if (data.startsWith('disconnect:')) { await tgDisconnectSession(chatId, data.slice('disconnect:'.length)); return }
+        } catch (e) {
+            console.log('[TELEGRAM] callback error:', e?.message || e)
+        }
+    })
+
+    console.log('[TELEGRAM] Bot started: @DarkMatrix_XBot')
+}
+
 // ─────────────────────────── startup ───────────────────────────
 async function restoreSessions() {
     const connected = await initMongo()
@@ -1765,3 +2195,5 @@ async function restoreSessions() {
 }
 
 restoreSessions().catch(e => console.log('Restore failed:', e.message))
+initTelegram()
+checkYtDlp()
