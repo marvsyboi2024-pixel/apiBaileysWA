@@ -34,7 +34,6 @@ const { useMultiFileAuthState, DisconnectReason, downloadMediaMessage, initAuthC
 let QRCode = null
 try { QRCode = require('qrcode') } catch (e) { QRCode = null }
 
-// ─────────────────────────── config ───────────────────────────
 const BOT_NAME = process.env.BOT_NAME || 'SUKUNA REALM'
 const MONGO_URI = process.env.MONGO_URI || ''
 const MONGO_DB = process.env.MONGO_DB || 'whatsappbot'
@@ -63,7 +62,6 @@ process.on('uncaughtException', (err) => {
     console.log('Uncaught exception:', err?.message || err)
 })
 
-// ─────────────────────────── mongo ───────────────────────────
 async function initMongo() {
     if (!MONGO_URI) {
         console.log('[MONGO] No MONGO_URI provided. Sessions will be temporary.')
@@ -187,69 +185,130 @@ async function loadLogoFromMongo() {
     return false
 }
 
-// ─────────────────────────── content lists ───────────────────────────
 const jokes = [
     'Why did the developer go broke? Because he used up all his cache!',
     'Why do programmers prefer dark mode? Because light attracts bugs!',
     'I would tell you a UDP joke, but you might not get it.',
     'Why did the Java developer wear glasses? Because he could not C#.',
-    'How many programmers does it take to change a light bulb? None, that is a hardware problem.'
+    'How many programmers does it take to change a light bulb? None, that is a hardware problem.',
+    'A SQL query walks into a bar, approaches two tables and asks: can I join you?',
+    'Why do Java developers wear glasses? Because they do not C#.',
+    'There are only 10 types of people: those who understand binary and those who do not.',
+    'I changed my password to incorrect. Now when I forget, it tells me: your password is incorrect.',
+    'Why did the programmer quit his job? Because he did not get arrays.',
+    'Debugging: being the detective in a crime movie where you are also the murderer.',
+    'How many programmers does it take to change a light bulb? None, it is a hardware problem.',
+    'A programmer is someone who solves a problem you did not know you had in a way you do not understand.',
+    'Why was the function sad after a successful first call? It did not get a callback.',
+    'My code does not have bugs, it just develops random features.'
 ]
 const quotes = [
     'The only way to do great work is to love what you do. - Steve Jobs',
     'Believe you can and you are halfway there. - Theodore Roosevelt',
     'It always seems impossible until it is done. - Nelson Mandela',
     'The future belongs to those who believe in the beauty of their dreams. - Eleanor Roosevelt',
-    'Success is not final, failure is not fatal. - Winston Churchill'
+    'Success is not final, failure is not fatal. - Winston Churchill',
+    'The best time to plant a tree was 20 years ago. The second best time is now.',
+    'You miss 100 percent of the shots you do not take. - Wayne Gretzky',
+    'Whether you think you can or you think you cannot, you are right. - Henry Ford',
+    'The only person you are destined to become is the person you decide to be. - Ralph Waldo Emerson',
+    'Do not watch the clock. Do what it does. Keep going. - Sam Levenson',
+    'Everything you have ever wanted is on the other side of fear. - George Addair',
+    'The journey of a thousand miles begins with one step. - Lao Tzu',
+    'If you want to lift yourself up, lift up someone else. - Booker T. Washington',
+    'It does not matter how slowly you go as long as you do not stop. - Confucius',
+    'The harder you work for something, the greater you will feel when you achieve it.'
 ]
 const facts = [
     'Honey never spoils. Archaeologists have found 3000-year-old honey in Egyptian tombs that is still edible.',
     'Octopuses have three hearts and blue blood.',
     'A day on Venus is longer than a year on Venus.',
     'Bananas are berries, but strawberries are not.',
-    'The Eiffel Tower can be 15 cm taller during the summer.'
+    'The Eiffel Tower can be 15 cm taller during the summer.',
+    'A group of flamingos is called a flamboyance.',
+    'Wombat poop is cube-shaped.',
+    'Cows have best friends and get stressed when separated.',
+    'The heart of a shrimp is located in its head.',
+    'A snail can sleep for three years.',
+    'Some turtles can breathe through their butts.',
+    'The fingerprints of a koala are almost identical to those of a human.',
+    'An adult human has 206 bones, but a baby has around 300.',
+    'A single cloud can weigh more than a million pounds.',
+    'The first computer bug was an actual moth found in a Harvard computer in 1947.'
 ]
 const truths = [
     'What is the most embarrassing thing you have ever done?',
     'Have you ever lied to your best friend?',
     'What is your biggest fear?',
     'Who was your first crush?',
-    'What is the most childish thing you still do?'
+    'What is the most childish thing you still do?',
+    'Have you ever pretended to be sick to avoid something?',
+    'What is the biggest lie you have ever told?',
+    'Who in this group would you trade lives with?',
+    'Have you ever stolen something?',
+    'What is your most used emoji?',
+    'What is your worst habit?',
+    'Have you ever ghosted someone?',
+    'What is the strangest thing you have ever eaten?',
+    'What is the most illegal thing you have ever done?',
+    'Have you ever cried watching a movie? Which one?'
 ]
 const dares = [
     'Send a selfie with a funny face to the group.',
     'Speak in a British accent for the next 10 messages.',
     'Tell a secret about yourself.',
     'Do 20 push-ups and describe how it felt.',
-    'Send your most recent WhatsApp status screenshot.'
+    'Send your most recent WhatsApp status screenshot.',
+    'Change your WhatsApp name to something silly for 10 minutes.',
+    'Send a voice note singing your favourite song.',
+    'Text your crush and screenshot the reply.',
+    'Do your best impression of another group member.',
+    'Post a photo of your current outfit.',
+    'Call someone in your contacts and sing them happy birthday.',
+    'Send a message in another language for the next 5 messages.',
+    'Reveal the last photo in your camera roll.',
+    'Say the alphabet backwards out loud.',
+    'Tag the person you talk to most and say something nice.'
 ]
 const roasts = [
     'You are not stupid, you just have bad luck when you think.',
     'I would agree with you, but then we would both be wrong.',
     'You are the reason shampoo has instructions.',
     'Somewhere a tree is working hard to produce oxygen for you. Thanks, tree.',
-    'You are like a cloud - when you disappear, it is a beautiful day.'
+    'You are like a cloud - when you disappear, it is a beautiful day.',
+    'If laziness were an Olympic sport, you would come fourth so you would not have to walk up to the podium.',
+    'You bring everyone so much joy... when you leave the room.',
+    'I was going to give you a nasty look, but you already have one.',
+    'You are not the dumbest person on earth, but you better hope they do not die.',
+    'Your secrets are always safe with me. I never even listen when you tell me them.',
+    'You have your whole life to be an idiot. Why start today?',
+    'I would roast you, but my mother told me not to burn trash.',
+    'You are like a software update. Every time I see you, I think: not now.',
+    'I am jealous of people who have not met you.',
+    'You are the human equivalent of a pop-up ad.'
 ]
 const compliments = [
     'You are the reason someone smiles today.',
     'Your kindness is contagious.',
     'You have a great sense of humor.',
     'You are stronger than you think.',
-    'You make the world a better place just by being in it.'
+    'You make the world a better place just by being in it.',
+    'You have a way of making everything feel easier.',
+    'Your laugh is the best sound in the world.',
+    'You are proof that good people still exist.',
+    'Talking to you is the highlight of my day.',
+    'You are doing better than you give yourself credit for.',
+    'The world is lucky to have you.',
+    'You have a talent for making people feel seen.',
+    'Your energy is unmatched.',
+    'You light up every room you walk into.',
+    'I am glad you exist.'
 ]
 const BAD_WORDS = [
     'fuck', 'shit', 'bitch', 'asshole', 'bastard', 'dick', 'pussy', 'nigger', 'nigga',
     'cunt', 'whore', 'slut', 'faggot', 'retard'
 ]
-const bioLines = [
-    '⚡ SUKUNA REALM is watching...',
-    '👹 Domain Expansion: Malevolent Shrine',
-    '🔮 Powered by SUKUNA REALM',
-    '⛩️ Type .menu to summon the commands',
-    '🗡️ 20 Fingers. Infinite Power.'
-]
 
-// ─────────────────────────── SUKUNA REALM message templates ───────────────────────────
 const SK_HEADER = '𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐'
 const SK_FOOTER = '⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡'
 
@@ -270,7 +329,7 @@ function withFooter(body) {
 function skInfo(emoji, title, fields) {
     let out = `${SK_HEADER}\n\n${emoji} ${bold(title)}\n\n`
     if (fields && fields.length) {
-        for (const [k, v] of fields) out += `◈ ${bold(k)}\n└─ ${v}\n`
+        for (const [k, v] of fields) out += `◈ ${bold(k)}\n└─ ${bold(String(v))}\n`
     }
     return withFooter(out.replace(/\n$/, ''))
 }
@@ -280,15 +339,15 @@ function skInfoF(emoji, title, fields) {
 }
 
 function skLine(emoji, title, content) {
-    return withFooter(`${SK_HEADER}\n\n${emoji} ${bold(title)}\n\n${content}`)
+    return withFooter(`${SK_HEADER}\n\n${emoji} ${bold(title)}\n\n${bold(content)}`)
 }
 
 function skSuccess(title, value) {
-    return withFooter(`${SK_HEADER}\n\n✅ ${bold(title)}\n\n◈ ${bold('STATUS')}\n└─ 🟢 ${value}`)
+    return withFooter(`${SK_HEADER}\n\n✅ ${bold(title)}\n\n◈ ${bold('STATUS')}\n└─ 🟢 ${bold(String(value))}`)
 }
 
 function skError(reason) {
-    return withFooter(`${SK_HEADER}\n\n❌ ${bold('ERROR')}\n\n◈ ${bold('REASON')}\n└─ ${reason}`)
+    return withFooter(`${SK_HEADER}\n\n❌ ${bold('ERROR')}\n\n◈ ${bold('REASON')}\n└─ ${bold(reason)}`)
 }
 
 function skDenied(role) {
@@ -299,7 +358,6 @@ function skGroup(emoji, title, fields) {
     return skInfo(emoji, title, fields)
 }
 
-// ─────────────────────────── helpers ───────────────────────────
 function getRandom(arr) { return arr[Math.floor(Math.random() * arr.length)] }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 function escapeHtml(s) {
@@ -312,6 +370,7 @@ function formatUptime(sec) {
     return `${h}h ${m}m`
 }
 function cleanNumber(jid) { return jid ? String(jid).split('@')[0].split(':')[0] : '' }
+function bestNumber(p) { return cleanNumber(p.phoneNumber || (p.jid && !String(p.jid).includes('@lid') ? p.jid : null) || (p.id && !String(p.id).includes('@lid') ? p.id : null) || p.lid || p.id) }
 function cleanJid(jid) {
     if (!jid) return ''
     const [user, domain] = String(jid).split('@')
@@ -461,7 +520,6 @@ function safeCalc(input) {
     if (i !== tokens.length || !isFinite(result)) throw new Error('bad')
     return result
 }
-
 // ─────────────────────────── http helpers (keyless APIs) ───────────────────────────
 function httpGetBuffer(url, timeoutMs = 15000, depth = 0) {
     return new Promise((resolve, reject) => {
@@ -492,7 +550,6 @@ async function httpGetText(url, timeoutMs = 10000) {
     return buffer.toString('utf-8')
 }
 
-// ─────────────────────────── per-session state ───────────────────────────
 function createCtx(sessionId, sessionPath) {
     return {
         sessionId,
@@ -502,11 +559,12 @@ function createCtx(sessionId, sessionPath) {
             prefix: '.',
             typing: false,
             delay: false,
+            delayTime: 6,
             read: false,
             online: false,
             autoreact: false,
-            statusview: false,
-            autobio: false
+            statusreact: false,
+            statusview: false
         },
         groupSettings: {},
         warnLimit: {},
@@ -523,6 +581,7 @@ function createCtx(sessionId, sessionPath) {
         activity: {},
         afk: {},
         firstSeen: {},
+        broadcast1Usage: [],
         saveTimer: null
     }
 }
@@ -575,7 +634,6 @@ function saveCtx(ctx) {
     }, 1500)
 }
 
-// ─────────────────────────── group helpers ───────────────────────────
 async function getGroupMeta(ctx, sock, jid, force = false) {
     const c = ctx.metaCache[jid]
     if (!force && c && Date.now() - c.t < 30000) return c.meta
@@ -606,7 +664,6 @@ async function guardTarget(ctx, sock, from, target) {
     return null
 }
 
-// ─────────────────────────── protection enforcement ───────────────────────────
 function detectViolation(ctx, settings, msg, content, ci, text, from, sender) {
     if (settings.antilink && /https?:\/\/|www\.|wa\.me\/|chat\.whatsapp\.com/i.test(text)) return 'links'
     if (settings.antimedia && (
@@ -675,7 +732,6 @@ async function enforceProtection(sock, ctx, msg, content, from, sender, senderNu
     return true
 }
 
-// ─────────────────────────── statuses ───────────────────────────
 function cacheStatus(ctx, msg) {
     const m = unwrap(msg.message)
     if (!(m.imageMessage || m.videoMessage || m.conversation || m.extendedTextMessage)) return
@@ -695,7 +751,7 @@ async function handleStatus(sock, ctx, msg) {
     cacheStatus(ctx, msg)
     if (!ctx.cfg.statusview || !poster) return
     try { await sock.readMessages([msg.key]) } catch (e) {}
-    if (ctx.cfg.autoreact) {
+    if (ctx.cfg.statusreact) {
         try {
             await sock.sendMessage(
                 'status@broadcast',
@@ -849,7 +905,20 @@ async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind) {
     }
 }
 
-// ─────────────────────────── message processing ───────────────────────────
+const REACT_EMOJIS = ['❤️', '🔥', '👏', '😂', '💯', '⚡', '🎯', '🙌', '😍', '🗿', '🥶', '💀']
+const FLASH_COMMANDS = ['ping', 'alive', 'menu', 'promote', 'demote', 'add', 'kick', 'tagall', 'lockdown', 'unlockdown']
+
+async function handleMessageAutoReact(sock, ctx, msg, isGroup, fromMe, isCmd) {
+    if (fromMe) return
+    if (!ctx.cfg.autoreact) return
+    if (isCmd) return
+    if (Math.random() > 0.3) return
+    try {
+        const emoji = REACT_EMOJIS[Math.floor(Math.random() * REACT_EMOJIS.length)]
+        await sock.sendMessage(msg.key.remoteJid, { react: { text: emoji, key: msg.key } })
+    } catch (e) {}
+}
+
 async function processMessage(sock, ctx, msg, type) {
     if (!msg.message || !msg.key) return
     const from = msg.key.remoteJid
@@ -881,7 +950,6 @@ async function processMessage(sock, ctx, msg, type) {
 
     const content = unwrap(msg.message)
 
-    // Cache every group message so .antidelete can repost it.
     if (isGroup && content && !content.protocolMessage) {
         const body = content.conversation ||
             content.extendedTextMessage?.text ||
@@ -923,7 +991,6 @@ async function processMessage(sock, ctx, msg, type) {
         return
     }
 
-    // AFK auto-reply
     if (isGroup && !fromMe) {
         const ci = getContextInfo(content)
         const mentioned = (ci?.mentionedJid || []).map(cleanJid)
@@ -958,7 +1025,13 @@ async function processMessage(sock, ctx, msg, type) {
     const prefix = ctx.cfg.prefix
     const isCmd = text.startsWith(prefix)
 
+    await handleMessageAutoReact(sock, ctx, msg, isGroup, fromMe, isCmd)
+
     if (isCmd) {
+        const cmdForFlash = lowerText.slice(prefix.length).split(/\s+/)[0]
+        if (FLASH_COMMANDS.includes(cmdForFlash)) {
+            try { await sock.sendMessage(from, { react: { text: '⚡', key: msg.key } }) } catch (e) {}
+        }
         if (lowerText === prefix + 'hmm') { await handleViewOnceCmd(sock, ctx, msg, content, from, sender, 'hmm'); return }
         if (lowerText === prefix + 'vv') { await handleViewOnceCmd(sock, ctx, msg, content, from, sender, 'vv'); return }
         if (lowerText === prefix + 'save') { await handleSave(sock, ctx, msg, content, from, sender); return }
@@ -993,12 +1066,14 @@ async function processMessage(sock, ctx, msg, type) {
     }
     if (!cmd || !/^[a-z0-9]+$/.test(cmd)) return
 
-    // Auto-clear AFK on user's own next message
     if (isGroup && !fromMe && ctx.afk[from] && ctx.afk[from][cleanJid(sender)]) {
         delete ctx.afk[from][cleanJid(sender)]
     }
 
-    if (ctx.cfg.delay) await sleep(3000 + Math.random() * 3000)
+    if (ctx.cfg.delay) {
+        const sec = Math.max(1, Math.min(60, parseInt(ctx.cfg.delayTime) || 6))
+        await sleep(sec * 1000)
+    }
     if (ctx.cfg.typing) {
         try { await sock.sendPresenceUpdate('composing', from) } catch (e) {}
     }
@@ -1014,7 +1089,6 @@ async function processMessage(sock, ctx, msg, type) {
     }
 }
 
-// ─────────────────────────── send throttle (anti-ban) ───────────────────────────
 function attachSendThrottle(sock) {
     const original = sock.sendMessage.bind(sock)
     let queue = Promise.resolve()
@@ -1050,7 +1124,6 @@ function attachSendThrottle(sock) {
     }
 }
 
-// ─────────────────────────── session ───────────────────────────
 function stopSocket(sessionId) {
     const s = sessions[sessionId]
     if (!s) return
@@ -1170,7 +1243,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 if (action === 'add' && ws.welcome) {
                     const fields = [['USER', `@${num}`]]
                     const mentions = [jid]
-                    fields.push(['STATUS', '🟢 ' + bold('JOINED')])
+                    fields.push(['STATUS', '🟢 JOINED'])
                     if (groupName) fields.push(['GROUP', groupName])
                     if (memberCount !== null) fields.push(['MEMBERS', String(memberCount)])
                     await sock.sendMessage(id, {
@@ -1184,9 +1257,9 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                     const mentions = [jid]
                     const wasKicked = author && author !== jid && !isBotJid(sock, author)
                     if (wasKicked) {
-                        fields.push(['STATUS', '🔴 ' + bold('KICKED OUT')])
+                        fields.push(['STATUS', '🔴 KICKED OUT'])
                     } else {
-                        fields.push(['STATUS', '🔴 ' + bold('LEFT')])
+                        fields.push(['STATUS', '🔴 LEFT'])
                     }
                     if (memberCount !== null) fields.push(['REMAINING MEMBERS', String(memberCount)])
                     await sock.sendMessage(id, {
@@ -1203,7 +1276,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                         const byLabel = tagOrNumber(author, mentions)
                         if (byLabel) fields.push(['BY', byLabel])
                     }
-                    fields.push(['NEW ROLE', '👑 ' + bold('ADMIN')])
+                    fields.push(['NEW ROLE', '👑 ADMIN'])
                     await sock.sendMessage(id, {
                         text: skInfo('👑', 'PROMOTE', fields),
                         mentions
@@ -1218,7 +1291,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                         const byLabel = tagOrNumber(author, mentions)
                         if (byLabel) fields.push(['BY', byLabel])
                     }
-                    fields.push(['NEW ROLE', '👤 ' + bold('MEMBER')])
+                    fields.push(['NEW ROLE', '👤 MEMBER'])
                     await sock.sendMessage(id, {
                         text: skInfo('⬇️', 'DEMOTE', fields),
                         mentions
@@ -1258,7 +1331,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                     const locked = !!update.announce
                     await sock.sendMessage(id, {
                         text: skInfo(locked ? '🔒' : '🔓', locked ? 'GROUP LOCKED' : 'GROUP UNLOCKED', [
-                            ['STATUS', locked ? '🔒 ' + bold('ADMINS ONLY') : '🟢 ' + bold('EVERYONE')]
+                            ['STATUS', locked ? '🔒 ADMINS ONLY' : '🟢 EVERYONE']
                         ])
                     })
                 }
@@ -1318,22 +1391,20 @@ function runFfmpeg(args) {
     })
 }
 
-// ─────────────────────────── confirm-gate helpers ───────────────────────────
 function skConfirmBox(actionLabel, byJid, warning) {
     const fields = [['ACTION', actionLabel]]
     if (byJid) fields.push(['BY', `@${cleanNumber(byJid)}`])
     if (warning) fields.push(['WARNING', warning])
     fields.push(['EXPIRES', '⏳ 30s'])
-    return skInfo('⚠️', 'CONFIRM', fields) + `\n\nReply with:\n▸ *yes*\n▸ *no*`
+    return skInfo('⚠️', 'CONFIRM', fields) + `\n\nReply with:\n▸ ${bold('yes')}\n▸ ${bold('no')}`
 }
 function skCancelledBox(actionLabel) {
     return skInfo('❌', 'CANCELLED', [
         ['ACTION', actionLabel],
-        ['STATUS', '🔴 ' + bold('ABORTED')]
+        ['STATUS', '🔴 ABORTED']
     ])
 }
 
-// ─────────────────────────── commands ───────────────────────────
 async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, senderNumber, owner, cmd, args) {
     const prefix = ctx.cfg.prefix
     const reply = (text, mentions) => sock.sendMessage(from, mentions ? { text, mentions } : { text }, { quoted: msg })
@@ -1380,8 +1451,11 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         return false
     }
 
-    if (cmd === 'ping') return reply(skSuccess('PONG', bold('ONLINE')))
-    if (cmd === 'alive') return reply(skSuccess('ALIVE', bold('READY')))
+    if (cmd === 'ping') {
+        const latency = Math.max(1, Date.now() - ((msg.messageTimestamp || 0) * 1000))
+        return reply(withFooter(`${SK_HEADER}\n\n✅ ${bold('PONG')}\n\n◈ ${bold('STATUS')}\n└─ 🟢 ${bold('ONLINE')}\n◈ ${bold('LATENCY')}\n└─ ${bold(String(latency) + ' ms')}`))
+    }
+    if (cmd === 'alive') return reply(skSuccess('ALIVE', 'READY'))
     if (cmd === 'time') {
         return reply(skInfo('⏰', 'TIME', [
             ['DATE', now.toLocaleDateString('en-US', { timeZone: TIMEZONE })],
@@ -1421,7 +1495,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (args[0] === 'public' || args[0] === 'private') {
             ctx.cfg.mode = args[0]
             saveCtx(ctx)
-            return reply(skSuccess('MODE', args[0] === 'public' ? bold('PUBLIC') : bold('PRIVATE')))
+            return reply(skSuccess('MODE', args[0] === 'public' ? 'PUBLIC' : 'PRIVATE'))
         }
         return reply(skInfo('⚙️', 'MODE', [['CURRENT', ctx.cfg.mode]]))
     }
@@ -1435,15 +1509,24 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         }
         return reply(skInfo('🔧', 'PREFIX', [['CURRENT', ctx.cfg.prefix]]))
     }
-    const toggles = ['typing', 'delay', 'read', 'online', 'autoreact', 'statusview']
+    if (cmd === 'delaytime') {
+        if (!(await needOwner())) return
+        const sec = parseInt(args[0])
+        if (!sec || sec < 1 || sec > 60) return reply(skError('Usage: ' + prefix + 'delaytime <1-60>'))
+        ctx.cfg.delayTime = sec
+        saveCtx(ctx)
+        return reply(skSuccess('DELAY TIME', `${sec}s`))
+    }
+    const toggles = ['typing', 'delay', 'read', 'online', 'autoreact', 'statusview', 'statusreact', 'sr']
     if (toggles.includes(cmd)) {
         if (!(await needOwner())) return
+        const key = cmd === 'sr' ? 'statusreact' : cmd
         if (args[0] === 'on' || args[0] === 'off') {
-            ctx.cfg[cmd] = args[0] === 'on'
+            ctx.cfg[key] = args[0] === 'on'
             saveCtx(ctx)
-            return reply(skSuccess(cmd.toUpperCase(), args[0] === 'on' ? bold('ON') : bold('OFF')))
+            return reply(skSuccess(key.toUpperCase(), args[0] === 'on' ? 'ON' : 'OFF'))
         }
-        return reply(skInfo('⚡', cmd.toUpperCase(), [['STATUS', ctx.cfg[cmd] ? '🟢 ' + bold('ON') : '🔴 ' + bold('OFF')]]))
+        return reply(skInfo('⚡', key.toUpperCase(), [['STATUS', ctx.cfg[key] ? '🟢 ON' : '🔴 OFF']]))
     }
 
     if (cmd === 'joke') return reply(skLine('😄', 'JOKE', getRandom(jokes)))
@@ -1456,7 +1539,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     if (cmd === 'dice') return reply(skInfo('🎲', 'DICE', [['RESULT', String(Math.floor(Math.random() * 6) + 1)]]))
     if (cmd === 'coin') return reply(skInfo('🪙', 'COIN', [['RESULT', Math.random() < 0.5 ? 'HEADS' : 'TAILS']]))
     if (cmd === '8ball') {
-        const answers = ['Yes', 'No', 'Maybe', 'Ask later', 'Absolutely', 'Doubtful', 'Good feeling', 'Very doubtful']
+        const answers = ['Yes', 'No', 'Maybe', 'Ask later', 'Absolutely', 'Doubtful', 'Good feeling', 'Very doubtful', 'Definitely', 'Without a doubt', 'Not now', 'Try again', 'Do not count on it', 'Very likely', 'Signs point to yes']
         return reply(skLine('🎱', 'ANSWER', getRandom(answers)))
     }
     if (cmd === 'rate') {
@@ -1554,15 +1637,15 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const target = args[0]
         if (!target) return reply(skError('Usage: ' + prefix + 'ip <host or ip>'))
         try {
-            const data = await httpGetJson(`http://ip-api.com/json/${encodeURIComponent(target)}`, 10000)
-            if (data.status !== 'success') return reply(skError(data.message || 'Lookup failed.'))
+            const data = await httpGetJson(`https://ipwho.is/${encodeURIComponent(target)}`, 10000)
+            if (!data.success) return reply(skError(data.message || 'Lookup failed.'))
             return reply(skInfo('🌍', 'IP LOOKUP', [
-                ['IP', data.query],
+                ['IP', data.ip],
                 ['COUNTRY', data.country || '-'],
-                ['REGION', data.regionName || '-'],
+                ['REGION', data.region || '-'],
                 ['CITY', data.city || '-'],
-                ['ISP', data.isp || '-'],
-                ['ORG', data.org || '-']
+                ['ISP', data.connection?.isp || '-'],
+                ['ORG', data.connection?.org || '-']
             ]))
         } catch (e) {
             console.log('.ip error:', e?.message || e)
@@ -1603,7 +1686,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     if (cmd === 'back') {
         if (!isGroup) return reply(skError('Group only.'))
         if (ctx.afk[from]) delete ctx.afk[from][cleanJid(sender)]
-        return reply(skSuccess('BACK', bold('ACTIVE')))
+        return reply(skSuccess('BACK', 'ACTIVE'))
     }
 
     if (cmd === 'profile') {
@@ -1649,7 +1732,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     if (cmd === 'resetallwarns') {
         if (!(await needManage())) return
         ctx.warningCounts[from] = {}
-        return reply(skSuccess('RESET ALL WARNS', bold('CLEARED')))
+        return reply(skSuccess('RESET ALL WARNS', 'CLEARED'))
     }
 
     if (cmd === 'sticker') {
@@ -1712,7 +1795,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         ctx.ttUsage = (ctx.ttUsage || []).filter(t => tnow - t < 3600000)
         if (ctx.ttUsage.length >= 2) return reply(skError('TikTok limit reached. Try later.'))
         ctx.ttUsage.push(tnow)
-        await reply(skInfo('📥', 'DOWNLOADING', [['STATUS', '⏳ ' + bold('IN PROGRESS')], ['SOURCE', 'TikTok']]))
+        await reply(skInfo('📥', 'DOWNLOADING', [['STATUS', '⏳ IN PROGRESS'], ['SOURCE', 'TikTok']]))
         const outPath = path.join(os.tmpdir(), `tt_${crypto.randomBytes(6).toString('hex')}.mp4`)
         try {
             await runYtDlp(url, outPath)
@@ -1807,10 +1890,10 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             ctx.groupSettings[from][cmd] = args[0] === 'on'
             saveCtx(ctx)
             return reply(skInfo(emoji, labelMap[cmd], [
-                ['STATUS', args[0] === 'on' ? '🟢 ' + bold('ENABLED') : '🔴 ' + bold('DISABLED')]
+                ['STATUS', args[0] === 'on' ? '🟢 ENABLED' : '🔴 DISABLED']
             ]))
         }
-        const cur = ctx.groupSettings[from][cmd] ? '🟢 ' + bold('ENABLED') : '🔴 ' + bold('DISABLED')
+        const cur = ctx.groupSettings[from][cmd] ? '🟢 ENABLED' : '🔴 DISABLED'
         return reply(skInfo(emoji, labelMap[cmd], [['STATUS', cur]]))
     }
 
@@ -1821,11 +1904,11 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         s.antilink = true; s.antimedia = true; s.antitag = true; s.antiforward = true; s.antispam = true
         saveCtx(ctx)
         return reply(skInfo('🔒', 'LOCKDOWN', [
-            ['ANTILINK', '🟢 ' + bold('ON')],
-            ['ANTISPAM', '🟢 ' + bold('ON')],
-            ['ANTIMEDIA', '🟢 ' + bold('ON')],
-            ['ANTITAG', '🟢 ' + bold('ON')],
-            ['ANTIFORWARD', '🟢 ' + bold('ON')]
+            ['ANTILINK', '🟢 ON'],
+            ['ANTISPAM', '🟢 ON'],
+            ['ANTIMEDIA', '🟢 ON'],
+            ['ANTITAG', '🟢 ON'],
+            ['ANTIFORWARD', '🟢 ON']
         ]))
     }
     if (cmd === 'unlockdown') {
@@ -1835,11 +1918,11 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         s.antilink = false; s.antimedia = false; s.antitag = false; s.antiforward = false; s.antispam = false
         saveCtx(ctx)
         return reply(skInfo('🔓', 'UNLOCKDOWN', [
-            ['ANTILINK', '🔴 ' + bold('OFF')],
-            ['ANTISPAM', '🔴 ' + bold('OFF')],
-            ['ANTIMEDIA', '🔴 ' + bold('OFF')],
-            ['ANTITAG', '🔴 ' + bold('OFF')],
-            ['ANTIFORWARD', '🔴 ' + bold('OFF')]
+            ['ANTILINK', '🔴 OFF'],
+            ['ANTISPAM', '🔴 OFF'],
+            ['ANTIMEDIA', '🔴 OFF'],
+            ['ANTITAG', '🔴 OFF'],
+            ['ANTIFORWARD', '🔴 OFF']
         ]))
     }
 
@@ -1866,7 +1949,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 count = meta.participants.length
             } catch (e) {}
             const fields = [['USER', filtered.map(t => '@' + cleanNumber(t)).join(', ')]]
-            fields.push(['STATUS', '🔴 ' + bold('KICKED OUT')])
+            fields.push(['STATUS', '🔴 KICKED OUT'])
             if (count !== null) fields.push(['REMAINING MEMBERS', String(count)])
             return sock.sendMessage(from, {
                 text: skInfo('👢', 'KICK', fields) + '\n\n⚔️ ' + bold('THE REALM HAS MADE ITS DECISION.'),
@@ -1909,7 +1992,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             if (!r.ok) return reply(skError(`Could not ${cmd}. Am I admin?`))
             const emoji = cmd === 'promote' ? '👑' : '⬇️'
             const label = cmd === 'promote' ? 'PROMOTE' : 'DEMOTE'
-            const newRole = cmd === 'promote' ? '👑 ' + bold('ADMIN') : '👤 ' + bold('MEMBER')
+            const newRole = cmd === 'promote' ? '👑 ADMIN' : '👤 MEMBER'
             const lines = filtered.map((t, i) => `${i + 1}. @${cleanNumber(t)}`).join('\n')
             return sock.sendMessage(from, {
                 text: skInfo(emoji, label, [
@@ -1951,7 +2034,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     if (cmd === 'left') {
         if (!(await needManage())) return
         try {
-            await reply(skInfo('👋', 'LEAVE', [['STATUS', '🚪 ' + bold('LEAVING GROUP')]]))
+            await reply(skInfo('👋', 'LEAVE', [['STATUS', '🚪 LEAVING GROUP']]))
             await sleep(1500)
             await sock.groupLeave(from)
         } catch (e) { return reply(skError('Failed to leave.')) }
@@ -1969,7 +2052,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             await sock.groupSettingUpdate(from, cmd === 'mute' ? 'announcement' : 'not_announcement')
             const emoji = cmd === 'mute' ? '🔇' : '🔊'
             const title = cmd === 'mute' ? 'GROUP MUTED' : 'GROUP UNMUTED'
-            const statusText = cmd === 'mute' ? '🔒 ' + bold('ADMINS ONLY') : '🟢 ' + bold('EVERYONE')
+            const statusText = cmd === 'mute' ? '🔒 ADMINS ONLY' : '🟢 EVERYONE'
             const fields = []
             if (gname) fields.push(['GROUP', gname])
             fields.push(['STATUS', statusText])
@@ -1977,24 +2060,35 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         } catch (e) { return reply(skError('Failed. Am I admin?')) }
     }
 
-    if (cmd === 'tagall' || cmd === 'hidetag') {
+    if (cmd === 'tagall' || cmd === 'hidetag' || cmd === 'tagadmins') {
         if (!(await needManage())) return
         try {
             const meta = await getGroupMeta(ctx, sock, from, true)
-            const mentions = meta.participants.map(p => p.id)
+            const isAdminsOnly = cmd === 'tagadmins'
+            const participants = isAdminsOnly ? meta.participants.filter(p => p.admin) : meta.participants
+            const mentions = participants.map(p => p.id)
             const custom = args.join(' ')
+
+            if (isAdminsOnly) {
+                let out = `${SK_HEADER}\n\n📢 ${bold('ATTENTION ADMINS')}`
+                if (custom) out += `\n\n${bold(custom)}`
+                out += `\n\n◈ ${bold('GROUP')}\n└─ ${bold(meta.subject)}\n`
+                out += `◈ ${bold('ADMINS')}\n└─ ${bold(String(mentions.length))}`
+                out += `\n\n${SK_FOOTER}`
+                return sock.sendMessage(from, { text: out, mentions })
+            }
 
             if (cmd === 'hidetag') {
                 let out = `${SK_HEADER}\n\n📢 ${bold('ATTENTION')}`
-                if (custom) out += `\n\n${custom}`
+                if (custom) out += `\n\n${bold(custom)}`
                 out += `\n\n${SK_FOOTER}`
                 return sock.sendMessage(from, { text: out, mentions })
             }
 
             let out = `${SK_HEADER}\n\n📢 ${bold('ATTENTION EVERYONE')}`
-            if (custom) out += `\n\n${custom}`
-            out += `\n\n◈ ${bold('GROUP')}\n└─ ${meta.subject}\n`
-            out += `◈ ${bold('MEMBERS')}\n└─ ${meta.participants.length}`
+            if (custom) out += `\n\n${bold(custom)}`
+            out += `\n\n◈ ${bold('GROUP')}\n└─ ${bold(meta.subject)}\n`
+            out += `◈ ${bold('MEMBERS')}\n└─ ${bold(String(meta.participants.length))}`
             out += `\n\n${SK_FOOTER}`
             return sock.sendMessage(from, { text: out, mentions })
         } catch (e) { return reply(skError('Failed to fetch members.')) }
@@ -2068,7 +2162,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!(await needManage())) return
         try {
             await sock.groupRevokeInvite(from)
-            return reply(skSuccess('REVOKE LINK', bold('NEW LINK GENERATED')))
+            return reply(skSuccess('REVOKE LINK', 'NEW LINK GENERATED'))
         } catch (e) { return reply(skError('Failed. Am I admin?')) }
     }
 
@@ -2077,7 +2171,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             const meta = await getGroupMeta(ctx, sock, from, true)
             const admins = meta.participants.filter(p => p.admin)
-            const lines = admins.map(a => `• ${cleanNumber(a.id)}`).join('\n')
+            const lines = admins.map(a => `• ${bestNumber(a)}`).join('\n')
             return reply(skLine('👑', `GROUP ADMINS (${admins.length})`, lines))
         } catch (e) { return reply(skError('Failed to fetch admins.')) }
     }
@@ -2086,7 +2180,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!(await needGroup())) return
         try {
             const meta = await getGroupMeta(ctx, sock, from, true)
-            const lines = meta.participants.map(p => `• ${cleanNumber(p.id)}`).join('\n')
+            const lines = meta.participants.map(p => `• ${bestNumber(p)}`).join('\n')
             return reply(skLine('👥', `MEMBERS (${meta.participants.length})`, lines))
         } catch (e) { return reply(skError('Failed to fetch members.')) }
     }
@@ -2165,7 +2259,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!txt) return reply(skError('Usage: ' + prefix + 'setdesc <text>'))
         try {
             await sock.groupUpdateDescription(from, txt)
-            return reply(skSuccess('DESC UPDATED', bold('SAVED')))
+            return reply(skSuccess('DESC UPDATED', 'SAVED'))
         } catch (e) { return reply(skError('Failed. Am I admin?')) }
     }
 
@@ -2177,10 +2271,10 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             ctx.welcomeSettings[from][cmd] = args[0] === 'on'
             saveCtx(ctx)
             return reply(skInfo(emoji, cmd.toUpperCase(), [
-                ['STATUS', args[0] === 'on' ? '🟢 ' + bold('ENABLED') : '🔴 ' + bold('DISABLED')]
+                ['STATUS', args[0] === 'on' ? '🟢 ENABLED' : '🔴 DISABLED']
             ]))
         }
-        const cur = ctx.welcomeSettings[from][cmd] ? '🟢 ' + bold('ON') : '🔴 ' + bold('OFF')
+        const cur = ctx.welcomeSettings[from][cmd] ? '🟢 ON' : '🔴 OFF'
         return reply(skInfo(emoji, cmd.toUpperCase(), [['STATUS', cur]]))
     }
     if (cmd === 'setwelcome' || cmd === 'setgoodbye') {
@@ -2221,6 +2315,43 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         return reply(skLine('📊', 'POLL RESULTS', `${poll.question}\n\n${lines}`))
     }
 
+    if (cmd === 'broadcast1') {
+        if (!(await needOwner())) return
+        const raw = args.join(' ')
+        const sep = raw.indexOf('|')
+        if (sep === -1) return reply(skError('Usage: ' + prefix + 'broadcast1 <number> | <text>'))
+        const digits = raw.slice(0, sep).replace(/[^0-9]/g, '')
+        const text = raw.slice(sep + 1).trim()
+        if (digits.length < 7 || !text) return reply(skError('Invalid number or text.'))
+        const nowT = Date.now()
+        ctx.broadcast1Usage = (ctx.broadcast1Usage || []).filter(t => nowT - t < 3600000)
+        if (ctx.broadcast1Usage.length >= 10) return reply(skError('Hourly limit reached (10). Try later.'))
+        const lastB = ctx.broadcast1Usage[ctx.broadcast1Usage.length - 1] || 0
+        if (nowT - lastB < 30000) return reply(skError('Wait 30s before next broadcast.'))
+        try {
+            await sock.sendMessage(normalizeJid(digits), {
+                text: `${SK_HEADER}\n\n📢 ${bold('ANNOUNCEMENT')}\n\n${bold(text)}\n\n${SK_FOOTER}`
+            })
+            ctx.broadcast1Usage.push(nowT)
+            return reply(skSuccess('SENT', `+${digits}`))
+        } catch (e) {
+            console.log('.broadcast1 error:', e?.message || e)
+            return reply(skError('Could not deliver. Number may not be on WhatsApp.'))
+        }
+    }
+
+    if (cmd === 'restart') {
+        if (!(await needOwner())) return
+        const reason = args.join(' ') || 'Manual restart'
+        await reply(skInfo('🔄', 'RESTARTING', [['REASON', reason]]))
+        await sleep(1500)
+        const sid = ctx.sessionId
+        const num = sessions[sid]?.number
+        stopSocket(sid)
+        try { await startSession(sid, num) } catch (e) { console.log('Restart failed:', e?.message || e) }
+        return
+    }
+
     return
 }
 
@@ -2237,7 +2368,7 @@ async function executeConfirmed(sock, ctx, msg, content, from, isGroup, sender, 
             await sock.sendMessage(from, {
                 text: skInfo('⬇️', 'DEMOTE ALL', [
                     ['ADMINS DEMOTED', String(jids.length)],
-                    ['EXEMPT', '👑 ' + bold('CREATOR')]
+                    ['EXEMPT', '👑 CREATOR']
                 ]),
                 mentions: jids
             })
@@ -2286,69 +2417,70 @@ function renderGroupCommandsBox(p) {
         `👥 ${bold('GROUP COMMANDS')}\n` +
         `\n` +
         `◈ 🛡️ ${bold('PROTECTION')}\n` +
-        `└─ ${p}antilink ─→ Block links\n` +
-        `└─ ${p}antispam ─→ Block spam\n` +
-        `└─ ${p}antibot ─→ Remove bots\n` +
-        `└─ ${p}antimedia ─→ Block media\n` +
-        `└─ ${p}antitag ─→ Block mass tags\n` +
-        `└─ ${p}antiforward ─→ Block forwarded\n` +
-        `└─ ${p}lockdown ─→ Enable all anti filters\n` +
-        `└─ ${p}unlockdown ─→ Disable all anti filters\n` +
+        `└─ ${p}${bold('antilink')} ─→ ${bold('Block links')}\n` +
+        `└─ ${p}${bold('antispam')} ─→ ${bold('Block spam')}\n` +
+        `└─ ${p}${bold('antibot')} ─→ ${bold('Remove bots')}\n` +
+        `└─ ${p}${bold('antimedia')} ─→ ${bold('Block media')}\n` +
+        `└─ ${p}${bold('antitag')} ─→ ${bold('Block mass tags')}\n` +
+        `└─ ${p}${bold('antiforward')} ─→ ${bold('Block forwarded')}\n` +
+        `└─ ${p}${bold('lockdown')} ─→ ${bold('Enable all anti filters')}\n` +
+        `└─ ${p}${bold('unlockdown')} ─→ ${bold('Disable all anti filters')}\n` +
         `\n` +
         `◈ 👤 ${bold('MEMBERS')}\n` +
-        `└─ ${p}kick ─→ Remove user(s)\n` +
-        `└─ ${p}add ─→ Add user\n` +
-        `└─ ${p}promote ─→ Make admin\n` +
-        `└─ ${p}demote ─→ Remove admin\n` +
-        `└─ ${p}demoteall ─→ Demote all admins\n` +
-        `└─ ${p}mute ─→ Lock chat\n` +
-        `└─ ${p}unmute ─→ Unlock chat\n` +
-        `└─ ${p}del ─→ Delete a message\n` +
-        `└─ ${p}left ─→ Bot leaves group\n` +
-        `└─ ${p}topmembers ─→ Most active\n` +
-        `└─ ${p}kickinactive ─→ Kick idle\n` +
+        `└─ ${p}${bold('kick')} ─→ ${bold('Remove user(s)')}\n` +
+        `└─ ${p}${bold('add')} ─→ ${bold('Add user')}\n` +
+        `└─ ${p}${bold('promote')} ─→ ${bold('Make admin')}\n` +
+        `└─ ${p}${bold('demote')} ─→ ${bold('Remove admin')}\n` +
+        `└─ ${p}${bold('demoteall')} ─→ ${bold('Demote all admins')}\n` +
+        `└─ ${p}${bold('mute')} ─→ ${bold('Lock chat')}\n` +
+        `└─ ${p}${bold('unmute')} ─→ ${bold('Unlock chat')}\n` +
+        `└─ ${p}${bold('del')} ─→ ${bold('Delete a message')}\n` +
+        `└─ ${p}${bold('left')} ─→ ${bold('Bot leaves group')}\n` +
+        `└─ ${p}${bold('topmembers')} ─→ ${bold('Most active')}\n` +
+        `└─ ${p}${bold('kickinactive')} ─→ ${bold('Kick idle')}\n` +
         `\n` +
         `◈ 📢 ${bold('COMMUNICATION')}\n` +
-        `└─ ${p}tagall ─→ Tag everyone\n` +
-        `└─ ${p}hidetag ─→ Silent tag\n` +
-        `└─ ${p}pin ─→ Pin replied msg\n` +
+        `└─ ${p}${bold('tagall')} ─→ ${bold('Tag everyone')}\n` +
+        `└─ ${p}${bold('hidetag')} ─→ ${bold('Silent tag')}\n` +
+        `└─ ${p}${bold('tagadmins')} ─→ ${bold('Tag admins only')}\n` +
+        `└─ ${p}${bold('pin')} ─→ ${bold('Pin replied msg')}\n` +
         `\n` +
         `◈ 📊 ${bold('INFO')}\n` +
-        `└─ ${p}groupinfo ─→ Group details\n` +
-        `└─ ${p}groupdesc ─→ Group desc\n` +
-        `└─ ${p}groupstats ─→ Group statistics\n` +
-        `└─ ${p}invitelink ─→ Send invite link\n` +
-        `└─ ${p}revoke ─→ Reset link\n` +
-        `└─ ${p}admins ─→ List admins\n` +
-        `└─ ${p}members ─→ List members\n` +
-        `└─ ${p}grouplist ─→ All groups\n` +
+        `└─ ${p}${bold('groupinfo')} ─→ ${bold('Group details')}\n` +
+        `└─ ${p}${bold('groupdesc')} ─→ ${bold('Group desc')}\n` +
+        `└─ ${p}${bold('groupstats')} ─→ ${bold('Group statistics')}\n` +
+        `└─ ${p}${bold('invitelink')} ─→ ${bold('Send invite link')}\n` +
+        `└─ ${p}${bold('revoke')} ─→ ${bold('Reset link')}\n` +
+        `└─ ${p}${bold('admins')} ─→ ${bold('List admins')}\n` +
+        `└─ ${p}${bold('members')} ─→ ${bold('List members')}\n` +
+        `└─ ${p}${bold('grouplist')} ─→ ${bold('All groups')}\n` +
         `\n` +
         `◈ 🚪 ${bold('JOIN REQUESTS')}\n` +
-        `└─ ${p}requests ─→ Pending list\n` +
-        `└─ ${p}approveall ─→ Approve all\n` +
-        `└─ ${p}rejectall ─→ Reject all\n` +
+        `└─ ${p}${bold('requests')} ─→ ${bold('Pending list')}\n` +
+        `└─ ${p}${bold('approveall')} ─→ ${bold('Approve all')}\n` +
+        `└─ ${p}${bold('rejectall')} ─→ ${bold('Reject all')}\n` +
         `\n` +
         `◈ ⚙️ ${bold('SETTINGS')}\n` +
-        `└─ ${p}setname ─→ Change name\n` +
-        `└─ ${p}setdesc ─→ Change desc\n` +
+        `└─ ${p}${bold('setname')} ─→ ${bold('Change name')}\n` +
+        `└─ ${p}${bold('setdesc')} ─→ ${bold('Change desc')}\n` +
         `\n` +
         `◈ 🎉 ${bold('WELCOME')}\n` +
-        `└─ ${p}welcome ─→ Toggle welcome\n` +
-        `└─ ${p}goodbye ─→ Toggle goodbye\n` +
-        `└─ ${p}setwelcome ─→ Set welcome\n` +
-        `└─ ${p}setgoodbye ─→ Set goodbye\n` +
+        `└─ ${p}${bold('welcome')} ─→ ${bold('Toggle welcome')}\n` +
+        `└─ ${p}${bold('goodbye')} ─→ ${bold('Toggle goodbye')}\n` +
+        `└─ ${p}${bold('setwelcome')} ─→ ${bold('Set welcome')}\n` +
+        `└─ ${p}${bold('setgoodbye')} ─→ ${bold('Set goodbye')}\n` +
         `\n` +
         `◈ ⚠️ ${bold('WARN')}\n` +
-        `└─ ${p}warn ─→ Warn a user\n` +
-        `└─ ${p}warncount ─→ Set limit\n` +
-        `└─ ${p}warnlist ─→ List warned\n` +
-        `└─ ${p}resetwarn ─→ Clear warnings\n` +
-        `└─ ${p}resetallwarns ─→ Clear all warnings\n` +
+        `└─ ${p}${bold('warn')} ─→ ${bold('Warn a user')}\n` +
+        `└─ ${p}${bold('warncount')} ─→ ${bold('Set limit')}\n` +
+        `└─ ${p}${bold('warnlist')} ─→ ${bold('List warned')}\n` +
+        `└─ ${p}${bold('resetwarn')} ─→ ${bold('Clear warnings')}\n` +
+        `└─ ${p}${bold('resetallwarns')} ─→ ${bold('Clear all warnings')}\n` +
         `\n` +
         `◈ 📊 ${bold('POLLS')}\n` +
-        `└─ ${p}poll ─→ Create poll\n` +
-        `└─ ${p}vote ─→ Vote\n` +
-        `└─ ${p}endpoll ─→ End poll`
+        `└─ ${p}${bold('poll')} ─→ ${bold('Create poll')}\n` +
+        `└─ ${p}${bold('vote')} ─→ ${bold('Vote')}\n` +
+        `└─ ${p}${bold('endpoll')} ─→ ${bold('End poll')}`
     )
 }
 
@@ -2360,63 +2492,68 @@ function renderMenu(ctx, sock) {
     return (
         `${SK_HEADER}\n` +
         `\n` +
-        `◈ ${bold('OWNER')}\n└─ ${ownerName(sock)}\n` +
-        `◈ ${bold('MODE')}\n└─ ${ctx.cfg.mode}\n` +
-        `◈ ${bold('PREFIX')}\n└─ ${p}\n` +
-        `◈ ${bold('DATE')}\n└─ ${dateStr}\n` +
-        `◈ ${bold('TIME')}\n└─ ${timeStr}\n` +
-        `◈ ${bold('UPTIME')}\n└─ ${formatUptime(process.uptime())}\n` +
-        `◈ ${bold('SESSIONS')}\n└─ ${Object.keys(sessions).length}\n` +
+        `◈ ${bold('OWNER')}\n└─ ${bold(ownerName(sock))}\n` +
+        `◈ ${bold('MODE')}\n└─ ${bold(ctx.cfg.mode)}\n` +
+        `◈ ${bold('PREFIX')}\n└─ ${bold(p)}\n` +
+        `◈ ${bold('DATE')}\n└─ ${bold(dateStr)}\n` +
+        `◈ ${bold('TIME')}\n└─ ${bold(timeStr)}\n` +
+        `◈ ${bold('UPTIME')}\n└─ ${bold(formatUptime(process.uptime()))}\n` +
+        `◈ ${bold('SESSIONS')}\n└─ ${bold(String(Object.keys(sessions).length))}\n` +
         `\n` +
         `⚡ ${bold('BASIC')}\n` +
-        `└─ ${p}ping ─→ Check status\n` +
-        `└─ ${p}alive ─→ Say hi\n` +
-        `└─ ${p}time ─→ Date + time\n` +
-        `└─ ${p}info ─→ Bot info\n` +
-        `└─ ${p}menu ─→ This menu\n` +
-        `└─ ${p}mode ─→ public/private\n` +
-        `└─ ${p}prefix ─→ Change prefix\n` +
+        `└─ ${p}${bold('ping')} ─→ ${bold('Check status')}\n` +
+        `└─ ${p}${bold('alive')} ─→ ${bold('Say hi')}\n` +
+        `└─ ${p}${bold('time')} ─→ ${bold('Date + time')}\n` +
+        `└─ ${p}${bold('info')} ─→ ${bold('Bot info')}\n` +
+        `└─ ${p}${bold('menu')} ─→ ${bold('This menu')}\n` +
+        `└─ ${p}${bold('mode')} ─→ ${bold('public/private')}\n` +
+        `└─ ${p}${bold('prefix')} ─→ ${bold('Change prefix')}\n` +
         `\n` +
         `🎉 ${bold('FUN')}\n` +
-        `└─ ${p}joke ─→ Random joke\n` +
-        `└─ ${p}quote ─→ Motivation\n` +
-        `└─ ${p}fact ─→ Fun fact\n` +
-        `└─ ${p}dice ─→ Roll a dice\n` +
-        `└─ ${p}coin ─→ Flip a coin\n` +
-        `└─ ${p}truth ─→ Truth question\n` +
-        `└─ ${p}dare ─→ Dare challenge\n` +
-        `└─ ${p}roast ─→ Roast someone\n` +
-        `└─ ${p}compliment ─→ Compliment\n` +
-        `└─ ${p}8ball ─→ Magic 8-ball\n` +
-        `└─ ${p}rate ─→ Rate a thing\n` +
-        `└─ ${p}ship ─→ Compatibility\n` +
-        `└─ ${p}afk ─→ Mark away\n` +
-        `└─ ${p}back ─→ Mark back\n` +
-        `└─ ${p}profile ─→ User profile\n` +
+        `└─ ${p}${bold('joke')} ─→ ${bold('Random joke')}\n` +
+        `└─ ${p}${bold('quote')} ─→ ${bold('Motivation')}\n` +
+        `└─ ${p}${bold('fact')} ─→ ${bold('Fun fact')}\n` +
+        `└─ ${p}${bold('dice')} ─→ ${bold('Roll a dice')}\n` +
+        `└─ ${p}${bold('coin')} ─→ ${bold('Flip a coin')}\n` +
+        `└─ ${p}${bold('truth')} ─→ ${bold('Truth question')}\n` +
+        `└─ ${p}${bold('dare')} ─→ ${bold('Dare challenge')}\n` +
+        `└─ ${p}${bold('roast')} ─→ ${bold('Roast someone')}\n` +
+        `└─ ${p}${bold('compliment')} ─→ ${bold('Compliment')}\n` +
+        `└─ ${p}${bold('8ball')} ─→ ${bold('Magic 8-ball')}\n` +
+        `└─ ${p}${bold('rate')} ─→ ${bold('Rate a thing')}\n` +
+        `└─ ${p}${bold('ship')} ─→ ${bold('Compatibility')}\n` +
+        `└─ ${p}${bold('afk')} ─→ ${bold('Mark away')}\n` +
+        `└─ ${p}${bold('back')} ─→ ${bold('Mark back')}\n` +
+        `└─ ${p}${bold('profile')} ─→ ${bold('User profile')}\n` +
         `\n` +
         renderGroupCommandsBox(p) +
         `\n\n` +
         `⚙️ ${bold('OWNER SETTINGS')}\n` +
-        `└─ ${p}typing ─→ Typing toggle\n` +
-        `└─ ${p}delay ─→ Delay toggle\n` +
-        `└─ ${p}read ─→ Read toggle\n` +
-        `└─ ${p}online ─→ Online toggle\n` +
-        `└─ ${p}statusview ─→ View statuses\n` +
-        `└─ ${p}autoreact ─→ Auto react\n` +
+        `└─ ${p}${bold('typing')} ─→ ${bold('Typing toggle')}\n` +
+        `└─ ${p}${bold('delay')} ─→ ${bold('Delay toggle')}\n` +
+        `└─ ${p}${bold('delaytime')} ─→ ${bold('Delay seconds')}\n` +
+        `└─ ${p}${bold('read')} ─→ ${bold('Read toggle')}\n` +
+        `└─ ${p}${bold('online')} ─→ ${bold('Online toggle')}\n` +
+        `└─ ${p}${bold('statusview')} ─→ ${bold('View statuses')}\n` +
+        `└─ ${p}${bold('autoreact')} ─→ ${bold('Auto react msgs')}\n` +
+        `└─ ${p}${bold('statusreact')} ─→ ${bold('React to statuses')}\n` +
+        `└─ ${p}${bold('sr')} ─→ ${bold('Alias for statusreact')}\n` +
+        `└─ ${p}${bold('broadcast1')} ─→ ${bold('DM one number')}\n` +
+        `└─ ${p}${bold('restart')} ─→ ${bold('Restart session')}\n` +
         `\n` +
         `🛠️ ${bold('UTILITY')}\n` +
-        `└─ ${p}calc ─→ Calculate math\n` +
-        `└─ ${p}sticker ─→ Make sticker\n` +
-        `└─ ${p}toimg ─→ Sticker to image\n` +
-        `└─ ${p}qr ─→ Generate QR code\n` +
-        `└─ ${p}weather ─→ Weather lookup\n` +
-        `└─ ${p}translate ─→ Translate text\n` +
-        `└─ ${p}shorten ─→ Shorten URL\n` +
-        `└─ ${p}ip ─→ IP lookup\n` +
-        `└─ ${p}whois ─→ Domain lookup\n` +
+        `└─ ${p}${bold('calc')} ─→ ${bold('Calculate math')}\n` +
+        `└─ ${p}${bold('sticker')} ─→ ${bold('Make sticker')}\n` +
+        `└─ ${p}${bold('toimg')} ─→ ${bold('Sticker to image')}\n` +
+        `└─ ${p}${bold('qr')} ─→ ${bold('Generate QR code')}\n` +
+        `└─ ${p}${bold('weather')} ─→ ${bold('Weather lookup')}\n` +
+        `└─ ${p}${bold('translate')} ─→ ${bold('Translate text')}\n` +
+        `└─ ${p}${bold('shorten')} ─→ ${bold('Shorten URL')}\n` +
+        `└─ ${p}${bold('ip')} ─→ ${bold('IP lookup')}\n` +
+        `└─ ${p}${bold('whois')} ─→ ${bold('Domain lookup')}\n` +
         `\n` +
         `📥 ${bold('DOWNLOADER')}\n` +
-        `└─ ${p}tt <url> ─→ TikTok (owner)\n` +
+        `└─ ${p}${bold('tt <url>')} ─→ ${bold('TikTok (owner)')}\n` +
         `\n` +
         `${SK_FOOTER}`
     )
@@ -2569,7 +2706,6 @@ server.listen(PORT, () => {
     console.log(`Web server listening on port ${PORT}`)
 })
 
-// ─────────────────────────── tiktok downloader ───────────────────────────
 let YTDLP_AVAILABLE = false
 function checkYtDlp() {
     execFile('yt-dlp', ['--version'], { timeout: 10000 }, (err) => {
@@ -2598,7 +2734,6 @@ function runYtDlp(url, outPath) {
     })
 }
 
-// ─────────────────────────── dashboard page ───────────────────────────
 function renderDashboard() {
     const title = escapeHtml(BOT_NAME)
     const logoHtml = fs.existsSync(LOGO_PATH)
@@ -2751,7 +2886,6 @@ refreshSessions();
 </body></html>`
 }
 
-// ─────────────────────────── telegram control bot ───────────────────────────
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || ''
 const TELEGRAM_ALLOWED_USER_ID = 7959585602
 let tgBot = null
@@ -3094,7 +3228,10 @@ function tgHelpText() {
 function initTelegram() {
     if (!TELEGRAM_TOKEN) { console.log('[TELEGRAM] TELEGRAM_TOKEN not set. Skipping.'); return }
     let TelegramBot
-    try { TelegramBot = require('node-telegram-bot-api') }
+    try {
+        const tgModule = require('node-telegram-bot-api')
+        TelegramBot = tgModule.default || tgModule.TelegramBot || tgModule
+    }
     catch (e) { console.log('[TELEGRAM] node-telegram-bot-api not found. Run: npm install node-telegram-bot-api'); return }
     try { tgBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true }) }
     catch (e) { console.log('[TELEGRAM] Failed to start bot:', e?.message || e); return }
@@ -3190,7 +3327,6 @@ function initTelegram() {
     console.log('[TELEGRAM] Bot started: @DarkMatrix_XBot')
 }
 
-// ─────────────────────────── startup ───────────────────────────
 async function restoreSessions() {
     const connected = await initMongo()
     await loadLogoFromMongo()
