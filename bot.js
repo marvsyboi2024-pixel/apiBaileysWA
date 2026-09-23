@@ -16,6 +16,8 @@
  * Telegram bot: @DarkMatrix_XBot. Only Telegram user id 7959585602 may use it.
  */
 
+require('dotenv').config()
+
 const fs = require('fs')
 const path = require('path')
 const os = require('os')
@@ -251,15 +253,12 @@ const bioLines = [
 const SK_HEADER = '𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐'
 const SK_FOOTER = '⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡'
 
-const BOLD_UPPER = '𝐀𝐁𝐂𝐃𝐄𝐅𝐆𝐇𝐈𝐉𝐊𝐋𝐌𝐍𝐎𝐏𝐐𝐑𝐒𝐓𝐔𝐕𝐖𝐗𝐘𝐙'
-const BOLD_LOWER = '𝐚𝐛𝐜𝐝𝐞𝐟𝐠𝐡𝐢𝐣𝐤𝐥𝐦𝐧𝐨𝐩𝐪𝐫𝐬𝐭𝐮𝐯𝐰𝐱𝐲𝐳'
-const BOLD_DIGIT = '𝟎𝟏𝟐𝟑𝟒𝟓𝟔𝟕𝟖𝟗'
 function bold(text) {
     return String(text).replace(/[A-Za-z0-9]/g, (ch) => {
-        const u = ch.charCodeAt(0)
-        if (u >= 65 && u <= 90) return BOLD_UPPER[u - 65]
-        if (u >= 97 && u <= 122) return BOLD_LOWER[u - 97]
-        if (u >= 48 && u <= 57) return BOLD_DIGIT[u - 48]
+        const code = ch.charCodeAt(0)
+        if (code >= 65 && code <= 90) return String.fromCodePoint(0x1D400 + (code - 65))
+        if (code >= 97 && code <= 122) return String.fromCodePoint(0x1D41A + (code - 97))
+        if (code >= 48 && code <= 57) return String.fromCodePoint(0x1D7CE + (code - 48))
         return ch
     })
 }
@@ -465,10 +464,18 @@ function safeCalc(input) {
 }
 
 // ─────────────────────────── http helpers (keyless APIs) ───────────────────────────
-function httpGetBuffer(url, timeoutMs = 10000) {
+function httpGetBuffer(url, timeoutMs = 15000, depth = 0) {
     return new Promise((resolve, reject) => {
         const req = https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
-            if (res.statusCode && res.statusCode >= 400) { res.resume(); reject(new Error(`HTTP ${res.statusCode}`)); return }
+            const code = res.statusCode || 0
+            if (code >= 300 && code < 400 && res.headers.location && depth < 5) {
+                res.resume()
+                const next = res.headers.location.startsWith('http')
+                    ? res.headers.location
+                    : new URL(res.headers.location, url).toString()
+                return httpGetBuffer(next, timeoutMs, depth + 1).then(resolve, reject)
+            }
+            if (code >= 400) { res.resume(); reject(new Error(`HTTP ${code}`)); return }
             const chunks = []
             res.on('data', (c) => chunks.push(c))
             res.on('end', () => resolve(Buffer.concat(chunks)))
