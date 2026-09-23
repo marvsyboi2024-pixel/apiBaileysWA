@@ -235,8 +235,6 @@ const compliments = [
     'You are stronger than you think.',
     'You make the world a better place just by being in it.'
 ]
-// Static, keyless bad-word list for .antibadword. Deliberately modest — this is a light
-// filter, not a full profanity database.
 const BAD_WORDS = [
     'fuck', 'shit', 'bitch', 'asshole', 'bastard', 'dick', 'pussy', 'nigger', 'nigga',
     'cunt', 'whore', 'slut', 'faggot', 'retard'
@@ -250,37 +248,57 @@ const bioLines = [
 ]
 
 // ─────────────────────────── SUKUNA REALM message templates ───────────────────────────
-function skSig() { return '        ⟡ *SUKUNA REALM* ⟡' }
+const SK_HEADER = '𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐'
+const SK_FOOTER = '⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡'
 
-function skBasic(emoji, fields) {
-    let out = `╭━〔 ${emoji} *SUKUNA REALM* 〕━╮\n`
-    for (const [k, v] of fields) out += `▸ ${k} ─→ ${v}\n`
-    out += `\n${skSig()}`
-    return out
+const BOLD_UPPER = '𝐀𝐁𝐂𝐃𝐄𝐅𝐆𝐇𝐈𝐉𝐊𝐋𝐌𝐍𝐎𝐏𝐐𝐑𝐒𝐓𝐔𝐕𝐖𝐗𝐘𝐙'
+const BOLD_LOWER = '𝐚𝐛𝐜𝐝𝐞𝐟𝐠𝐡𝐢𝐣𝐤𝐥𝐦𝐧𝐨𝐩𝐪𝐫𝐬𝐭𝐮𝐯𝐰𝐱𝐲𝐳'
+const BOLD_DIGIT = '𝟎𝟏𝟐𝟑𝟒𝟓𝟔𝟕𝟖𝟗'
+function bold(text) {
+    return String(text).replace(/[A-Za-z0-9]/g, (ch) => {
+        const u = ch.charCodeAt(0)
+        if (u >= 65 && u <= 90) return BOLD_UPPER[u - 65]
+        if (u >= 97 && u <= 122) return BOLD_LOWER[u - 97]
+        if (u >= 48 && u <= 57) return BOLD_DIGIT[u - 48]
+        return ch
+    })
 }
 
-function skContent(emoji, label, content) {
-    return `╭━〔 ${emoji} *SUKUNA REALM* 〕━╮\n\n▸ ${label}\n└─ ${content}\n\n${skSig()}`
-}
-
-function skError(reason) {
-    return `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n▸ ERROR ─→ ${reason}\n\n${skSig()}`
+// All message helpers append the footer automatically.
+function withFooter(body) {
+    return `${body}\n\n${SK_FOOTER}`
 }
 
 function skInfo(emoji, title, fields) {
-    let out = `╭━〔 ${emoji} *SUKUNA REALM* 〕━╮\n\n▸ ${title}\n\n`
-    for (const [k, v] of fields) out += `◈ *${k}*\n└─ ${v}\n\n`
-    out += skSig()
-    return out
+    let out = `${SK_HEADER}\n\n${emoji} ${bold(title)}\n\n`
+    if (fields && fields.length) {
+        for (const [k, v] of fields) out += `◈ ${bold(k)}\n└─ ${v}\n`
+    }
+    return withFooter(out.replace(/\n$/, ''))
 }
 
-function skGroup(emoji, title, fields, byJid) {
-    let out = `╭━〔 ${emoji} *SUKUNA REALM* 〕━╮\n┃\n`
-    out += `┃      ${emoji} *${title}*\n┃\n`
-    if (byJid) out += `┃  ◈ *BY*\n┃  └─ @${cleanNumber(byJid)}\n┃\n`
-    for (const [k, v] of fields) out += `┃  ◈ *${k}*\n┃  └─ ${v}\n┃\n`
-    out += `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`
-    return out
+function skInfoF(emoji, title, fields) {
+    return skInfo(emoji, title, fields)
+}
+
+function skLine(emoji, title, content) {
+    return withFooter(`${SK_HEADER}\n\n${emoji} ${bold(title)}\n\n${content}`)
+}
+
+function skSuccess(title, value) {
+    return withFooter(`${SK_HEADER}\n\n✅ ${bold(title)}\n\n◈ ${bold('STATUS')}\n└─ 🟢 ${value}`)
+}
+
+function skError(reason) {
+    return withFooter(`${SK_HEADER}\n\n❌ ${bold('ERROR')}\n\n◈ ${bold('REASON')}\n└─ ${reason}`)
+}
+
+function skDenied(role) {
+    return withFooter(`${SK_HEADER}\n\n🚫 ${bold('ACCESS DENIED')}\n\n◈ ${bold('REQUIRES')}\n└─ ${role}`)
+}
+
+function skGroup(emoji, title, fields) {
+    return skInfo(emoji, title, fields)
 }
 
 // ─────────────────────────── helpers ───────────────────────────
@@ -311,6 +329,20 @@ function botIds(sock) {
 }
 function isBotJid(sock, jid) { return !!jid && botIds(sock).has(cleanNumber(jid)) }
 function ownerName(sock) { return sock.user?.name || cleanNumber(sock.user?.id) || 'Owner' }
+
+function tagOrNumber(jid, mentions) {
+    if (!jid) return null
+    const s = String(jid)
+    const num = cleanNumber(jid)
+    if (!num) return null
+    const domain = s.split('@')[1] || ''
+    if (domain === 's.whatsapp.net' || domain === 'c.us') {
+        const cj = cleanJid(jid)
+        if (Array.isArray(mentions) && !mentions.includes(cj)) mentions.push(cj)
+        return `@${num}`
+    }
+    return num
+}
 
 function unwrapEphemeral(message) {
     let m = message
@@ -484,6 +516,7 @@ function createCtx(sessionId, sessionPath) {
         pendingConfirm: {},
         activity: {},
         afk: {},
+        firstSeen: {},
         saveTimer: null
     }
 }
@@ -611,7 +644,7 @@ async function enforceProtection(sock, ctx, msg, content, from, sender, senderNu
 
     try {
         await sock.sendMessage(from, {
-            text: skGroup('⚠️', 'WARN', [
+            text: skInfo('⚠️', 'WARN', [
                 ['USER', `@${senderNumber}`],
                 ['REASON', reason],
                 ['COUNT', `${Math.min(count, limit)} / ${limit}`]
@@ -625,7 +658,7 @@ async function enforceProtection(sock, ctx, msg, content, from, sender, senderNu
             await sock.groupParticipantsUpdate(from, [sender], 'remove')
             delete ctx.warningCounts[from][key]
             await sock.sendMessage(from, {
-                text: skGroup('🚫', 'KICKED', [
+                text: skInfo('🚫', 'KICKED', [
                     ['USER', `@${senderNumber}`],
                     ['REASON', 'Warning limit reached']
                 ]),
@@ -694,9 +727,6 @@ async function saveStatus(sock, ctx, ci, sender) {
 }
 
 // ─────────────────────────── save / hmm / vv ───────────────────────────
-// Shared per-user cooldown for .save/.hmm/.vv: these commands pull ephemeral/view-once
-// media, which is exactly the kind of rapid, bot-shaped activity WhatsApp's anti-automation
-// systems watch for. One minute between uses (per user, per session) keeps it human-paced.
 function checkExtractCooldown(ctx, sender) {
     if (!ctx.extractCooldown) ctx.extractCooldown = {}
     const key = cleanJid(sender)
@@ -754,7 +784,7 @@ async function handleSave(sock, ctx, msg, content, from, sender) {
     }
     try {
         const buffer = await downloadBuffer(sock, getQuotedKey(sock, from, ci), message)
-        await sleep(1500 + Math.random() * 2500) // human-like pause before sending the saved media
+        await sleep(1500 + Math.random() * 2500)
         await sendSaved(sock, sender, info, buffer, 'Saved')
     } catch (e) {
         console.log('.save error:', e?.message || e)
@@ -796,7 +826,7 @@ async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind) {
 
     try {
         const buffer = await downloadBuffer(sock, key, target.message)
-        await sleep(1500 + Math.random() * 2500) // human-like pause before sending
+        await sleep(1500 + Math.random() * 2500)
         const caption = silent ? 'Saved view-once' : 'View-once revealed'
         let payload
         if (target.type === 'image') payload = { image: buffer, caption }
@@ -839,12 +869,36 @@ async function processMessage(sock, ctx, msg, type) {
         const _k = cleanJid(sender)
         const _prev = ctx.activity[from][_k] || { count: 0, last: 0 }
         ctx.activity[from][_k] = { count: _prev.count + 1, last: Date.now() }
+        if (!ctx.firstSeen[from]) ctx.firstSeen[from] = {}
+        if (!ctx.firstSeen[from][_k]) ctx.firstSeen[from][_k] = Date.now()
     }
 
     const content = unwrap(msg.message)
 
-    // .antidelete — WhatsApp delivers a deletion as a protocolMessage(type REVOKE) pointing
-    // at the original message's key. If we cached that message, repost it into the group.
+    // Cache every group message so .antidelete can repost it.
+    if (isGroup && content && !content.protocolMessage) {
+        const body = content.conversation ||
+            content.extendedTextMessage?.text ||
+            content.imageMessage?.caption ||
+            content.videoMessage?.caption ||
+            content.documentMessage?.caption || ''
+        const media = getMediaInfo(content)
+        if (msg.key.id) {
+            ctx.messageCache.set(msg.key.id, {
+                t: Date.now(),
+                sender,
+                body: String(body).slice(0, 500),
+                hasMedia: !!media,
+                mediaType: media ? media.type : null
+            })
+            const cutoff = Date.now() - 24 * 60 * 60 * 1000
+            for (const [k, v] of ctx.messageCache) {
+                if (v.t < cutoff || ctx.messageCache.size > 500) ctx.messageCache.delete(k)
+                else break
+            }
+        }
+    }
+
     if (isGroup && content?.protocolMessage?.type === 0) {
         const settings = ctx.groupSettings[from]
         if (settings?.antidelete) {
@@ -852,15 +906,40 @@ async function processMessage(sock, ctx, msg, type) {
             const cached = delId ? ctx.messageCache?.get(delId) : null
             if (cached) {
                 sock.sendMessage(from, {
-                    text: skGroup('🗑️', 'MESSAGE DELETED', [
+                    text: skInfo('🗑️', 'MESSAGE DELETED', [
                         ['USER', `@${cleanNumber(cached.sender)}`],
                         ['CONTENT', cached.hasMedia ? `[${cached.mediaType}]` : (cached.body || '(no text)')]
-                    ], cached.sender),
+                    ]),
                     mentions: [cached.sender]
                 }).catch(() => {})
             }
         }
         return
+    }
+
+    // AFK auto-reply
+    if (isGroup && !fromMe) {
+        const ci = getContextInfo(content)
+        const mentioned = (ci?.mentionedJid || []).map(cleanJid)
+        const replier = ci?.participant ? cleanJid(ci.participant) : null
+        const afkHere = ctx.afk[from] || {}
+        const targets = new Set()
+        for (const m of mentioned) if (afkHere[m]) targets.add(m)
+        if (replier && afkHere[replier]) targets.add(replier)
+        for (const t of targets) {
+            const info = afkHere[t]
+            if (info && t !== cleanJid(sender)) {
+                try {
+                    await sock.sendMessage(from, {
+                        text: skInfo('💤', 'AFK', [
+                            ['USER', `@${cleanNumber(t)}`],
+                            ['REASON', info.reason || 'Away']
+                        ]),
+                        mentions: [t]
+                    })
+                } catch (e) {}
+            }
+        }
     }
 
     const body = content.conversation ||
@@ -908,6 +987,11 @@ async function processMessage(sock, ctx, msg, type) {
     }
     if (!cmd || !/^[a-z0-9]+$/.test(cmd)) return
 
+    // Auto-clear AFK on user's own next message
+    if (isGroup && !fromMe && ctx.afk[from] && ctx.afk[from][cleanJid(sender)]) {
+        delete ctx.afk[from][cleanJid(sender)]
+    }
+
     if (ctx.cfg.delay) await sleep(3000 + Math.random() * 3000)
     if (ctx.cfg.typing) {
         try { await sock.sendPresenceUpdate('composing', from) } catch (e) {}
@@ -925,10 +1009,6 @@ async function processMessage(sock, ctx, msg, type) {
 }
 
 // ─────────────────────────── send throttle (anti-ban) ───────────────────────────
-// Wraps sock.sendMessage once per socket so every existing call site in the file
-// (warnings, kicks, menus, .save/.hmm/.vv, everything) automatically gets: a small
-// randomized gap between any two outgoing messages (avoids bursty, bot-shaped traffic),
-// and an automatic cooldown if WhatsApp starts returning rate-limit-shaped errors.
 function attachSendThrottle(sock) {
     const original = sock.sendMessage.bind(sock)
     let queue = Promise.resolve()
@@ -940,7 +1020,7 @@ function attachSendThrottle(sock) {
             const now1 = Date.now()
             if (backoffUntil > now1) await sleep(backoffUntil - now1)
 
-            const gap = 400 + Math.random() * 900 // 0.4-1.3s human-like spacing
+            const gap = 400 + Math.random() * 900
             const since = Date.now() - lastSend
             if (since < gap) await sleep(gap - since)
 
@@ -959,7 +1039,6 @@ function attachSendThrottle(sock) {
                 throw e
             }
         })
-        // Keep the queue chain alive even if this particular send rejects.
         queue = run.catch(() => {})
         return run
     }
@@ -1064,9 +1143,11 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
             const ws = ctx.welcomeSettings[id] || {}
 
             let memberCount = null
+            let groupName = null
             try {
                 const meta = await getGroupMeta(ctx, sock, id, true)
                 memberCount = meta.participants.length
+                groupName = meta.subject
             } catch (e) {}
 
             for (const p of participants) {
@@ -1083,15 +1164,11 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 if (action === 'add' && ws.welcome) {
                     const fields = [['USER', `@${num}`]]
                     const mentions = [jid]
-                    if (author && !isBotJid(sock, author)) {
-                        fields.push(['ADDED BY', `@${cleanNumber(author)}`])
-                        mentions.push(author)
-                    } else {
-                        fields.push(['JOINED VIA', '🔗 INVITE LINK'])
-                    }
+                    fields.push(['STATUS', '🟢 ' + bold('JOINED')])
+                    if (groupName) fields.push(['GROUP', groupName])
                     if (memberCount !== null) fields.push(['MEMBERS', String(memberCount)])
                     await sock.sendMessage(id, {
-                        text: skGroup('🎉', 'WELCOME', fields),
+                        text: skInfo('🩸', 'NEW MEMBER', fields) + '\n\n⚔️ ' + bold('WELCOME TO THE REALM.'),
                         mentions
                     })
                 }
@@ -1101,45 +1178,41 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                     const mentions = [jid]
                     const wasKicked = author && author !== jid && !isBotJid(sock, author)
                     if (wasKicked) {
-                        fields.push(['BY', `@${cleanNumber(author)}`])
-                        mentions.push(author)
-                        if (memberCount !== null) fields.push(['MEMBERS', String(memberCount)])
-                        await sock.sendMessage(id, {
-                            text: skGroup('👢', 'REMOVED', fields),
-                            mentions
-                        })
+                        fields.push(['STATUS', '🔴 ' + bold('KICKED OUT')])
                     } else {
-                        fields.push(['LEFT', 'Left the group'])
-                        if (memberCount !== null) fields.push(['MEMBERS', String(memberCount)])
-                        await sock.sendMessage(id, {
-                            text: skGroup('👋', 'GOODBYE', fields),
-                            mentions
-                        })
+                        fields.push(['STATUS', '🔴 ' + bold('LEFT')])
                     }
-                }
-
-                if (action === 'promote' && ws.promote) {
-                    const fields = [['USER', `@${num}`], ['ROLE', '👑 ADMIN']]
-                    const mentions = [jid]
-                    if (author && !isBotJid(sock, author) && author !== jid) {
-                        fields.splice(1, 0, ['BY', `@${cleanNumber(author)}`])
-                        mentions.push(author)
-                    }
+                    if (memberCount !== null) fields.push(['REMAINING MEMBERS', String(memberCount)])
                     await sock.sendMessage(id, {
-                        text: skGroup('👑', 'PROMOTED', fields),
+                        text: skInfo('🩸', 'MEMBER REMOVED', fields) + '\n\n⚔️ ' + bold('THE REALM HAS MADE ITS DECISION.'),
                         mentions
                     })
                 }
 
-                if (action === 'demote' && ws.demote) {
-                    const fields = [['USER', `@${num}`], ['ROLE', '👤 MEMBER']]
+                if (action === 'promote') {
+                    const fields = [['USER', `@${num}`]]
                     const mentions = [jid]
                     if (author && !isBotJid(sock, author) && author !== jid) {
-                        fields.splice(1, 0, ['BY', `@${cleanNumber(author)}`])
-                        mentions.push(author)
+                        const byLabel = tagOrNumber(author, mentions)
+                        if (byLabel) fields.push(['BY', byLabel])
                     }
+                    fields.push(['NEW ROLE', '👑 ' + bold('ADMIN')])
                     await sock.sendMessage(id, {
-                        text: skGroup('⬇️', 'DEMOTED', fields),
+                        text: skInfo('👑', 'PROMOTE', fields),
+                        mentions
+                    })
+                }
+
+                if (action === 'demote') {
+                    const fields = [['USER', `@${num}`]]
+                    const mentions = [jid]
+                    if (author && !isBotJid(sock, author) && author !== jid) {
+                        const byLabel = tagOrNumber(author, mentions)
+                        if (byLabel) fields.push(['BY', byLabel])
+                    }
+                    fields.push(['NEW ROLE', '👤 ' + bold('MEMBER')])
+                    await sock.sendMessage(id, {
+                        text: skInfo('⬇️', 'DEMOTE', fields),
                         mentions
                     })
                 }
@@ -1155,35 +1228,36 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 if (!id) continue
                 delete ctx.metaCache[id]
                 const updater = update.author || update.participant || null
-                const updaterNum = updater ? cleanNumber(updater) : null
-                const mentions = updater && !isBotJid(sock, updater) ? [updater] : []
+                const mentions = []
+                let byLabel = null
+                if (updater && !isBotJid(sock, updater)) byLabel = tagOrNumber(updater, mentions)
 
                 if (update.subject !== undefined && update.subject) {
                     const fields = []
-                    if (updaterNum && !isBotJid(sock, updater)) fields.push(['BY', `@${updaterNum}`])
+                    if (byLabel) fields.push(['BY', byLabel])
                     fields.push(['NEW NAME', update.subject])
-                    await sock.sendMessage(id, { text: skGroup('📝', 'NAME CHANGED', fields), mentions })
+                    await sock.sendMessage(id, { text: skInfo('📝', 'NAME CHANGED', fields), mentions })
                 }
 
                 if (update.desc !== undefined) {
                     const fields = []
-                    if (updaterNum && !isBotJid(sock, updater)) fields.push(['BY', `@${updaterNum}`])
+                    if (byLabel) fields.push(['BY', byLabel])
                     fields.push(['NEW DESC', update.desc || '(empty)'])
-                    await sock.sendMessage(id, { text: skGroup('📝', 'DESC UPDATED', fields), mentions })
+                    await sock.sendMessage(id, { text: skInfo('📝', 'DESC UPDATED', fields), mentions })
                 }
 
                 if (update.announce !== undefined) {
                     const locked = !!update.announce
                     await sock.sendMessage(id, {
-                        text: skGroup(locked ? '🔒' : '🔓', locked ? 'GROUP LOCKED' : 'GROUP UNLOCKED', [
-                            ['STATUS', locked ? '🔒 ADMINS ONLY' : '🟢 EVERYONE']
+                        text: skInfo(locked ? '🔒' : '🔓', locked ? 'GROUP LOCKED' : 'GROUP UNLOCKED', [
+                            ['STATUS', locked ? '🔒 ' + bold('ADMINS ONLY') : '🟢 ' + bold('EVERYONE')]
                         ])
                     })
                 }
 
                 if (update.picture !== undefined && update.picture !== null) {
                     await sock.sendMessage(id, {
-                        text: skGroup('🖼️', 'ICON CHANGED', [['GROUP', update.subject || id]])
+                        text: skInfo('🖼️', 'ICON CHANGED', [['GROUP', update.subject || id]])
                     })
                 }
             }
@@ -1198,7 +1272,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 if (!id) continue
                 delete ctx.metaCache[id]
                 await sock.sendMessage(id, {
-                    text: skGroup('👹', 'I HAVE ARRIVED', [
+                    text: skInfo('👹', 'I HAVE ARRIVED', [
                         ['GROUP', g.subject || 'Unnamed'],
                         ['MEMBERS', String((g.participants || []).length)],
                         ['TIP', 'Type .menu for commands']
@@ -1220,7 +1294,9 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
     }
 
     return sock
-}// ─────────────────────────── ffmpeg (replaces sharp) ───────────────────────────
+}
+
+// ─────────────────────────── ffmpeg ───────────────────────────
 let FFMPEG_AVAILABLE = false
 function checkFfmpeg() {
     execFile('ffmpeg', ['-version'], { timeout: 10000 }, (err) => {
@@ -1236,23 +1312,17 @@ function runFfmpeg(args) {
 
 // ─────────────────────────── confirm-gate helpers ───────────────────────────
 function skConfirmBox(actionLabel, byJid, warning) {
-    let out = `╭━〔 ⚠️ *SUKUNA REALM* 〕━╮\n┃\n`
-    out += `┃     ⚠️ *CONFIRM*\n┃\n`
-    out += `┃  ◈ *ACTION*\n┃  └─ ${actionLabel}\n┃\n`
-    if (byJid) out += `┃  ◈ *BY*\n┃  └─ @${cleanNumber(byJid)}\n┃\n`
-    if (warning) out += `┃  ◈ *WARNING*\n┃  └─ ${warning}\n┃\n`
-    out += `┃  ⏳ Expires in 30s\n┃\n`
-    out += `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n\n`
-    out += `Reply with:\n▸ *yes*\n▸ *no*`
-    return out
+    const fields = [['ACTION', actionLabel]]
+    if (byJid) fields.push(['BY', `@${cleanNumber(byJid)}`])
+    if (warning) fields.push(['WARNING', warning])
+    fields.push(['EXPIRES', '⏳ 30s'])
+    return skInfo('⚠️', 'CONFIRM', fields) + `\n\nReply with:\n▸ *yes*\n▸ *no*`
 }
 function skCancelledBox(actionLabel) {
-    let out = `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n┃\n`
-    out += `┃    ❌ *CANCELLED*\n┃\n`
-    out += `┃  ◈ *ACTION*\n┃  └─ ${actionLabel}\n┃\n`
-    out += `┃  ◈ *STATUS*\n┃  └─ 🔴 ABORTED\n┃\n`
-    out += `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`
-    return out
+    return skInfo('❌', 'CANCELLED', [
+        ['ACTION', actionLabel],
+        ['STATUS', '🔴 ' + bold('ABORTED')]
+    ])
 }
 
 // ─────────────────────────── commands ───────────────────────────
@@ -1261,7 +1331,6 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     const reply = (text, mentions) => sock.sendMessage(from, mentions ? { text, mentions } : { text }, { quoted: msg })
     const now = new Date()
 
-    // CONFIRM GATE first
     if (ctx.pendingConfirm && ctx.pendingConfirm[from]) {
         const pending = ctx.pendingConfirm[from]
         if (Date.now() - pending.ts > 30000) {
@@ -1288,25 +1357,25 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     }
     const needGroup = async () => {
         if (isGroup) return true
-        await reply(skError('Group only.'))
+        await reply(skDenied('👥 ' + bold('GROUP')))
         return false
     }
     const needManage = async () => {
         if (!(await needGroup())) return false
         if (await canManage()) return true
-        await reply(skError('Admin only.'))
+        await reply(skDenied('👑 ' + bold('ADMIN')))
         return false
     }
     const needOwner = async () => {
         if (owner) return true
-        await reply(skError('Owner only.'))
+        await reply(skDenied('👑 ' + bold('OWNER')))
         return false
     }
 
-    if (cmd === 'ping') return reply(skBasic('⚡', [['STATUS', '⚡ ONLINE']]))
-    if (cmd === 'alive') return reply(skInfo('𖤐', 'BOT ALIVE', [['STATUS', '🟢 READY'], ['SYSTEM', '⚡ ONLINE']]))
+    if (cmd === 'ping') return reply(skSuccess('PONG', bold('ONLINE')))
+    if (cmd === 'alive') return reply(skSuccess('ALIVE', bold('READY')))
     if (cmd === 'time') {
-        return reply(skBasic('⏰', [
+        return reply(skInfo('⏰', 'TIME', [
             ['DATE', now.toLocaleDateString('en-US', { timeZone: TIMEZONE })],
             ['DAY', now.toLocaleDateString('en-US', { weekday: 'long', timeZone: TIMEZONE })],
             ['TIME', now.toLocaleTimeString('en-US', { timeZone: TIMEZONE })]
@@ -1344,9 +1413,9 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (args[0] === 'public' || args[0] === 'private') {
             ctx.cfg.mode = args[0]
             saveCtx(ctx)
-            return reply(skBasic('⚙️', [['MODE', args[0] === 'public' ? '🟢 PUBLIC' : '🔒 PRIVATE']]))
+            return reply(skSuccess('MODE', args[0] === 'public' ? bold('PUBLIC') : bold('PRIVATE')))
         }
-        return reply(skBasic('⚙️', [['MODE', ctx.cfg.mode]]))
+        return reply(skInfo('⚙️', 'MODE', [['CURRENT', ctx.cfg.mode]]))
     }
     if (cmd === 'prefix') {
         if (!(await needOwner())) return
@@ -1354,9 +1423,9 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             if (args[0].length > 3) return reply(skError('Prefix max 3 chars.'))
             ctx.cfg.prefix = args[0]
             saveCtx(ctx)
-            return reply(skBasic('🔧', [['PREFIX', args[0]]]))
+            return reply(skSuccess('PREFIX', args[0]))
         }
-        return reply(skBasic('🔧', [['PREFIX', ctx.cfg.prefix]]))
+        return reply(skInfo('🔧', 'PREFIX', [['CURRENT', ctx.cfg.prefix]]))
     }
     const toggles = ['typing', 'delay', 'read', 'online', 'autoreact', 'statusview']
     if (toggles.includes(cmd)) {
@@ -1364,38 +1433,215 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (args[0] === 'on' || args[0] === 'off') {
             ctx.cfg[cmd] = args[0] === 'on'
             saveCtx(ctx)
-            return reply(skBasic('⚡', [[cmd.toUpperCase(), args[0] === 'on' ? '🟢 ON' : '🔴 OFF']]))
+            return reply(skSuccess(cmd.toUpperCase(), args[0] === 'on' ? bold('ON') : bold('OFF')))
         }
-        return reply(skBasic('⚡', [[cmd.toUpperCase(), ctx.cfg[cmd] ? '🟢 ON' : '🔴 OFF']]))
+        return reply(skInfo('⚡', cmd.toUpperCase(), [['STATUS', ctx.cfg[cmd] ? '🟢 ' + bold('ON') : '🔴 ' + bold('OFF')]]))
     }
 
-    if (cmd === 'joke') return reply(skContent('😄', 'JOKE', getRandom(jokes)))
-    if (cmd === 'quote') return reply(skContent('💬', 'QUOTE', getRandom(quotes)))
-    if (cmd === 'fact') return reply(skContent('🧠', 'FACT', getRandom(facts)))
-    if (cmd === 'truth') return reply(skContent('❓', 'TRUTH', getRandom(truths)))
-    if (cmd === 'dare') return reply(skContent('🔥', 'DARE', getRandom(dares)))
-    if (cmd === 'roast') return reply(skContent('💀', 'ROAST', getRandom(roasts)))
-    if (cmd === 'compliment') return reply(skContent('💖', 'COMPLIMENT', getRandom(compliments)))
-    if (cmd === 'dice') return reply(skBasic('🎲', [['RESULT', String(Math.floor(Math.random() * 6) + 1)]]))
-    if (cmd === 'coin') return reply(skBasic('🪙', [['RESULT', Math.random() < 0.5 ? 'HEADS' : 'TAILS']]))
+    if (cmd === 'joke') return reply(skLine('😄', 'JOKE', getRandom(jokes)))
+    if (cmd === 'quote') return reply(skLine('💬', 'QUOTE', getRandom(quotes)))
+    if (cmd === 'fact') return reply(skLine('🧠', 'FACT', getRandom(facts)))
+    if (cmd === 'truth') return reply(skLine('❓', 'TRUTH', getRandom(truths)))
+    if (cmd === 'dare') return reply(skLine('🔥', 'DARE', getRandom(dares)))
+    if (cmd === 'roast') return reply(skLine('💀', 'ROAST', getRandom(roasts)))
+    if (cmd === 'compliment') return reply(skLine('💖', 'COMPLIMENT', getRandom(compliments)))
+    if (cmd === 'dice') return reply(skInfo('🎲', 'DICE', [['RESULT', String(Math.floor(Math.random() * 6) + 1)]]))
+    if (cmd === 'coin') return reply(skInfo('🪙', 'COIN', [['RESULT', Math.random() < 0.5 ? 'HEADS' : 'TAILS']]))
     if (cmd === '8ball') {
         const answers = ['Yes', 'No', 'Maybe', 'Ask later', 'Absolutely', 'Doubtful', 'Good feeling', 'Very doubtful']
-        return reply(skContent('🎱', 'ANSWER', getRandom(answers)))
+        return reply(skLine('🎱', 'ANSWER', getRandom(answers)))
     }
     if (cmd === 'rate') {
         const thing = args.join(' ')
         if (!thing) return reply(skError('Usage: ' + prefix + 'rate <thing>'))
-        return reply(skBasic('⭐', [['THING', thing], ['RATING', `${Math.floor(Math.random() * 10) + 1}/10`]]))
+        return reply(skInfo('⭐', 'RATE', [['THING', thing], ['RATING', `${Math.floor(Math.random() * 10) + 1}/10`]]))
     }
     if (cmd === 'ship') {
         if (args.length < 2) return reply(skError('Usage: ' + prefix + 'ship <a> <b>'))
-        return reply(skBasic('💕', [['PAIR', `${args[0]} + ${args[1]}`], ['MATCH', `${Math.floor(Math.random() * 100) + 1}%`]]))
+        return reply(skInfo('💕', 'SHIP', [['PAIR', `${args[0]} + ${args[1]}`], ['MATCH', `${Math.floor(Math.random() * 100) + 1}%`]]))
     }
 
     if (cmd === 'calc') {
         if (!args.length) return reply(skError('Usage: ' + prefix + 'calc 2+2*3'))
-        try { return reply(skBasic('🧮', [['INPUT', args.join(' ')], ['RESULT', String(safeCalc(args.join(' ')))]])) }
+        try { return reply(skInfo('🧮', 'CALC', [['INPUT', args.join(' ')], ['RESULT', String(safeCalc(args.join(' ')))]])) }
         catch (e) { return reply(skError('Invalid math.')) }
+    }
+
+    if (cmd === 'qr') {
+        if (!QRCode) return reply(skError('qrcode package not installed.'))
+        const text = args.join(' ')
+        if (!text) return reply(skError('Usage: ' + prefix + 'qr <text>'))
+        if (text.length > 500) return reply(skError('Text too long (max 500).'))
+        try {
+            const dataUrl = await QRCode.toDataURL(text, { width: 512, margin: 1 })
+            const base64 = dataUrl.split(',')[1]
+            const buffer = Buffer.from(base64, 'base64')
+            await sock.sendMessage(from, { image: buffer, caption: skSuccess('QR CODE', text.slice(0, 60)) }, { quoted: msg })
+            return
+        } catch (e) {
+            console.log('.qr error:', e?.message || e)
+            return reply(skError('Failed to generate QR.'))
+        }
+    }
+
+    if (cmd === 'weather') {
+        const city = args.join(' ')
+        if (!city) return reply(skError('Usage: ' + prefix + 'weather <city>'))
+        try {
+            const data = await httpGetJson(`https://wttr.in/${encodeURIComponent(city)}?format=j1`, 10000)
+            const cur = data.current_condition?.[0] || {}
+            const area = data.nearest_area?.[0]
+            const areaName = area?.areaName?.[0]?.value || city
+            return reply(skInfo('🌤️', 'WEATHER', [
+                ['CITY', areaName],
+                ['TEMP', `${cur.temp_C || '?'} °C`],
+                ['FEELS', `${cur.FeelsLikeC || '?'} °C`],
+                ['HUMIDITY', `${cur.humidity || '?'} %`],
+                ['WIND', `${cur.windspeedKmph || '?'} km/h`],
+                ['DESC', cur.weatherDesc?.[0]?.value || 'Unknown']
+            ]))
+        } catch (e) {
+            console.log('.weather error:', e?.message || e)
+            return reply(skError('Could not fetch weather. Check the city name.'))
+        }
+    }
+
+    if (cmd === 'translate') {
+        const lang = (args[0] || '').toLowerCase()
+        const text = args.slice(1).join(' ')
+        if (!lang || !text) return reply(skError('Usage: ' + prefix + 'translate <lang> <text>'))
+        try {
+            const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${encodeURIComponent(lang)}`
+            const data = await httpGetJson(url, 10000)
+            const translated = data?.responseData?.translatedText
+            if (!translated) return reply(skError('No translation returned.'))
+            return reply(skInfo('🌐', 'TRANSLATE', [
+                ['FROM', 'en'],
+                ['TO', lang],
+                ['RESULT', translated]
+            ]))
+        } catch (e) {
+            console.log('.translate error:', e?.message || e)
+            return reply(skError('Translation failed.'))
+        }
+    }
+
+    if (cmd === 'shorten') {
+        const url = args[0]
+        if (!url) return reply(skError('Usage: ' + prefix + 'shorten <url>'))
+        if (!/^https?:\/\//i.test(url)) return reply(skError('URL must start with http:// or https://'))
+        try {
+            const short = (await httpGetText(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(url)}`, 10000)).trim()
+            return reply(skInfo('🔗', 'SHORTEN', [
+                ['ORIGINAL', url.slice(0, 60) + (url.length > 60 ? '...' : '')],
+                ['SHORT', short]
+            ]))
+        } catch (e) {
+            console.log('.shorten error:', e?.message || e)
+            return reply(skError('Could not shorten that URL.'))
+        }
+    }
+
+    if (cmd === 'ip') {
+        const target = args[0]
+        if (!target) return reply(skError('Usage: ' + prefix + 'ip <host or ip>'))
+        try {
+            const data = await httpGetJson(`http://ip-api.com/json/${encodeURIComponent(target)}`, 10000)
+            if (data.status !== 'success') return reply(skError(data.message || 'Lookup failed.'))
+            return reply(skInfo('🌍', 'IP LOOKUP', [
+                ['IP', data.query],
+                ['COUNTRY', data.country || '-'],
+                ['REGION', data.regionName || '-'],
+                ['CITY', data.city || '-'],
+                ['ISP', data.isp || '-'],
+                ['ORG', data.org || '-']
+            ]))
+        } catch (e) {
+            console.log('.ip error:', e?.message || e)
+            return reply(skError('Lookup failed.'))
+        }
+    }
+
+    if (cmd === 'whois') {
+        const domain = args[0]
+        if (!domain) return reply(skError('Usage: ' + prefix + 'whois <domain>'))
+        try {
+            const data = await httpGetJson(`https://rdap.org/domain/${encodeURIComponent(domain)}`, 10000)
+            const events = data.events || []
+            const created = events.find(e => e.eventAction === 'registration')?.eventDate || '-'
+            const expires = events.find(e => e.eventAction === 'expiration')?.eventDate || '-'
+            const registrar = (data.entities || []).find(e => (e.roles || []).includes('registrar'))
+            const registrarName = registrar?.vcardArray?.[1]?.find(v => v[0] === 'fn')?.[3] || '-'
+            return reply(skInfo('📇', 'WHOIS', [
+                ['DOMAIN', data.ldhName || domain],
+                ['REGISTRAR', registrarName],
+                ['CREATED', created.slice(0, 10)],
+                ['EXPIRES', expires.slice(0, 10)],
+                ['STATUS', (data.status || []).slice(0, 2).join(', ') || '-']
+            ]))
+        } catch (e) {
+            console.log('.whois error:', e?.message || e)
+            return reply(skError('Lookup failed.'))
+        }
+    }
+
+    if (cmd === 'afk') {
+        if (!isGroup) return reply(skError('Group only.'))
+        const reason = args.join(' ') || 'Away'
+        if (!ctx.afk[from]) ctx.afk[from] = {}
+        ctx.afk[from][cleanJid(sender)] = { reason, at: Date.now() }
+        return reply(skSuccess('AFK SET', reason))
+    }
+    if (cmd === 'back') {
+        if (!isGroup) return reply(skError('Group only.'))
+        if (ctx.afk[from]) delete ctx.afk[from][cleanJid(sender)]
+        return reply(skSuccess('BACK', bold('ACTIVE')))
+    }
+
+    if (cmd === 'profile') {
+        if (!isGroup) return reply(skError('Group only.'))
+        const target = getTarget(content) || sender
+        const tJid = cleanJid(target)
+        const act = (ctx.activity[from] && ctx.activity[from][tJid]) || { count: 0 }
+        const warns = (ctx.warningCounts[from] && ctx.warningCounts[from][tJid]) || 0
+        const seen = (ctx.firstSeen[from] && ctx.firstSeen[from][tJid])
+        return sock.sendMessage(from, {
+            text: skInfo('👤', 'PROFILE', [
+                ['USER', `@${cleanNumber(target)}`],
+                ['MESSAGES', String(act.count || 0)],
+                ['WARNINGS', String(warns)],
+                ['FIRST SEEN', seen ? new Date(seen).toLocaleDateString() : 'unknown']
+            ]),
+            mentions: [target]
+        }, { quoted: msg })
+    }
+
+    if (cmd === 'groupstats') {
+        if (!(await needGroup())) return
+        try {
+            const meta = await getGroupMeta(ctx, sock, from, true)
+            const admins = meta.participants.filter(p => p.admin).length
+            const act = (ctx.activity[from]) || {}
+            const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000
+            const inactive = meta.participants.filter(p => {
+                const a = act[cleanJid(p.id)]
+                return !a || a.last < cutoff
+            }).length
+            const totalMessages = Object.values(act).reduce((sum, v) => sum + (v.count || 0), 0)
+            return reply(skInfo('📊', 'GROUP STATS', [
+                ['NAME', meta.subject],
+                ['MEMBERS', String(meta.participants.length)],
+                ['ADMINS', String(admins)],
+                ['INACTIVE 7D', String(inactive)],
+                ['TRACKED MSGS', String(totalMessages)]
+            ]))
+        } catch (e) { return reply(skError('Failed to compute stats.')) }
+    }
+
+    if (cmd === 'resetallwarns') {
+        if (!(await needManage())) return
+        ctx.warningCounts[from] = {}
+        return reply(skSuccess('RESET ALL WARNS', bold('CLEARED')))
     }
 
     if (cmd === 'sticker') {
@@ -1451,14 +1697,14 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     if (cmd === 'tt') {
         if (!YTDLP_AVAILABLE) return
         if (isGroup) return reply(skError('.tt only works in private chat.'))
-        if (!owner) return reply(skError('Owner only.'))
+        if (!owner) return reply(skDenied('👑 ' + bold('OWNER')))
         const url = args[0]
         if (!url || !isTikTokUrl(url)) return reply(skError('Invalid TikTok URL.'))
         const tnow = Date.now()
         ctx.ttUsage = (ctx.ttUsage || []).filter(t => tnow - t < 3600000)
         if (ctx.ttUsage.length >= 2) return reply(skError('TikTok limit reached. Try later.'))
         ctx.ttUsage.push(tnow)
-        await reply(skBasic('📥', [['STATUS', '⏳ DOWNLOADING'], ['SOURCE', 'TikTok']]))
+        await reply(skInfo('📥', 'DOWNLOADING', [['STATUS', '⏳ ' + bold('IN PROGRESS')], ['SOURCE', 'TikTok']]))
         const outPath = path.join(os.tmpdir(), `tt_${crypto.randomBytes(6).toString('hex')}.mp4`)
         try {
             await runYtDlp(url, outPath)
@@ -1493,19 +1739,19 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 if (!r.ok) return reply(skError('Could not remove them. Am I admin?'))
                 delete ctx.warningCounts[from][key]
                 return sock.sendMessage(from, {
-                    text: skGroup('🚫', 'KICKED', [
+                    text: skInfo('🚫', 'KICKED', [
                         ['USER', `@${cleanNumber(target)}`],
                         ['COUNT', `${limit} / ${limit}`]
-                    ], sender),
+                    ]),
                     mentions: [target]
                 })
             } catch (e) { return reply(skError('Failed to kick.')) }
         }
         return sock.sendMessage(from, {
-            text: skGroup('⚠️', 'WARN', [
+            text: skInfo('⚠️', 'WARN', [
                 ['USER', `@${cleanNumber(target)}`],
                 ['COUNT', `${count} / ${limit}`]
-            ], sender),
+            ]),
             mentions: [target]
         })
     }
@@ -1515,15 +1761,15 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!num || num < 1) return reply(skError('Usage: ' + prefix + 'warncount <n>'))
         ctx.warnLimit[from] = num
         saveCtx(ctx)
-        return reply(skGroup('⚙️', 'WARN LIMIT', [['LIMIT', String(num)]], sender))
+        return reply(skSuccess('WARN LIMIT', String(num)))
     }
     if (cmd === 'warnlist') {
         if (!(await needManage())) return
         const list = ctx.warningCounts[from] || {}
         const keys = Object.keys(list)
-        if (keys.length === 0) return reply(skBasic('📋', [['WARNED', 'none']]))
+        if (keys.length === 0) return reply(skInfo('📋', 'WARN LIST', [['WARNED', 'none']]))
         const lines = keys.map(k => `• ${cleanNumber(k)} ─→ ${list[k]}`).join('\n')
-        return reply(skContent('📋', 'WARN LIST', '\n' + lines))
+        return reply(skLine('📋', 'WARN LIST', lines))
     }
     if (cmd === 'resetwarn') {
         if (!(await needManage())) return
@@ -1531,7 +1777,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!target) return reply(skError('Mention or reply to a user.'))
         if (ctx.warningCounts[from]) delete ctx.warningCounts[from][cleanJid(target)]
         return sock.sendMessage(from, {
-            text: skGroup('✅', 'RESET WARN', [['USER', `@${cleanNumber(target)}`], ['STATUS', '🟢 CLEARED']], sender),
+            text: skSuccess('RESET WARN', `@${cleanNumber(target)}`),
             mentions: [target]
         })
     }
@@ -1540,14 +1786,24 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     if (protectCmds.includes(cmd)) {
         if (!(await needManage())) return
         if (!ctx.groupSettings[from]) ctx.groupSettings[from] = {}
+        const emoji = { antilink: '🔗', antispam: '🚫', antibot: '🤖', antimedia: '🖼️', antitag: '🏷️', antiforward: '↪️' }[cmd]
+        const labelMap = {
+            antilink: 'ANTI LINK',
+            antispam: 'ANTI SPAM',
+            antibot: 'ANTI BOT',
+            antimedia: 'ANTI MEDIA',
+            antitag: 'ANTI TAG',
+            antiforward: 'ANTI FORWARD'
+        }
         if (args[0] === 'on' || args[0] === 'off') {
             ctx.groupSettings[from][cmd] = args[0] === 'on'
             saveCtx(ctx)
-            const emoji = { antilink: '🔗', antispam: '🚫', antibot: '🤖', antimedia: '🖼️', antitag: '🏷️', antiforward: '↪️' }[cmd]
-            return reply(skGroup(emoji, cmd.toUpperCase(), [['STATUS', args[0] === 'on' ? '🟢 ENABLED' : '🔴 DISABLED']], sender))
+            return reply(skInfo(emoji, labelMap[cmd], [
+                ['STATUS', args[0] === 'on' ? '🟢 ' + bold('ENABLED') : '🔴 ' + bold('DISABLED')]
+            ]))
         }
-        const cur = ctx.groupSettings[from][cmd] ? '🟢 ON' : '🔴 OFF'
-        return reply(skBasic('🛡️', [[cmd.toUpperCase(), cur]]))
+        const cur = ctx.groupSettings[from][cmd] ? '🟢 ' + bold('ENABLED') : '🔴 ' + bold('DISABLED')
+        return reply(skInfo(emoji, labelMap[cmd], [['STATUS', cur]]))
     }
 
     if (cmd === 'lockdown') {
@@ -1556,12 +1812,13 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const s = ctx.groupSettings[from]
         s.antilink = true; s.antimedia = true; s.antitag = true; s.antiforward = true; s.antispam = true
         saveCtx(ctx)
-        try { await sock.groupSettingUpdate(from, 'announcement') } catch (e) {}
-        return reply(skGroup('🔒', 'LOCKDOWN', [
-            ['ANTILINK', '🟢 ON'], ['ANTISPAM', '🟢 ON'],
-            ['ANTIMEDIA', '🟢 ON'], ['ANTITAG', '🟢 ON'],
-            ['ANTIFORWARD', '🟢 ON'], ['GROUP MUTE', '🔒 ADMINS ONLY']
-        ], sender))
+        return reply(skInfo('🔒', 'LOCKDOWN', [
+            ['ANTILINK', '🟢 ' + bold('ON')],
+            ['ANTISPAM', '🟢 ' + bold('ON')],
+            ['ANTIMEDIA', '🟢 ' + bold('ON')],
+            ['ANTITAG', '🟢 ' + bold('ON')],
+            ['ANTIFORWARD', '🟢 ' + bold('ON')]
+        ]))
     }
     if (cmd === 'unlockdown') {
         if (!(await needManage())) return
@@ -1569,12 +1826,13 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const s = ctx.groupSettings[from]
         s.antilink = false; s.antimedia = false; s.antitag = false; s.antiforward = false; s.antispam = false
         saveCtx(ctx)
-        try { await sock.groupSettingUpdate(from, 'not_announcement') } catch (e) {}
-        return reply(skGroup('🔓', 'UNLOCKDOWN', [
-            ['ANTILINK', '🔴 OFF'], ['ANTISPAM', '🔴 OFF'],
-            ['ANTIMEDIA', '🔴 OFF'], ['ANTITAG', '🔴 OFF'],
-            ['ANTIFORWARD', '🔴 OFF'], ['GROUP MUTE', '🟢 EVERYONE']
-        ], sender))
+        return reply(skInfo('🔓', 'UNLOCKDOWN', [
+            ['ANTILINK', '🔴 ' + bold('OFF')],
+            ['ANTISPAM', '🔴 ' + bold('OFF')],
+            ['ANTIMEDIA', '🔴 ' + bold('OFF')],
+            ['ANTITAG', '🔴 ' + bold('OFF')],
+            ['ANTIFORWARD', '🔴 ' + bold('OFF')]
+        ]))
     }
 
     if (cmd === 'kick') {
@@ -1594,10 +1852,16 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             const r = await participantsUpdate(sock, from, filtered, 'remove')
             if (!r.ok) return reply(skError('Could not kick. Am I admin?'))
+            let count = null
+            try {
+                const meta = await getGroupMeta(ctx, sock, from, true)
+                count = meta.participants.length
+            } catch (e) {}
+            const fields = [['USER', filtered.map(t => '@' + cleanNumber(t)).join(', ')]]
+            fields.push(['STATUS', '🔴 ' + bold('KICKED OUT')])
+            if (count !== null) fields.push(['REMAINING MEMBERS', String(count)])
             return sock.sendMessage(from, {
-                text: skGroup('👢', 'KICK', [
-                    ['USERS', filtered.map(t => '@' + cleanNumber(t)).join(', ')]
-                ], sender),
+                text: skInfo('👢', 'KICK', fields) + '\n\n⚔️ ' + bold('THE REALM HAS MADE ITS DECISION.'),
                 mentions: filtered
             })
         } catch (e) { return reply(skError('Failed to kick.')) }
@@ -1609,7 +1873,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (digits.length < 7) return reply(skError('Usage: ' + prefix + 'add <number>'))
         try {
             const r = await participantsUpdate(sock, from, [normalizeJid(digits)], 'add')
-            if (r.ok) return reply(skGroup('➕', 'ADD', [['USER', `+${digits}`], ['STATUS', '🟢 ADDED']], sender))
+            if (r.ok) return reply(skSuccess('ADD', `+${digits}`))
             const st = String(r.res?.[0]?.status)
             if (st === '403') return reply(skError('User only allows adds via link.'))
             if (st === '409') return reply(skError('Already in group.'))
@@ -1625,13 +1889,14 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             const r = await participantsUpdate(sock, from, [target], cmd)
             if (!r.ok) return reply(skError(`Could not ${cmd}. Am I admin?`))
-            const newRole = cmd === 'promote' ? '👑 ADMIN' : '👤 MEMBER'
+            const newRole = cmd === 'promote' ? '👑 ' + bold('ADMIN') : '👤 ' + bold('MEMBER')
             const emoji = cmd === 'promote' ? '👑' : '⬇️'
+            const label = cmd === 'promote' ? 'PROMOTE' : 'DEMOTE'
             return sock.sendMessage(from, {
-                text: skGroup(emoji, cmd.toUpperCase() + 'D', [
+                text: skInfo(emoji, label, [
                     ['USER', `@${cleanNumber(target)}`],
-                    ['ROLE', newRole]
-                ], sender),
+                    ['NEW ROLE', newRole]
+                ]),
                 mentions: [target]
             })
         } catch (e) { return reply(skError(`Failed to ${cmd}.`)) }
@@ -1642,7 +1907,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const meta = await getGroupMeta(ctx, sock, from, true)
         const creator = meta.owner || meta.creator || null
         const admins = meta.participants.filter(p => p.admin && p.id !== creator && !isBotJid(sock, p.id))
-        if (admins.length === 0) return reply(skBasic('✅', [['ADMINS', 'none to demote']]))
+        if (admins.length === 0) return reply(skInfo('✅', 'DEMOTE ALL', [['ADMINS', 'none to demote']]))
         ctx.pendingConfirm[from] = { action: 'demoteall', by: sender, ts: Date.now(), label: 'DEMOTE ALL', targets: admins.map(a => a.id) }
         return reply(skConfirmBox('DEMOTE ALL ADMINS', sender, `Will demote ${admins.length} admin(s). Creator is exempt.`))
     }
@@ -1667,7 +1932,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     if (cmd === 'left') {
         if (!(await needManage())) return
         try {
-            await reply(skBasic('👋', [['STATUS', '🚪 LEAVING GROUP']]))
+            await reply(skInfo('👋', 'LEAVE', [['STATUS', '🚪 ' + bold('LEAVING GROUP')]]))
             await sleep(1500)
             await sock.groupLeave(from)
         } catch (e) { return reply(skError('Failed to leave.')) }
@@ -1676,11 +1941,20 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
 
     if (cmd === 'mute' || cmd === 'unmute') {
         if (!(await needManage())) return
+        let gname = null
+        try {
+            const meta = await getGroupMeta(ctx, sock, from)
+            gname = meta.subject
+        } catch (e) {}
         try {
             await sock.groupSettingUpdate(from, cmd === 'mute' ? 'announcement' : 'not_announcement')
             const emoji = cmd === 'mute' ? '🔇' : '🔊'
-            const grp = cmd === 'mute' ? '🔒 ADMINS ONLY' : '🟢 EVERYONE'
-            return reply(skGroup(emoji, cmd.toUpperCase() + ' GROUP', [['GROUP', grp]], sender))
+            const title = cmd === 'mute' ? 'GROUP MUTED' : 'GROUP UNMUTED'
+            const statusText = cmd === 'mute' ? '🔒 ' + bold('ADMINS ONLY') : '🟢 ' + bold('EVERYONE')
+            const fields = []
+            if (gname) fields.push(['GROUP', gname])
+            fields.push(['STATUS', statusText])
+            return reply(skInfo(emoji, title, fields))
         } catch (e) { return reply(skError('Failed. Am I admin?')) }
     }
 
@@ -1689,13 +1963,21 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             const meta = await getGroupMeta(ctx, sock, from, true)
             const mentions = meta.participants.map(p => p.id)
-            const message = args.join(' ') || 'Attention everyone!'
+            const custom = args.join(' ')
+
             if (cmd === 'hidetag') {
-                return sock.sendMessage(from, { text: message, mentions })
+                let out = `${SK_HEADER}\n\n📢 ${bold('ATTENTION')}`
+                if (custom) out += `\n\n${custom}`
+                out += `\n\n${SK_FOOTER}`
+                return sock.sendMessage(from, { text: out, mentions })
             }
-            const lines = ['*Tag All*', '', message, '']
-            mentions.forEach(jid => { lines.push(`@${cleanNumber(jid)}`) })
-            return sock.sendMessage(from, { text: lines.join('\n'), mentions })
+
+            let out = `${SK_HEADER}\n\n📢 ${bold('ATTENTION EVERYONE')}`
+            if (custom) out += `\n\n${custom}`
+            out += `\n\n◈ ${bold('GROUP')}\n└─ ${meta.subject}\n`
+            out += `◈ ${bold('MEMBERS')}\n└─ ${meta.participants.length}`
+            out += `\n\n${SK_FOOTER}`
+            return sock.sendMessage(from, { text: out, mentions })
         } catch (e) { return reply(skError('Failed to fetch members.')) }
     }
 
@@ -1705,7 +1987,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!ci?.stanzaId) return reply(skError('Reply to a message to pin it.'))
         try {
             await sock.sendMessage(from, { pin: { remoteJid: from, id: ci.stanzaId, fromMe: false, participant: ci.participant } })
-            return reply(skBasic('📌', [['STATUS', '🟢 PINNED']]))
+            return reply(skSuccess('PIN', '📌'))
         } catch (e) { return reply(skError('Pin not supported by this Baileys version.')) }
     }
 
@@ -1717,8 +1999,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ['NAME', meta.subject],
                 ['ID', meta.id],
                 ['MEMBERS', String(meta.participants.length)],
-                ['ADMINS', String(meta.participants.filter(p => p.admin).length)],
-                ['CREATOR', cleanNumber(meta.owner || 'unknown')]
+                ['ADMINS', String(meta.participants.filter(p => p.admin).length)]
             ]))
         } catch (e) { return reply(skError('Failed to fetch group info.')) }
     }
@@ -1727,15 +2008,40 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!(await needGroup())) return
         try {
             const meta = await getGroupMeta(ctx, sock, from, true)
-            return reply(skContent('📝', 'GROUP DESC', meta.desc || '(empty)'))
+            return reply(skLine('📝', 'GROUP DESC', meta.desc || '(empty)'))
         } catch (e) { return reply(skError('Failed to fetch description.')) }
     }
 
-    if (cmd === 'link') {
+    if (cmd === 'invitelink' || cmd === 'link') {
         if (!(await needManage())) return
+        const targetDigits = (args[0] || '').replace(/[^0-9]/g, '')
         try {
+            const meta = await getGroupMeta(ctx, sock, from, true)
+            const gname = meta.subject
             const code = await sock.groupInviteCode(from)
-            return reply(skInfo('🔗', 'GROUP LINK', [['GROUP', (await getGroupMeta(ctx, sock, from)).subject], ['LINK', `https://chat.whatsapp.com/${code}`]]))
+            const link = `https://chat.whatsapp.com/${code}`
+            const byNum = senderNumber || cleanNumber(sender)
+
+            if (targetDigits && targetDigits.length >= 7) {
+                const toJid = normalizeJid(targetDigits)
+                try {
+                    await sock.sendMessage(toJid, {
+                        text: skInfo('🔗', 'GROUP INVITE', [
+                            ['GROUP', gname],
+                            ['INVITED BY', byNum ? `+${byNum}` : 'admin'],
+                            ['LINK', link]
+                        ])
+                    })
+                    return reply(skSuccess('INVITE SENT', `+${targetDigits}`))
+                } catch (e) {
+                    return reply(skError('Could not deliver. Number may not be on WhatsApp.'))
+                }
+            }
+
+            return reply(skInfo('🔗', 'GROUP LINK', [
+                ['GROUP', gname],
+                ['LINK', link]
+            ]))
         } catch (e) { return reply(skError('Failed. Am I admin?')) }
     }
 
@@ -1743,7 +2049,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!(await needManage())) return
         try {
             await sock.groupRevokeInvite(from)
-            return reply(skGroup('🔐', 'REVOKE LINK', [['STATUS', '🟢 NEW LINK GENERATED']], sender))
+            return reply(skSuccess('REVOKE LINK', bold('NEW LINK GENERATED')))
         } catch (e) { return reply(skError('Failed. Am I admin?')) }
     }
 
@@ -1753,7 +2059,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const meta = await getGroupMeta(ctx, sock, from, true)
             const admins = meta.participants.filter(p => p.admin)
             const lines = admins.map(a => `• ${cleanNumber(a.id)}`).join('\n')
-            return reply(skContent('👑', 'GROUP ADMINS', '\n' + lines))
+            return reply(skLine('👑', `GROUP ADMINS (${admins.length})`, lines))
         } catch (e) { return reply(skError('Failed to fetch admins.')) }
     }
 
@@ -1762,7 +2068,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             const meta = await getGroupMeta(ctx, sock, from, true)
             const lines = meta.participants.map(p => `• ${cleanNumber(p.id)}`).join('\n')
-            return reply(skContent('👥', `MEMBERS (${meta.participants.length})`, '\n' + lines))
+            return reply(skLine('👥', `MEMBERS (${meta.participants.length})`, lines))
         } catch (e) { return reply(skError('Failed to fetch members.')) }
     }
 
@@ -1770,8 +2076,8 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             const all = await sock.groupFetchAllParticipating()
             const entries = Object.values(all).map(g => `• ${g.subject} ─→ ${cleanNumber(g.id)}`)
-            if (entries.length === 0) return reply(skBasic('📡', [['GROUPS', 'none']]))
-            return reply(skContent('📡', `GROUPS (${entries.length})`, '\n' + entries.join('\n')))
+            if (entries.length === 0) return reply(skInfo('📡', 'GROUPS', [['GROUPS', 'none']]))
+            return reply(skLine('📡', `GROUPS (${entries.length})`, entries.join('\n')))
         } catch (e) { return reply(skError('Failed to fetch groups.')) }
     }
 
@@ -1780,9 +2086,9 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             const act = (ctx.activity && ctx.activity[from]) || {}
             const entries = Object.entries(act).sort((a, b) => (b[1].count || 0) - (a[1].count || 0)).slice(0, 10)
-            if (entries.length === 0) return reply(skBasic('📊', [['ACTIVITY', 'no data yet']]))
+            if (entries.length === 0) return reply(skInfo('📊', 'ACTIVITY', [['ACTIVITY', 'no data yet']]))
             const lines = entries.map(([jid, v]) => `• ${cleanNumber(jid)} ─→ ${v.count || 0}`).join('\n')
-            return reply(skContent('📊', 'TOP MEMBERS', '\n' + lines))
+            return reply(skLine('📊', 'TOP MEMBERS', lines))
         } catch (e) { return reply(skError('Failed to compute.')) }
     }
 
@@ -1799,29 +2105,29 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!(await needManage())) return
         try {
             const list = await sock.groupRequestParticipantsList(from)
-            if (!list || list.length === 0) return reply(skBasic('📋', [['REQUESTS', 'none']]))
+            if (!list || list.length === 0) return reply(skInfo('📋', 'REQUESTS', [['REQUESTS', 'none']]))
             const lines = list.map(r => `• ${cleanNumber(r.jid)}`).join('\n')
-            return reply(skContent('📋', `JOIN REQUESTS (${list.length})`, '\n' + lines))
+            return reply(skLine('📋', `JOIN REQUESTS (${list.length})`, lines))
         } catch (e) { return reply(skError('Failed to fetch requests.')) }
     }
     if (cmd === 'approveall') {
         if (!(await needManage())) return
         try {
             const list = await sock.groupRequestParticipantsList(from)
-            if (!list || list.length === 0) return reply(skBasic('✅', [['REQUESTS', 'none']]))
+            if (!list || list.length === 0) return reply(skInfo('✅', 'REQUESTS', [['REQUESTS', 'none']]))
             const jids = list.map(r => r.jid)
             await sock.groupRequestParticipantsUpdate(from, jids, 'approve')
-            return reply(skGroup('✅', 'APPROVE ALL', [['COUNT', String(jids.length)]], sender))
+            return reply(skSuccess('APPROVE ALL', `${jids.length} request(s)`))
         } catch (e) { return reply(skError('Failed to approve.')) }
     }
     if (cmd === 'rejectall') {
         if (!(await needManage())) return
         try {
             const list = await sock.groupRequestParticipantsList(from)
-            if (!list || list.length === 0) return reply(skBasic('❌', [['REQUESTS', 'none']]))
+            if (!list || list.length === 0) return reply(skInfo('❌', 'REQUESTS', [['REQUESTS', 'none']]))
             const jids = list.map(r => r.jid)
             await sock.groupRequestParticipantsUpdate(from, jids, 'reject')
-            return reply(skGroup('❌', 'REJECT ALL', [['COUNT', String(jids.length)]], sender))
+            return reply(skSuccess('REJECT ALL', `${jids.length} request(s)`))
         } catch (e) { return reply(skError('Failed to reject.')) }
     }
 
@@ -1831,7 +2137,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!txt) return reply(skError('Usage: ' + prefix + 'setname <name>'))
         try {
             await sock.groupUpdateSubject(from, txt)
-            return reply(skGroup('📝', 'NAME CHANGED', [['NEW NAME', txt]], sender))
+            return reply(skInfo('📝', 'NAME CHANGED', [['NEW NAME', txt]]))
         } catch (e) { return reply(skError('Failed. Am I admin?')) }
     }
     if (cmd === 'setdesc') {
@@ -1840,21 +2146,23 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!txt) return reply(skError('Usage: ' + prefix + 'setdesc <text>'))
         try {
             await sock.groupUpdateDescription(from, txt)
-            return reply(skGroup('📝', 'DESC UPDATED', [['STATUS', '🟢 SAVED']], sender))
+            return reply(skSuccess('DESC UPDATED', bold('SAVED')))
         } catch (e) { return reply(skError('Failed. Am I admin?')) }
     }
 
     if (cmd === 'welcome' || cmd === 'goodbye') {
         if (!(await needManage())) return
         if (!ctx.welcomeSettings[from]) ctx.welcomeSettings[from] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
+        const emoji = cmd === 'welcome' ? '🎉' : '👋'
         if (args[0] === 'on' || args[0] === 'off') {
             ctx.welcomeSettings[from][cmd] = args[0] === 'on'
             saveCtx(ctx)
-            const emoji = cmd === 'welcome' ? '🎉' : '👋'
-            return reply(skGroup(emoji, cmd.toUpperCase(), [['STATUS', args[0] === 'on' ? '🟢 ENABLED' : '🔴 DISABLED']], sender))
+            return reply(skInfo(emoji, cmd.toUpperCase(), [
+                ['STATUS', args[0] === 'on' ? '🟢 ' + bold('ENABLED') : '🔴 ' + bold('DISABLED')]
+            ]))
         }
-        const cur = ctx.welcomeSettings[from][cmd] ? '🟢 ON' : '🔴 OFF'
-        return reply(skBasic('⚙️', [[cmd.toUpperCase(), cur]]))
+        const cur = ctx.welcomeSettings[from][cmd] ? '🟢 ' + bold('ON') : '🔴 ' + bold('OFF')
+        return reply(skInfo(emoji, cmd.toUpperCase(), [['STATUS', cur]]))
     }
     if (cmd === 'setwelcome' || cmd === 'setgoodbye') {
         if (!(await needManage())) return
@@ -1863,21 +2171,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!ctx.welcomeSettings[from]) ctx.welcomeSettings[from] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
         ctx.welcomeSettings[from][cmd === 'setwelcome' ? 'welcomeMsg' : 'goodbyeMsg'] = txt
         saveCtx(ctx)
-        return reply(skGroup('📝', 'SET MESSAGE', [['TYPE', cmd.toUpperCase().replace('SET', '')], ['STATUS', '🟢 SAVED']], sender))
-    }
-
-    if (cmd === 'promotenotify' || cmd === 'demotenotify') {
-        if (!(await needManage())) return
-        if (!ctx.welcomeSettings[from]) ctx.welcomeSettings[from] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '', promote: false, demote: false }
-        const key = cmd === 'promotenotify' ? 'promote' : 'demote'
-        if (args[0] === 'on' || args[0] === 'off') {
-            ctx.welcomeSettings[from][key] = args[0] === 'on'
-            saveCtx(ctx)
-            const emoji = key === 'promote' ? '👑' : '⬇️'
-            return reply(skGroup(emoji, cmd.toUpperCase(), [['STATUS', args[0] === 'on' ? '🟢 ENABLED' : '🔴 DISABLED']], sender))
-        }
-        const cur = ctx.welcomeSettings[from][key] ? '🟢 ON' : '🔴 OFF'
-        return reply(skBasic('⚙️', [[cmd.toUpperCase(), cur]]))
+        return reply(skSuccess('SET MESSAGE', cmd.toUpperCase().replace('SET', '')))
     }
 
     if (cmd === 'poll') {
@@ -1887,14 +2181,14 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const [question, ...options] = parts
         ctx.activePolls[from] = { question, options, votes: {} }
         const optLines = options.map((opt, i) => `${i + 1}. ${opt}`).join('\n')
-        return reply(skContent('📊', 'POLL', `${question}\n\n${optLines}\n\nVote with ${prefix}vote <n>`))
+        return reply(skLine('📊', 'POLL', `${question}\n\n${optLines}\n\nVote with ${prefix}vote <n>`))
     }
     if (cmd === 'vote') {
         if (!ctx.activePolls[from]) return reply(skError('No active poll.'))
         const num = parseInt(args[0]) - 1
         if (isNaN(num) || num < 0 || num >= ctx.activePolls[from].options.length) return reply(skError('Invalid vote.'))
         ctx.activePolls[from].votes[cleanJid(sender)] = num
-        return reply(skBasic('🗳️', [['VOTED', ctx.activePolls[from].options[num]]]))
+        return reply(skSuccess('VOTED', ctx.activePolls[from].options[num]))
     }
     if (cmd === 'endpoll') {
         if (!(await needManage())) return
@@ -1905,7 +2199,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         Object.values(poll.votes).forEach(v => { tally[v]++ })
         const lines = poll.options.map((opt, i) => `${opt}: ${tally[i]}`).join('\n')
         delete ctx.activePolls[from]
-        return reply(skContent('📊', 'POLL RESULTS', `${poll.question}\n\n${lines}`))
+        return reply(skLine('📊', 'POLL RESULTS', `${poll.question}\n\n${lines}`))
     }
 
     return
@@ -1922,10 +2216,10 @@ async function executeConfirmed(sock, ctx, msg, content, from, isGroup, sender, 
             const jids = admins.map(a => a.id)
             await sock.groupParticipantsUpdate(from, jids, 'demote')
             await sock.sendMessage(from, {
-                text: skGroup('⬇️', 'DEMOTE ALL', [
+                text: skInfo('⬇️', 'DEMOTE ALL', [
                     ['ADMINS DEMOTED', String(jids.length)],
-                    ['EXEMPT', '👑 CREATOR']
-                ], sender),
+                    ['EXEMPT', '👑 ' + bold('CREATOR')]
+                ]),
                 mentions: jids
             })
         } catch (e) {
@@ -1949,14 +2243,14 @@ async function executeConfirmed(sock, ctx, msg, content, from, isGroup, sender, 
                 return last < cutoff
             }).map(p => p.id)
             if (inactive.length === 0) {
-                return sock.sendMessage(from, { text: skBasic('✅', [['INACTIVE', 'none found']]) })
+                return sock.sendMessage(from, { text: skInfo('✅', 'KICK INACTIVE', [['INACTIVE', 'none found']]) })
             }
             await sock.groupParticipantsUpdate(from, inactive, 'remove')
             await sock.sendMessage(from, {
-                text: skGroup('👢', 'KICK INACTIVE', [
+                text: skInfo('👢', 'KICK INACTIVE', [
                     ['DAYS', String(days)],
                     ['KICKED', String(inactive.length)]
-                ], sender),
+                ]),
                 mentions: inactive
             })
         } catch (e) {
@@ -1965,77 +2259,77 @@ async function executeConfirmed(sock, ctx, msg, content, from, isGroup, sender, 
         }
         return
     }
-}// ─────────────────────────── menu ───────────────────────────
+}
+
+// ─────────────────────────── menu ───────────────────────────
 function renderGroupCommandsBox(p) {
     return (
-        `╭━〔 👥 *GROUP COMMANDS* 〕━╮\n` +
+        `👥 ${bold('GROUP COMMANDS')}\n` +
         `\n` +
-        `  🛡️ *PROTECTION*\n` +
-        `  ▸ ${p}antilink ─→ Block links\n` +
-        `  ▸ ${p}antispam ─→ Block spam\n` +
-        `  ▸ ${p}antibot ─→ Remove bots\n` +
-        `  ▸ ${p}antimedia ─→ Block media\n` +
-        `  ▸ ${p}antitag ─→ Block mass tags\n` +
-        `  ▸ ${p}antiforward ─→ Block forwarded\n` +
-        `  ▸ ${p}lockdown ─→ Lock everything\n` +
-        `  ▸ ${p}unlockdown ─→ Unlock everything\n` +
+        `◈ 🛡️ ${bold('PROTECTION')}\n` +
+        `└─ ${p}antilink ─→ Block links\n` +
+        `└─ ${p}antispam ─→ Block spam\n` +
+        `└─ ${p}antibot ─→ Remove bots\n` +
+        `└─ ${p}antimedia ─→ Block media\n` +
+        `└─ ${p}antitag ─→ Block mass tags\n` +
+        `└─ ${p}antiforward ─→ Block forwarded\n` +
+        `└─ ${p}lockdown ─→ Enable all anti filters\n` +
+        `└─ ${p}unlockdown ─→ Disable all anti filters\n` +
         `\n` +
-        `  👤 *MEMBERS*\n` +
-        `  ▸ ${p}kick ─→ Remove user(s)\n` +
-        `  ▸ ${p}add ─→ Add user\n` +
-        `  ▸ ${p}promote ─→ Make admin\n` +
-        `  ▸ ${p}demote ─→ Remove admin\n` +
-        `  ▸ ${p}demoteall ─→ Demote all admins\n` +
-        `  ▸ ${p}mute ─→ Lock chat\n` +
-        `  ▸ ${p}unmute ─→ Unlock chat\n` +
-        `  ▸ ${p}del ─→ Delete a message\n` +
-        `  ▸ ${p}left ─→ Bot leaves group\n` +
-        `  ▸ ${p}topmembers ─→ Most active\n` +
-        `  ▸ ${p}kickinactive ─→ Kick idle\n` +
+        `◈ 👤 ${bold('MEMBERS')}\n` +
+        `└─ ${p}kick ─→ Remove user(s)\n` +
+        `└─ ${p}add ─→ Add user\n` +
+        `└─ ${p}promote ─→ Make admin\n` +
+        `└─ ${p}demote ─→ Remove admin\n` +
+        `└─ ${p}demoteall ─→ Demote all admins\n` +
+        `└─ ${p}mute ─→ Lock chat\n` +
+        `└─ ${p}unmute ─→ Unlock chat\n` +
+        `└─ ${p}del ─→ Delete a message\n` +
+        `└─ ${p}left ─→ Bot leaves group\n` +
+        `└─ ${p}topmembers ─→ Most active\n` +
+        `└─ ${p}kickinactive ─→ Kick idle\n` +
         `\n` +
-        `  📢 *COMMUNICATION*\n` +
-        `  ▸ ${p}tagall ─→ Tag everyone\n` +
-        `  ▸ ${p}hidetag ─→ Silent tag\n` +
-        `  ▸ ${p}pin ─→ Pin replied msg\n` +
+        `◈ 📢 ${bold('COMMUNICATION')}\n` +
+        `└─ ${p}tagall ─→ Tag everyone\n` +
+        `└─ ${p}hidetag ─→ Silent tag\n` +
+        `└─ ${p}pin ─→ Pin replied msg\n` +
         `\n` +
-        `  📊 *INFO*\n` +
-        `  ▸ ${p}groupinfo ─→ Group details\n` +
-        `  ▸ ${p}groupdesc ─→ Group desc\n` +
-        `  ▸ ${p}link ─→ Invite link\n` +
-        `  ▸ ${p}revoke ─→ Reset link\n` +
-        `  ▸ ${p}admins ─→ List admins\n` +
-        `  ▸ ${p}members ─→ List members\n` +
-        `  ▸ ${p}grouplist ─→ All groups\n` +
+        `◈ 📊 ${bold('INFO')}\n` +
+        `└─ ${p}groupinfo ─→ Group details\n` +
+        `└─ ${p}groupdesc ─→ Group desc\n` +
+        `└─ ${p}groupstats ─→ Group statistics\n` +
+        `└─ ${p}invitelink ─→ Send invite link\n` +
+        `└─ ${p}revoke ─→ Reset link\n` +
+        `└─ ${p}admins ─→ List admins\n` +
+        `└─ ${p}members ─→ List members\n` +
+        `└─ ${p}grouplist ─→ All groups\n` +
         `\n` +
-        `  🚪 *JOIN REQUESTS*\n` +
-        `  ▸ ${p}requests ─→ Pending list\n` +
-        `  ▸ ${p}approveall ─→ Approve all\n` +
-        `  ▸ ${p}rejectall ─→ Reject all\n` +
+        `◈ 🚪 ${bold('JOIN REQUESTS')}\n` +
+        `└─ ${p}requests ─→ Pending list\n` +
+        `└─ ${p}approveall ─→ Approve all\n` +
+        `└─ ${p}rejectall ─→ Reject all\n` +
         `\n` +
-        `  ⚙️ *SETTINGS*\n` +
-        `  ▸ ${p}setname ─→ Change name\n` +
-        `  ▸ ${p}setdesc ─→ Change desc\n` +
+        `◈ ⚙️ ${bold('SETTINGS')}\n` +
+        `└─ ${p}setname ─→ Change name\n` +
+        `└─ ${p}setdesc ─→ Change desc\n` +
         `\n` +
-        `  🎉 *WELCOME*\n` +
-        `  ▸ ${p}welcome ─→ Toggle welcome\n` +
-        `  ▸ ${p}goodbye ─→ Toggle goodbye\n` +
-        `  ▸ ${p}setwelcome ─→ Set welcome\n` +
-        `  ▸ ${p}setgoodbye ─→ Set goodbye\n` +
-        `  ▸ ${p}promotenotify ─→ Toggle promote msg\n` +
-        `  ▸ ${p}demotenotify ─→ Toggle demote msg\n` +
+        `◈ 🎉 ${bold('WELCOME')}\n` +
+        `└─ ${p}welcome ─→ Toggle welcome\n` +
+        `└─ ${p}goodbye ─→ Toggle goodbye\n` +
+        `└─ ${p}setwelcome ─→ Set welcome\n` +
+        `└─ ${p}setgoodbye ─→ Set goodbye\n` +
         `\n` +
-        `  ⚠️ *WARN*\n` +
-        `  ▸ ${p}warn ─→ Warn a user\n` +
-        `  ▸ ${p}warncount ─→ Set limit\n` +
-        `  ▸ ${p}warnlist ─→ List warned\n` +
-        `  ▸ ${p}resetwarn ─→ Clear warnings\n` +
+        `◈ ⚠️ ${bold('WARN')}\n` +
+        `└─ ${p}warn ─→ Warn a user\n` +
+        `└─ ${p}warncount ─→ Set limit\n` +
+        `└─ ${p}warnlist ─→ List warned\n` +
+        `└─ ${p}resetwarn ─→ Clear warnings\n` +
+        `└─ ${p}resetallwarns ─→ Clear all warnings\n` +
         `\n` +
-        `  📊 *POLLS*\n` +
-        `  ▸ ${p}poll ─→ Create poll\n` +
-        `  ▸ ${p}vote ─→ Vote\n` +
-        `  ▸ ${p}endpoll ─→ End poll\n` +
-        `\n` +
-        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`
+        `◈ 📊 ${bold('POLLS')}\n` +
+        `└─ ${p}poll ─→ Create poll\n` +
+        `└─ ${p}vote ─→ Vote\n` +
+        `└─ ${p}endpoll ─→ End poll`
     )
 }
 
@@ -2045,67 +2339,71 @@ function renderMenu(ctx, sock) {
     const dateStr = d.toLocaleDateString('en-US', { timeZone: TIMEZONE })
     const timeStr = d.toLocaleTimeString('en-US', { timeZone: TIMEZONE })
     return (
-        `╭━〔 𖤐 *SUKUNA REALM* 〕━╮\n` +
+        `${SK_HEADER}\n` +
         `\n` +
-        `▸ OWNER ─→ ${ownerName(sock)}\n` +
-        `▸ MODE ─→ ${ctx.cfg.mode}\n` +
-        `▸ PREFIX ─→ ${p}\n` +
-        `▸ DATE ─→ ${dateStr}\n` +
-        `▸ TIME ─→ ${timeStr}\n` +
-        `▸ UPTIME ─→ ${formatUptime(process.uptime())}\n` +
-        `▸ SESSIONS ─→ ${Object.keys(sessions).length}\n` +
+        `◈ ${bold('OWNER')}\n└─ ${ownerName(sock)}\n` +
+        `◈ ${bold('MODE')}\n└─ ${ctx.cfg.mode}\n` +
+        `◈ ${bold('PREFIX')}\n└─ ${p}\n` +
+        `◈ ${bold('DATE')}\n└─ ${dateStr}\n` +
+        `◈ ${bold('TIME')}\n└─ ${timeStr}\n` +
+        `◈ ${bold('UPTIME')}\n└─ ${formatUptime(process.uptime())}\n` +
+        `◈ ${bold('SESSIONS')}\n└─ ${Object.keys(sessions).length}\n` +
         `\n` +
-        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n` +
+        `⚡ ${bold('BASIC')}\n` +
+        `└─ ${p}ping ─→ Check status\n` +
+        `└─ ${p}alive ─→ Say hi\n` +
+        `└─ ${p}time ─→ Date + time\n` +
+        `└─ ${p}info ─→ Bot info\n` +
+        `└─ ${p}menu ─→ This menu\n` +
+        `└─ ${p}mode ─→ public/private\n` +
+        `└─ ${p}prefix ─→ Change prefix\n` +
         `\n` +
-        `╭━〔 ⚡ *BASIC* 〕━╮\n` +
-        `▸ ${p}ping ─→ Check status\n` +
-        `▸ ${p}alive ─→ Say hi\n` +
-        `▸ ${p}time ─→ Date + time\n` +
-        `▸ ${p}info ─→ Bot info\n` +
-        `▸ ${p}menu ─→ This menu\n` +
-        `▸ ${p}mode ─→ public/private\n` +
-        `▸ ${p}prefix ─→ Change prefix\n` +
-        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n` +
-        `\n` +
-        `╭━〔 🎉 *FUN* 〕━╮\n` +
-        `▸ ${p}joke ─→ Random joke\n` +
-        `▸ ${p}quote ─→ Motivation\n` +
-        `▸ ${p}fact ─→ Fun fact\n` +
-        `▸ ${p}dice ─→ Roll a dice\n` +
-        `▸ ${p}coin ─→ Flip a coin\n` +
-        `▸ ${p}truth ─→ Truth question\n` +
-        `▸ ${p}dare ─→ Dare challenge\n` +
-        `▸ ${p}roast ─→ Roast someone\n` +
-        `▸ ${p}compliment ─→ Compliment\n` +
-        `▸ ${p}8ball ─→ Magic 8-ball\n` +
-        `▸ ${p}rate ─→ Rate a thing\n` +
-        `▸ ${p}ship ─→ Compatibility\n` +
-        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n` +
+        `🎉 ${bold('FUN')}\n` +
+        `└─ ${p}joke ─→ Random joke\n` +
+        `└─ ${p}quote ─→ Motivation\n` +
+        `└─ ${p}fact ─→ Fun fact\n` +
+        `└─ ${p}dice ─→ Roll a dice\n` +
+        `└─ ${p}coin ─→ Flip a coin\n` +
+        `└─ ${p}truth ─→ Truth question\n` +
+        `└─ ${p}dare ─→ Dare challenge\n` +
+        `└─ ${p}roast ─→ Roast someone\n` +
+        `└─ ${p}compliment ─→ Compliment\n` +
+        `└─ ${p}8ball ─→ Magic 8-ball\n` +
+        `└─ ${p}rate ─→ Rate a thing\n` +
+        `└─ ${p}ship ─→ Compatibility\n` +
+        `└─ ${p}afk ─→ Mark away\n` +
+        `└─ ${p}back ─→ Mark back\n` +
+        `└─ ${p}profile ─→ User profile\n` +
         `\n` +
         renderGroupCommandsBox(p) +
         `\n\n` +
-        `╭━〔 ⚙️ *OWNER SETTINGS* 〕━╮\n` +
-        `▸ ${p}typing ─→ Typing toggle\n` +
-        `▸ ${p}delay ─→ Delay toggle\n` +
-        `▸ ${p}read ─→ Read toggle\n` +
-        `▸ ${p}online ─→ Online toggle\n` +
-        `▸ ${p}statusview ─→ View statuses\n` +
-        `▸ ${p}autoreact ─→ Auto react\n` +
-        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n` +
+        `⚙️ ${bold('OWNER SETTINGS')}\n` +
+        `└─ ${p}typing ─→ Typing toggle\n` +
+        `└─ ${p}delay ─→ Delay toggle\n` +
+        `└─ ${p}read ─→ Read toggle\n` +
+        `└─ ${p}online ─→ Online toggle\n` +
+        `└─ ${p}statusview ─→ View statuses\n` +
+        `└─ ${p}autoreact ─→ Auto react\n` +
         `\n` +
-        `╭━〔 🛠️ *UTILITY* 〕━╮\n` +
-        `▸ ${p}calc ─→ Calculate math\n` +
-        `▸ ${p}sticker ─→ Make sticker\n` +
-        `▸ ${p}toimg ─→ Sticker to image\n` +
-        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n` +
+        `🛠️ ${bold('UTILITY')}\n` +
+        `└─ ${p}calc ─→ Calculate math\n` +
+        `└─ ${p}sticker ─→ Make sticker\n` +
+        `└─ ${p}toimg ─→ Sticker to image\n` +
+        `└─ ${p}qr ─→ Generate QR code\n` +
+        `└─ ${p}weather ─→ Weather lookup\n` +
+        `└─ ${p}translate ─→ Translate text\n` +
+        `└─ ${p}shorten ─→ Shorten URL\n` +
+        `└─ ${p}ip ─→ IP lookup\n` +
+        `└─ ${p}whois ─→ Domain lookup\n` +
         `\n` +
-        `╭━〔 📥 *DOWNLOADER* 〕━╮\n` +
-        `▸ ${p}tt <url> ─→ TikTok (owner)\n` +
-        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n` +
+        `📥 ${bold('DOWNLOADER')}\n` +
+        `└─ ${p}tt <url> ─→ TikTok (owner)\n` +
         `\n` +
-        `        ⟡ *SUKUNA REALM* ⟡`
+        `${SK_FOOTER}`
     )
-}// ─────────────────────────── web dashboard ───────────────────────────
+}
+
+// ─────────────────────────── web dashboard ───────────────────────────
 function checkAuth(header) {
     try {
         const b64 = header.split(' ')[1]
@@ -2470,16 +2768,11 @@ async function tgEditOrSend(chatId, messageId, text, keyboard, parseMode = 'Mark
 
 async function tgShowMenu(chatId, messageId) {
     const text =
-        `╭━〔 𖤐 *SUKUNA REALM* 〕━╮\n` +
-        `\n` +
-        `       ⚡ *CONTROL PANEL*\n` +
-        `\n` +
+        `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+        `⚡ 𝐂𝐎𝐍𝐓𝐑𝐎𝐋 𝐏𝐀𝐍𝐄𝐋\n\n` +
         `▸ Select an option below\n` +
-        `▸ to manage sessions.\n` +
-        `\n` +
-        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n` +
-        `\n` +
-        `        ⟡ *SUKUNA REALM* ⟡`
+        `▸ to manage sessions.\n\n` +
+        `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`
     await tgEditOrSend(chatId, messageId, text, tgMainKeyboard())
 }
 
@@ -2488,25 +2781,21 @@ async function tgShowStatus(chatId, messageId) {
     let text
     if (list.length === 0) {
         text =
-            `╭━〔 📊 *SUKUNA REALM* 〕━╮\n\n` +
-            `       📊 *STATUS*\n\n` +
-            `◈ *SESSIONS*\n` +
-            `└─ none connected\n\n` +
-            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-            `        ⟡ *SUKUNA REALM* ⟡`
+            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+            `📊 𝐒𝐓𝐀𝐓𝐔𝐒\n\n` +
+            `◈ 𝐒𝐄𝐒𝐒𝐈𝐎𝐍𝐒\n└─ none connected\n\n` +
+            `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`
     } else {
         const active = list.filter(s => s.status === 'active')
         const lines = list.map(s =>
-            `◈ *${s.number}*\n└─ ${s.status === 'active' ? '🟢 ACTIVE' : s.status === 'connecting' ? '🟡 CONNECTING' : s.status === 'reconnecting' ? '🟠 RECONNECTING' : '🔴 OFFLINE'}`
-        ).join('\n\n')
+            `◈ ${s.number}\n└─ ${s.status === 'active' ? '🟢 ACTIVE' : s.status === 'connecting' ? '🟡 CONNECTING' : s.status === 'reconnecting' ? '🟠 RECONNECTING' : '🔴 OFFLINE'}`
+        ).join('\n')
         text =
-            `╭━〔 📊 *SUKUNA REALM* 〕━╮\n\n` +
-            `       📊 *STATUS*\n\n` +
-            `◈ *TOTAL*\n` +
-            `└─ ${active.length} / ${list.length} active\n\n` +
+            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+            `📊 𝐒𝐓𝐀𝐓𝐔𝐒\n\n` +
+            `◈ 𝐓𝐎𝐓𝐀𝐋\n└─ ${active.length} / ${list.length} active\n` +
             `${lines}\n\n` +
-            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-            `        ⟡ *SUKUNA REALM* ⟡`
+            `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`
     }
     await tgEditOrSend(chatId, messageId, text, tgBackKeyboard())
 }
@@ -2516,24 +2805,22 @@ async function tgShowSessions(chatId, messageId) {
     let text
     if (entries.length === 0) {
         text =
-            `╭━〔 📋 *SUKUNA REALM* 〕━╮\n\n` +
-            `       📋 *SESSIONS*\n\n` +
-            `◈ *LIST*\n└─ empty\n\n` +
-            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-            `        ⟡ *SUKUNA REALM* ⟡`
+            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+            `📋 𝐒𝐄𝐒𝐒𝐈𝐎𝐍𝐒\n\n` +
+            `◈ 𝐋𝐈𝐒𝐓\n└─ empty\n\n` +
+            `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`
     } else {
         const blocks = entries.map(([, s]) =>
-            `◈ *${s.number}*\n` +
-            `├─ STATUS\n│  └─ ${s.status}\n` +
-            `├─ MODE\n│  └─ ${s.ctx?.cfg?.mode || '-'}\n` +
-            `└─ SINCE\n   └─ ${s.connectedAt ? new Date(s.connectedAt).toLocaleString() : '-'}`
+            `◈ ${s.number}\n` +
+            `└─ STATUS: ${s.status}\n` +
+            `   MODE: ${s.ctx?.cfg?.mode || '-'}\n` +
+            `   SINCE: ${s.connectedAt ? new Date(s.connectedAt).toLocaleString() : '-'}`
         ).join('\n\n')
         text =
-            `╭━〔 📋 *SUKUNA REALM* 〕━╮\n\n` +
-            `       📋 *SESSIONS*\n\n` +
+            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+            `📋 𝐒𝐄𝐒𝐒𝐈𝐎𝐍𝐒\n\n` +
             `${blocks}\n\n` +
-            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-            `        ⟡ *SUKUNA REALM* ⟡`
+            `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`
     }
     await tgEditOrSend(chatId, messageId, text, tgBackKeyboard())
 }
@@ -2542,20 +2829,18 @@ async function tgShowReconnectList(chatId, messageId) {
     const ids = Object.keys(sessions)
     if (ids.length === 0) {
         await tgEditOrSend(chatId, messageId,
-            `╭━〔 🔄 *SUKUNA REALM* 〕━╮\n\n` +
-            `      🔄 *RECONNECT*\n\n` +
-            `◈ *SESSIONS*\n└─ none\n\n` +
-            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+            `🔄 𝐑𝐄𝐂𝐎𝐍𝐍𝐄𝐂𝐓\n\n` +
+            `◈ 𝐒𝐄𝐒𝐒𝐈𝐎𝐍𝐒\n└─ none`,
             tgBackKeyboard())
         return
     }
     const rows = ids.map(id => [{ text: `🔄 ${sessions[id].number} (${sessions[id].status})`, callback_data: `reconnect:${id}` }])
     rows.push([{ text: '🔙 Back to Menu', callback_data: 'menu' }])
     await tgEditOrSend(chatId, messageId,
-        `╭━〔 🔄 *SUKUNA REALM* 〕━╮\n\n` +
-        `      🔄 *RECONNECT*\n\n` +
-        `◈ *SELECT A SESSION*\n\n` +
-        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+        `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+        `🔄 𝐑𝐄𝐂𝐎𝐍𝐍𝐄𝐂𝐓\n\n` +
+        `◈ 𝐒𝐄𝐋𝐄𝐂𝐓 𝐀 𝐒𝐄𝐒𝐒𝐈𝐎𝐍`,
         { inline_keyboard: rows })
 }
 
@@ -2563,20 +2848,18 @@ async function tgShowDisconnectList(chatId, messageId) {
     const ids = Object.keys(sessions)
     if (ids.length === 0) {
         await tgEditOrSend(chatId, messageId,
-            `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
-            `     ❌ *DISCONNECT*\n\n` +
-            `◈ *SESSIONS*\n└─ none\n\n` +
-            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+            `❌ 𝐃𝐈𝐒𝐂𝐎𝐍𝐍𝐄𝐂𝐓\n\n` +
+            `◈ 𝐒𝐄𝐒𝐒𝐈𝐎𝐍𝐒\n└─ none`,
             tgBackKeyboard())
         return
     }
     const rows = ids.map(id => [{ text: `❌ ${sessions[id].number} (${sessions[id].status})`, callback_data: `disconnect:${id}` }])
     rows.push([{ text: '🔙 Back to Menu', callback_data: 'menu' }])
     await tgEditOrSend(chatId, messageId,
-        `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
-        `     ❌ *DISCONNECT*\n\n` +
-        `◈ *SELECT A SESSION*\n\n` +
-        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+        `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+        `❌ 𝐃𝐈𝐒𝐂𝐎𝐍𝐍𝐄𝐂𝐓\n\n` +
+        `◈ 𝐒𝐄𝐋𝐄𝐂𝐓 𝐀 𝐒𝐄𝐒𝐒𝐈𝐎𝐍`,
         { inline_keyboard: rows })
 }
 
@@ -2584,16 +2867,15 @@ async function tgShowWaMenu(chatId, messageId) {
     const active = Object.values(sessions).find(s => s.status === 'active' && s.sock && s.ctx)
     if (!active) {
         await tgEditOrSend(chatId, messageId,
-            `╭━〔 ⚠️ *SUKUNA REALM* 〕━╮\n\n` +
-            `       ⚠️ *NOTICE*\n\n` +
-            `◈ *STATUS*\n└─ ❌ No active WhatsApp\n     session yet\n\n` +
-            `⚡ Connect one first.\n\n` +
-            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+            `⚠️ 𝐍𝐎𝐓𝐈𝐂𝐄\n\n` +
+            `◈ 𝐒𝐓𝐀𝐓𝐔𝐒\n└─ ❌ No active WhatsApp session\n\n` +
+            `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`,
             tgBackKeyboard())
         return
     }
     const menuText = renderMenu(active.ctx, active.sock)
-    const wrapped = `╭━〔 𖤐 *SUKUNA REALM* 〕━╮\n\n▸ WHATSAPP MENU\n\n${menuText}\n\n╰━━━━━━━━━━━━━━━━━━━━━━━━╯`
+    const wrapped = `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n▸ 𝐖𝐇𝐀𝐓𝐒𝐀𝐏𝐏 𝐌𝐄𝐍𝐔\n\n${menuText}`
     await tgEditOrSend(chatId, messageId, wrapped, tgBackKeyboard())
 }
 
@@ -2613,10 +2895,9 @@ async function tgConnectNumber(chatId, rawNumber) {
     const cleanNum = String(rawNumber || '').replace(/[^0-9]/g, '')
     if (cleanNum.length < 7) {
         await tgBot.sendMessage(chatId,
-            `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
-            `       ❌ *INVALID*\n\n` +
-            `▸ Send digits only,\n▸ with country code.\n\n` +
-            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+            `❌ 𝐈𝐍𝐕𝐀𝐋𝐈𝐃\n\n` +
+            `▸ Send digits only, with country code.`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         return
     }
@@ -2625,11 +2906,11 @@ async function tgConnectNumber(chatId, rawNumber) {
         const existing = sessions[sessionId]
         if (existing?.status === 'active') {
             await tgBot.sendMessage(chatId,
-                `╭━〔 ✅ *SUKUNA REALM* 〕━╮\n\n` +
-                `       ✅ *ONLINE*\n\n` +
-                `◈ *NUMBER*\n└─ ${cleanNum}\n\n` +
-                `◈ *STATUS*\n└─ 🟢 ALREADY ACTIVE\n\n` +
-                `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+                `✅ 𝐎𝐍𝐋𝐈𝐍𝐄\n\n` +
+                `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${cleanNum}\n` +
+                `◈ 𝐒𝐓𝐀𝐓𝐔𝐒\n└─ 🟢 ALREADY ACTIVE\n\n` +
+                `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
             return
         }
@@ -2638,50 +2919,47 @@ async function tgConnectNumber(chatId, rawNumber) {
 
         const gen = sessions[sessionId]?.gen
         await tgBot.sendMessage(chatId,
-            `╭━〔 ⚡ *SUKUNA REALM* 〕━╮\n\n` +
-            `      ⚡ *CONNECTING*\n\n` +
-            `◈ *NUMBER*\n└─ ${cleanNum}\n\n` +
-            `◈ *STATUS*\n└─ 🟡 WAITING\n\n` +
-            `🔐 Preparing pairing code.\n   Please wait...\n\n` +
-            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+            `⚡ 𝐂𝐎𝐍𝐍𝐄𝐂𝐓𝐈𝐍𝐆\n\n` +
+            `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${cleanNum}\n` +
+            `◈ 𝐒𝐓𝐀𝐓𝐔𝐒\n└─ 🟡 WAITING\n\n` +
+            `🔐 Preparing pairing code...`,
             { parse_mode: 'Markdown' })
 
         const code = await tgPollPairingCode(sessionId, gen)
         const s = sessions[sessionId]
         if (code) {
             await tgBot.sendMessage(chatId,
-                `╭━〔 🔗 *SUKUNA REALM* 〕━╮\n\n` +
-                `       🔗 *PAIRING*\n\n` +
-                `◈ *NUMBER*\n└─ ${cleanNum}\n\n` +
-                `🔑 *CODE*\n└─ \`${code}\`\n\n` +
-                `⚡ WhatsApp →\n   Linked Devices →\n   Link with phone number.\n\n` +
-                `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+                `🔗 𝐏𝐀𝐈𝐑𝐈𝐍𝐆\n\n` +
+                `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${cleanNum}\n` +
+                `🔑 𝐂𝐎𝐃𝐄\n└─ \`${code}\`\n\n` +
+                `⚡ WhatsApp → Linked Devices → Link with phone number\n\n` +
+                `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         } else if (s?.status === 'active') {
             await tgBot.sendMessage(chatId,
-                `╭━〔 ✅ *SUKUNA REALM* 〕━╮\n\n` +
-                `       ✅ *ONLINE*\n\n` +
-                `◈ *NUMBER*\n└─ ${cleanNum}\n\n` +
-                `◈ *STATUS*\n└─ 🟢 CONNECTED\n\n` +
-                `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+                `✅ 𝐎𝐍𝐋𝐈𝐍𝐄\n\n` +
+                `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${cleanNum}\n` +
+                `◈ 𝐒𝐓𝐀𝐓𝐔𝐒\n└─ 🟢 CONNECTED\n\n` +
+                `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         } else {
             await tgBot.sendMessage(chatId,
-                `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
-                `       ❌ *TIMEOUT*\n\n` +
-                `◈ *NUMBER*\n└─ ${cleanNum}\n\n` +
-                `◈ *STATUS*\n└─ 🔴 FAILED\n\n` +
-                `⚡ Try /reconnect ${cleanNum}\n\n` +
-                `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+                `❌ 𝐓𝐈𝐌𝐄𝐎𝐔𝐓\n\n` +
+                `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${cleanNum}\n` +
+                `◈ 𝐒𝐓𝐀𝐓𝐔𝐒\n└─ 🔴 FAILED\n\n` +
+                `⚡ Try /reconnect ${cleanNum}`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         }
     } catch (e) {
         console.log('[TELEGRAM] connect error:', e?.message || e)
         await tgBot.sendMessage(chatId,
-            `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
-            `       ❌ *FAILED*\n\n` +
-            `▸ ${(e?.message || 'unknown error').slice(0, 80)}\n\n` +
-            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+            `❌ 𝐅𝐀𝐈𝐋𝐄𝐃\n\n` +
+            `▸ ${(e?.message || 'unknown error').slice(0, 80)}`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
     }
 }
@@ -2690,10 +2968,7 @@ async function tgReconnectSession(chatId, sessionId) {
     const existing = sessions[sessionId]
     if (!existing) {
         await tgBot.sendMessage(chatId,
-            `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
-            `    ❌ *NOT FOUND*\n\n` +
-            `▸ Session does not exist.\n\n` +
-            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n❌ 𝐍𝐎𝐓 𝐅𝐎𝐔𝐍𝐃`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         return
     }
@@ -2701,10 +2976,9 @@ async function tgReconnectSession(chatId, sessionId) {
     const now = Date.now()
     if (reconnectCooldown[sessionId] && now - reconnectCooldown[sessionId] < 30000) {
         await tgBot.sendMessage(chatId,
-            `╭━〔 ⚠️ *SUKUNA REALM* 〕━╮\n\n` +
-            `       ⚠️ *SLOW DOWN*\n\n` +
-            `▸ Please wait before\n▸ reconnecting again.\n\n` +
-            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+            `⚠️ 𝐒𝐋𝐎𝐖 𝐃𝐎𝐖𝐍\n\n` +
+            `▸ Please wait before reconnecting again.`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         return
     }
@@ -2718,46 +2992,43 @@ async function tgReconnectSession(chatId, sessionId) {
         await startSession(sessionId, number, !hasCreds)
         const gen = sessions[sessionId]?.gen
         await tgBot.sendMessage(chatId,
-            `╭━〔 🔄 *SUKUNA REALM* 〕━╮\n\n` +
-            `     🔄 *RECONNECTING*\n\n` +
-            `◈ *NUMBER*\n└─ ${number}\n\n` +
-            `◈ *STATUS*\n└─ 🟡 WAITING\n\n` +
-            `⚡ If a code is required,\n   it will appear next.\n\n` +
-            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+            `🔄 𝐑𝐄𝐂𝐎𝐍𝐍𝐄𝐂𝐓𝐈𝐍𝐆\n\n` +
+            `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${number}\n` +
+            `◈ 𝐒𝐓𝐀𝐓𝐔𝐒\n└─ 🟡 WAITING\n\n` +
+            `⚡ If a code is required, it will appear next.`,
             { parse_mode: 'Markdown' })
         const code = await tgPollPairingCode(sessionId, gen)
         const s = sessions[sessionId]
         if (code) {
             await tgBot.sendMessage(chatId,
-                `╭━〔 🔗 *SUKUNA REALM* 〕━╮\n\n` +
-                `      🔗 *PAIRING*\n\n` +
-                `◈ *NUMBER*\n└─ ${number}\n\n` +
-                `🔑 *CODE*\n└─ \`${code}\`\n\n` +
-                `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+                `🔗 𝐏𝐀𝐈𝐑𝐈𝐍𝐆\n\n` +
+                `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${number}\n` +
+                `🔑 𝐂𝐎𝐃𝐄\n└─ \`${code}\`\n\n` +
+                `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         } else if (s?.status === 'active') {
             await tgBot.sendMessage(chatId,
-                `╭━〔 ✅ *SUKUNA REALM* 〕━╮\n\n` +
-                `       ✅ *ONLINE*\n\n` +
-                `◈ *NUMBER*\n└─ ${number}\n\n` +
-                `◈ *STATUS*\n└─ 🟢 CONNECTED\n\n` +
-                `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+                `✅ 𝐎𝐍𝐋𝐈𝐍𝐄\n\n` +
+                `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${number}\n` +
+                `◈ 𝐒𝐓𝐀𝐓𝐔𝐒\n└─ 🟢 CONNECTED\n\n` +
+                `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         } else {
             await tgBot.sendMessage(chatId,
-                `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
-                `       ❌ *TIMEOUT*\n\n` +
-                `◈ *NUMBER*\n└─ ${number}\n\n` +
-                `⚡ Try /reconnect again\n\n` +
-                `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+                `❌ 𝐓𝐈𝐌𝐄𝐎𝐔𝐓\n\n` +
+                `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${number}\n\n` +
+                `⚡ Try /reconnect again`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         }
     } catch (e) {
         console.log('[TELEGRAM] reconnect error:', e?.message || e)
         await tgBot.sendMessage(chatId,
-            `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
-            `    ❌ *RECONNECT FAILED*\n\n` +
-            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+            `❌ 𝐑𝐄𝐂𝐎𝐍𝐍𝐄𝐂𝐓 𝐅𝐀𝐈𝐋𝐄𝐃`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
     }
 }
@@ -2766,8 +3037,7 @@ async function tgDisconnectSession(chatId, sessionId) {
     const existing = sessions[sessionId]
     if (!existing) {
         await tgBot.sendMessage(chatId,
-            `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
-            `    ❌ *NOT FOUND*\n\n╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n❌ 𝐍𝐎𝐓 𝐅𝐎𝐔𝐍𝐃`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         return
     }
@@ -2778,18 +3048,18 @@ async function tgDisconnectSession(chatId, sessionId) {
     try { fs.rmSync(path.join(SESSION_DIR, sessionId), { recursive: true, force: true }) } catch (e) {}
     await deleteSessionFromMongo(sessionId)
     await tgBot.sendMessage(chatId,
-        `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
-        `     ❌ *DISCONNECTED*\n\n` +
-        `◈ *NUMBER*\n└─ ${number}\n\n` +
-        `◈ *STATUS*\n└─ ⚫ OFFLINE\n\n` +
-        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+        `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+        `❌ 𝐃𝐈𝐒𝐂𝐎𝐍𝐍𝐄𝐂𝐓𝐄𝐃\n\n` +
+        `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${number}\n` +
+        `◈ 𝐒𝐓𝐀𝐓𝐔𝐒\n└─ ⚫ OFFLINE\n\n` +
+        `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`,
         { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
 }
 
 function tgHelpText() {
     return (
-        `╭━〔 ⚡ *SUKUNA REALM* 〕━╮\n\n` +
-        `      ⚡ *COMMANDS*\n\n` +
+        `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+        `⚡ 𝐂𝐎𝐌𝐌𝐀𝐍𝐃𝐒\n\n` +
         `▸ /start ─→ Main menu\n` +
         `▸ /connect <n> ─→ Link\n` +
         `▸ /status ─→ Sessions\n` +
@@ -2798,8 +3068,7 @@ function tgHelpText() {
         `▸ /disconnect <n> ─→ Unlink\n` +
         `▸ /menu ─→ Panel\n` +
         `▸ /help ─→ This\n\n` +
-        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-        `        ⟡ *SUKUNA REALM* ⟡`
+        `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`
     )
 }
 
@@ -2832,10 +3101,9 @@ function initTelegram() {
         if (!num) {
             tgPending.set(msg.chat.id, 'connect')
             await tgBot.sendMessage(msg.chat.id,
-                `╭━〔 🔗 *SUKUNA REALM* 〕━╮\n\n` +
-                `       🔗 *CONNECT*\n\n` +
-                `▸ Send the WhatsApp\n▸ number with country\n▸ code (digits only).\n\n` +
-                `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+                `🔗 𝐂𝐎𝐍𝐍𝐄𝐂𝐓\n\n` +
+                `▸ Send the WhatsApp number with country code.`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
             return
         }
@@ -2887,10 +3155,9 @@ function initTelegram() {
             if (data === 'connect') {
                 tgPending.set(chatId, 'connect')
                 await tgEditOrSend(chatId, messageId,
-                    `╭━〔 🔗 *SUKUNA REALM* 〕━╮\n\n` +
-                    `       🔗 *CONNECT*\n\n` +
-                    `▸ Send the WhatsApp\n▸ number with country\n▸ code (digits only).\n\n` +
-                    `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                    `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
+                    `🔗 𝐂𝐎𝐍𝐍𝐄𝐂𝐓\n\n` +
+                    `▸ Send the WhatsApp number with country code.`,
                     tgBackKeyboard())
                 return
             }
