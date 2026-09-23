@@ -263,7 +263,6 @@ function bold(text) {
     })
 }
 
-// All message helpers append the footer automatically.
 function withFooter(body) {
     return `${body}\n\n${SK_FOOTER}`
 }
@@ -1197,6 +1196,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 }
 
                 if (action === 'promote') {
+                    if (isBotJid(sock, author)) continue
                     const fields = [['USER', `@${num}`]]
                     const mentions = [jid]
                     if (author && !isBotJid(sock, author) && author !== jid) {
@@ -1211,6 +1211,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 }
 
                 if (action === 'demote') {
+                    if (isBotJid(sock, author)) continue
                     const fields = [['USER', `@${num}`]]
                     const mentions = [jid]
                     if (author && !isBotJid(sock, author) && author !== jid) {
@@ -1891,20 +1892,31 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
 
     if (cmd === 'promote' || cmd === 'demote') {
         if (!(await needManage())) return
-        const target = getTarget(content)
-        if (!target) return reply(skError('Mention or reply to a user.'))
+        const ci = getContextInfo(content)
+        const mentions = [...(ci?.mentionedJid || [])]
+        if (ci?.participant && !mentions.includes(ci.participant)) mentions.push(ci.participant)
+        if (mentions.length === 0) return reply(skError('Mention or reply to a user.'))
+        if (mentions.length > 5) return reply(skError('Max 5 users per command.'))
+        const filtered = []
+        for (const t of mentions) {
+            if (isBotJid(sock, t)) continue
+            if (cmd === 'promote' && await checkAdmin(ctx, sock, from, [t])) continue
+            filtered.push(t)
+        }
+        if (filtered.length === 0) return reply(skError('No valid targets (bot/admins excluded).'))
         try {
-            const r = await participantsUpdate(sock, from, [target], cmd)
+            const r = await participantsUpdate(sock, from, filtered, cmd)
             if (!r.ok) return reply(skError(`Could not ${cmd}. Am I admin?`))
-            const newRole = cmd === 'promote' ? '👑 ' + bold('ADMIN') : '👤 ' + bold('MEMBER')
             const emoji = cmd === 'promote' ? '👑' : '⬇️'
             const label = cmd === 'promote' ? 'PROMOTE' : 'DEMOTE'
+            const newRole = cmd === 'promote' ? '👑 ' + bold('ADMIN') : '👤 ' + bold('MEMBER')
+            const lines = filtered.map((t, i) => `${i + 1}. @${cleanNumber(t)}`).join('\n')
             return sock.sendMessage(from, {
                 text: skInfo(emoji, label, [
-                    ['USER', `@${cleanNumber(target)}`],
+                    ['USERS', '\n' + lines],
                     ['NEW ROLE', newRole]
                 ]),
-                mentions: [target]
+                mentions: filtered
             })
         } catch (e) { return reply(skError(`Failed to ${cmd}.`)) }
     }
