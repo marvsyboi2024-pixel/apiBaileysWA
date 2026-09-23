@@ -1,26 +1,26 @@
 /*
- * WhatsApp bot (Baileys)
+ * SUKUNA REALM — WhatsApp bot (Baileys) + Telegram control panel
  *
- * NOTHING is hard-coded to a person. The "owner" of each session is the account that
- * is linked to it (messages with key.fromMe). Configure with environment variables:
+ * Env vars:
+ *   MONGO_URI           (optional) MongoDB connection string
+ *   MONGO_DB            (optional) default: whatsappbot
+ *   DASHBOARD_PASSWORD  (optional) default: Mars2000
+ *   BOT_NAME            (optional) default: SUKUNA REALM
+ *   BOT_TIMEZONE        (optional) e.g. Africa/Lagos
+ *   PORT                (optional) default: 3000
+ *   TELEGRAM_TOKEN      (optional) Telegram bot token. If unset, Telegram is skipped.
  *
- *   MONGO_URI           MongoDB connection string (optional, keeps sessions across redeploys)
- *   MONGO_DB            MongoDB database name (default: whatsappbot)
- *   DASHBOARD_PASSWORD  dashboard password (if missing, a random one is generated and logged)
- *   BOT_NAME            display name of the bot (default: WhatsApp Bot)
- *   BOT_TIMEZONE        e.g. Africa/Lagos, used by .time and .date (default: server timezone)
- *   PORT                web server port (default: 3000)
- *   TELEGRAM_TOKEN      Telegram bot token from @BotFather. If unset, Telegram control is skipped entirely.
+ * System tools: ffmpeg (needed for .sticker / .toimg), yt-dlp (needed for .tt)
+ * Optional npm: node-telegram-bot-api (needed for Telegram control), qrcode (needed for .qrcode)
  *
- * Optional packages: `sharp` (needed for .sticker and better .toimg), `node-telegram-bot-api` (needed for Telegram control)
- *
- * Telegram control bot: @DarkMatrix_XBot. Only Telegram user id 7959585602 may use it.
+ * Telegram bot: @DarkMatrix_XBot. Only Telegram user id 7959585602 may use it.
  */
 
 const fs = require('fs')
 const path = require('path')
 const os = require('os')
 const http = require('http')
+const https = require('https')
 const crypto = require('crypto')
 const { execFile } = require('child_process')
 const P = require('pino')
@@ -29,23 +29,18 @@ const baileys = require('@whiskeysockets/baileys')
 const makeWASocket = baileys.default
 const { useMultiFileAuthState, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON, proto } = baileys
 
-let sharp = null
-try { sharp = require('sharp') } catch (e) { sharp = null }
+let QRCode = null
+try { QRCode = require('qrcode') } catch (e) { QRCode = null }
 
 // ─────────────────────────── config ───────────────────────────
-const BOT_NAME = process.env.BOT_NAME || 'WhatsApp Bot'
+const BOT_NAME = process.env.BOT_NAME || 'SUKUNA REALM'
 const MONGO_URI = process.env.MONGO_URI || ''
 const MONGO_DB = process.env.MONGO_DB || 'whatsappbot'
 const PORT = process.env.PORT || 3000
 const TIMEZONE = process.env.BOT_TIMEZONE || undefined
 const SESSION_DIR = path.join('.', 'sessions')
 const LOGO_PATH = path.join('.', 'logo.png')
-
-let DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || ''
-if (!DASHBOARD_PASSWORD) {
-    DASHBOARD_PASSWORD = crypto.randomBytes(9).toString('base64url')
-    console.log(`[DASHBOARD] DASHBOARD_PASSWORD is not set. Temporary password for this run: ${DASHBOARD_PASSWORD}`)
-}
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'Mars2000'
 
 const silentLogger = P({ level: 'silent' })
 const sessions = {}
@@ -90,7 +85,6 @@ async function initMongo() {
     }
 }
 
-// Full auth state (creds + signal keys) in MongoDB, so sessions survive redeploys.
 async function useMongoAuthState(sessionId, legacyCredsStr) {
     const id = (name) => `${sessionId}:${name}`
     const writeData = async (name, data) => {
@@ -100,27 +94,17 @@ async function useMongoAuthState(sessionId, legacyCredsStr) {
                 { $set: { sid: sessionId, data: JSON.stringify(data, BufferJSON.replacer) } },
                 { upsert: true }
             )
-        } catch (e) {
-            console.log('[MONGO] writeData error:', e?.message || e)
-            return null
-        }
+        } catch (e) { console.log('[MONGO] writeData error:', e?.message || e); return null }
     }
     const readData = async (name) => {
         try {
             const d = await authCollection.findOne({ _id: id(name) })
             return d ? JSON.parse(d.data, BufferJSON.reviver) : null
-        } catch (e) {
-            console.log('[MONGO] readData error:', e?.message || e)
-            return null
-        }
+        } catch (e) { console.log('[MONGO] readData error:', e?.message || e); return null }
     }
     const removeData = async (name) => {
-        try {
-            return await authCollection.deleteOne({ _id: id(name) })
-        } catch (e) {
-            console.log('[MONGO] removeData error:', e?.message || e)
-            return null
-        }
+        try { return await authCollection.deleteOne({ _id: id(name) }) }
+        catch (e) { console.log('[MONGO] removeData error:', e?.message || e); return null }
     }
 
     let creds = await readData('creds')
@@ -175,9 +159,7 @@ async function deleteSessionFromMongo(sessionId) {
     try {
         if (authCollection) await authCollection.deleteMany({ sid: sessionId })
         if (legacyCollection) await legacyCollection.deleteOne({ _id: sessionId })
-    } catch (e) {
-        console.log('[MONGO] Delete error:', e.message)
-    }
+    } catch (e) { console.log('[MONGO] Delete error:', e.message) }
 }
 
 async function saveLogoToMongo(buffer) {
@@ -188,9 +170,7 @@ async function saveLogoToMongo(buffer) {
             { $set: { data: buffer.toString('base64'), updatedAt: new Date() } },
             { upsert: true }
         )
-    } catch (e) {
-        console.log('[MONGO] Logo save error:', e.message)
-    }
+    } catch (e) { console.log('[MONGO] Logo save error:', e.message) }
 }
 
 async function loadLogoFromMongo() {
@@ -201,9 +181,7 @@ async function loadLogoFromMongo() {
             fs.writeFileSync(LOGO_PATH, Buffer.from(doc.data, 'base64'))
             return true
         }
-    } catch (e) {
-        console.log('[MONGO] Logo load error:', e.message)
-    }
+    } catch (e) { console.log('[MONGO] Logo load error:', e.message) }
     return false
 }
 
@@ -257,6 +235,53 @@ const compliments = [
     'You are stronger than you think.',
     'You make the world a better place just by being in it.'
 ]
+// Static, keyless bad-word list for .antibadword. Deliberately modest — this is a light
+// filter, not a full profanity database.
+const BAD_WORDS = [
+    'fuck', 'shit', 'bitch', 'asshole', 'bastard', 'dick', 'pussy', 'nigger', 'nigga',
+    'cunt', 'whore', 'slut', 'faggot', 'retard'
+]
+const bioLines = [
+    '⚡ SUKUNA REALM is watching...',
+    '👹 Domain Expansion: Malevolent Shrine',
+    '🔮 Powered by SUKUNA REALM',
+    '⛩️ Type .menu to summon the commands',
+    '🗡️ 20 Fingers. Infinite Power.'
+]
+
+// ─────────────────────────── SUKUNA REALM message templates ───────────────────────────
+function skSig() { return '        ⟡ *SUKUNA REALM* ⟡' }
+
+function skBasic(emoji, fields) {
+    let out = `╭━〔 ${emoji} *SUKUNA REALM* 〕━╮\n`
+    for (const [k, v] of fields) out += `▸ ${k} ─→ ${v}\n`
+    out += `\n${skSig()}`
+    return out
+}
+
+function skContent(emoji, label, content) {
+    return `╭━〔 ${emoji} *SUKUNA REALM* 〕━╮\n\n▸ ${label}\n└─ ${content}\n\n${skSig()}`
+}
+
+function skError(reason) {
+    return `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n▸ ERROR ─→ ${reason}\n\n${skSig()}`
+}
+
+function skInfo(emoji, title, fields) {
+    let out = `╭━〔 ${emoji} *SUKUNA REALM* 〕━╮\n\n▸ ${title}\n\n`
+    for (const [k, v] of fields) out += `◈ *${k}*\n└─ ${v}\n\n`
+    out += skSig()
+    return out
+}
+
+function skGroup(emoji, title, fields, byJid) {
+    let out = `╭━〔 ${emoji} *SUKUNA REALM* 〕━╮\n┃\n`
+    out += `┃      ${emoji} *${title}*\n┃\n`
+    if (byJid) out += `┃  ◈ *BY*\n┃  └─ @${cleanNumber(byJid)}\n┃\n`
+    for (const [k, v] of fields) out += `┃  ◈ *${k}*\n┃  └─ ${v}\n┃\n`
+    out += `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`
+    return out
+}
 
 // ─────────────────────────── helpers ───────────────────────────
 function getRandom(arr) { return arr[Math.floor(Math.random() * arr.length)] }
@@ -264,45 +289,29 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 }
-function normalizeJid(number) {
-    return number.replace(/[^0-9]/g, '') + '@s.whatsapp.net'
-}
+function normalizeJid(number) { return number.replace(/[^0-9]/g, '') + '@s.whatsapp.net' }
 function formatUptime(sec) {
     const h = Math.floor(sec / 3600)
     const m = Math.floor((sec % 3600) / 60)
     return `${h}h ${m}m`
 }
-
-// "1234:5@s.whatsapp.net" -> "1234"
-function cleanNumber(jid) {
-    return jid ? String(jid).split('@')[0].split(':')[0] : ''
-}
-// "1234:5@s.whatsapp.net" -> "1234@s.whatsapp.net"   (also works for @lid)
+function cleanNumber(jid) { return jid ? String(jid).split('@')[0].split(':')[0] : '' }
 function cleanJid(jid) {
     if (!jid) return ''
     const [user, domain] = String(jid).split('@')
     return user.split(':')[0] + '@' + (domain || 's.whatsapp.net')
 }
-function getBotJid(sock) {
-    return cleanJid(sock.user?.id || sock.authState?.creds?.me?.id || '')
-}
+function getBotJid(sock) { return cleanJid(sock.user?.id || sock.authState?.creds?.me?.id || '') }
 function botIds(sock) {
     const ids = new Set()
     const add = (j) => { const n = cleanNumber(j); if (n) ids.add(n) }
-    add(sock.user?.id)
-    add(sock.user?.lid)
-    add(sock.authState?.creds?.me?.id)
-    add(sock.authState?.creds?.me?.lid)
+    add(sock.user?.id); add(sock.user?.lid)
+    add(sock.authState?.creds?.me?.id); add(sock.authState?.creds?.me?.lid)
     return ids
 }
-function isBotJid(sock, jid) {
-    return !!jid && botIds(sock).has(cleanNumber(jid))
-}
-function ownerName(sock) {
-    return sock.user?.name || cleanNumber(sock.user?.id) || 'Owner'
-}
+function isBotJid(sock, jid) { return !!jid && botIds(sock).has(cleanNumber(jid)) }
+function ownerName(sock) { return sock.user?.name || cleanNumber(sock.user?.id) || 'Owner' }
 
-// Strip wrappers that hide the real content (disappearing chats etc.)
 function unwrapEphemeral(message) {
     let m = message
     for (let i = 0; i < 5 && m; i++) {
@@ -339,8 +348,10 @@ function extractViewOnceMedia(message) {
     const inner = wrapper?.message
     if (inner?.imageMessage) return { type: 'image', message: inner }
     if (inner?.videoMessage) return { type: 'video', message: inner }
+    if (inner?.audioMessage) return { type: 'audio', message: inner }
     if (message.imageMessage?.viewOnce) return { type: 'image', message: { imageMessage: message.imageMessage } }
     if (message.videoMessage?.viewOnce) return { type: 'video', message: { videoMessage: message.videoMessage } }
+    if (message.audioMessage?.viewOnce) return { type: 'audio', message: { audioMessage: message.audioMessage } }
     return null
 }
 function getMediaInfo(m) {
@@ -352,7 +363,6 @@ function getMediaInfo(m) {
     if (m.documentMessage) return { type: 'document', node: m.documentMessage }
     return null
 }
-// Key of the message that was quoted (needed for media re-upload requests)
 function getQuotedKey(sock, from, ci) {
     const participant = ci.participant || undefined
     return {
@@ -383,7 +393,6 @@ function getTarget(content) {
     return ci?.mentionedJid?.[0] || ci?.participant || null
 }
 
-// Safe calculator (no eval)
 function safeCalc(input) {
     const src = String(input).replace(/\s+/g, '').replace(/\*\*/g, '^')
     if (!src || src.length > 100) throw new Error('bad')
@@ -394,18 +403,12 @@ function safeCalc(input) {
     const next = () => tokens[i++]
     function parseExpr() {
         let v = parseTerm()
-        while (peek() === '+' || peek() === '-') {
-            const op = next(); const r = parseTerm()
-            v = op === '+' ? v + r : v - r
-        }
+        while (peek() === '+' || peek() === '-') { const op = next(); const r = parseTerm(); v = op === '+' ? v + r : v - r }
         return v
     }
     function parseTerm() {
         let v = parsePow()
-        while (peek() === '*' || peek() === '/' || peek() === '%') {
-            const op = next(); const r = parsePow()
-            v = op === '*' ? v * r : op === '/' ? v / r : v % r
-        }
+        while (peek() === '*' || peek() === '/' || peek() === '%') { const op = next(); const r = parsePow(); v = op === '*' ? v * r : op === '/' ? v / r : v % r }
         return v
     }
     function parsePow() {
@@ -420,17 +423,35 @@ function safeCalc(input) {
     }
     function parsePrimary() {
         const t = next()
-        if (t === '(') {
-            const v = parseExpr()
-            if (next() !== ')') throw new Error('bad')
-            return v
-        }
+        if (t === '(') { const v = parseExpr(); if (next() !== ')') throw new Error('bad'); return v }
         if (t === undefined || isNaN(Number(t))) throw new Error('bad')
         return Number(t)
     }
     const result = parseExpr()
     if (i !== tokens.length || !isFinite(result)) throw new Error('bad')
     return result
+}
+
+// ─────────────────────────── http helpers (keyless APIs) ───────────────────────────
+function httpGetBuffer(url, timeoutMs = 10000) {
+    return new Promise((resolve, reject) => {
+        const req = https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+            if (res.statusCode && res.statusCode >= 400) { res.resume(); reject(new Error(`HTTP ${res.statusCode}`)); return }
+            const chunks = []
+            res.on('data', (c) => chunks.push(c))
+            res.on('end', () => resolve(Buffer.concat(chunks)))
+        })
+        req.on('error', reject)
+        req.setTimeout(timeoutMs, () => req.destroy(new Error('timeout')))
+    })
+}
+async function httpGetJson(url, timeoutMs = 10000) {
+    const buffer = await httpGetBuffer(url, timeoutMs)
+    return JSON.parse(buffer.toString('utf-8'))
+}
+async function httpGetText(url, timeoutMs = 10000) {
+    const buffer = await httpGetBuffer(url, timeoutMs)
+    return buffer.toString('utf-8')
 }
 
 // ─────────────────────────── per-session state ───────────────────────────
@@ -446,7 +467,8 @@ function createCtx(sessionId, sessionPath) {
             read: false,
             online: false,
             autoreact: false,
-            statusview: false
+            statusview: false,
+            autobio: false
         },
         groupSettings: {},
         warnLimit: {},
@@ -456,7 +478,12 @@ function createCtx(sessionId, sessionPath) {
         spam: {},
         metaCache: {},
         statusCache: new Map(),
+        messageCache: new Map(),
         ttUsage: [],
+        extractCooldown: {},
+        pendingConfirm: {},
+        activity: {},
+        afk: {},
         saveTimer: null
     }
 }
@@ -518,7 +545,6 @@ async function getGroupMeta(ctx, sock, jid, force = false) {
     return meta
 }
 
-// userIds: array of JIDs or bare numbers. Matches id / lid / phoneNumber, ignores :device suffixes.
 async function checkAdmin(ctx, sock, groupJid, userIds) {
     try {
         const meta = await getGroupMeta(ctx, sock, groupJid)
@@ -536,41 +562,32 @@ async function participantsUpdate(sock, groupJid, jids, action) {
 }
 
 async function guardTarget(ctx, sock, from, target) {
-    if (isBotJid(sock, target)) return '[X] I will not do that to myself.'
-    if (await checkAdmin(ctx, sock, from, [target])) return '[X] That user is a group admin.'
+    if (isBotJid(sock, target)) return skError('Cannot target myself.')
+    if (await checkAdmin(ctx, sock, from, [target])) return skError('That user is a group admin.')
     return null
 }
 
 // ─────────────────────────── protection enforcement ───────────────────────────
 function detectViolation(ctx, settings, msg, content, ci, text, from, sender) {
     if (settings.antilink && /https?:\/\/|www\.|wa\.me\/|chat\.whatsapp\.com/i.test(text)) return 'links'
-
     if (settings.antimedia && (
         content.imageMessage || content.videoMessage || content.stickerMessage ||
         content.audioMessage || content.documentMessage || extractViewOnceMedia(msg.message)
     )) return 'media'
-
     if (settings.antitag && ci?.mentionedJid?.length > 0) return 'tags'
-
     if (settings.antiforward && ci?.isForwarded) return 'forwarded messages'
-
     if (settings.antibot && typeof msg.key.id === 'string' && msg.key.id.startsWith('BAE5')) return 'bots'
-
     if (settings.antispam) {
         const now = Date.now()
         if (!ctx.spam[from]) ctx.spam[from] = {}
         const list = (ctx.spam[from][sender] || []).filter(t => now - t < 8000)
         list.push(now)
         ctx.spam[from][sender] = list
-        if (list.length >= 6) {
-            ctx.spam[from][sender] = []
-            return 'spam'
-        }
+        if (list.length >= 6) { ctx.spam[from][sender] = []; return 'spam' }
     }
     return null
 }
 
-// Returns true when the message was handled as a violation.
 async function enforceProtection(sock, ctx, msg, content, from, sender, senderNumber, text) {
     const settings = ctx.groupSettings[from]
     if (!settings || !Object.values(settings).some(Boolean)) return false
@@ -579,7 +596,6 @@ async function enforceProtection(sock, ctx, msg, content, from, sender, senderNu
     const reason = detectViolation(ctx, settings, msg, content, ci, text, from, sender)
     if (!reason) return false
 
-    // Group admins are exempt.
     if (await checkAdmin(ctx, sock, from, [sender])) return false
 
     if (!ctx.warningCounts[from]) ctx.warningCounts[from] = {}
@@ -588,7 +604,6 @@ async function enforceProtection(sock, ctx, msg, content, from, sender, senderNu
     const limit = ctx.warnLimit[from] || 3
     const count = ctx.warningCounts[from][key]
 
-    // Delete only if the bot is admin. If it is not, quietly skip (no complaints).
     const botAdmin = await checkAdmin(ctx, sock, from, [...botIds(sock)])
     if (botAdmin) {
         try { await sock.sendMessage(from, { delete: msg.key }) } catch (e) {}
@@ -596,7 +611,11 @@ async function enforceProtection(sock, ctx, msg, content, from, sender, senderNu
 
     try {
         await sock.sendMessage(from, {
-            text: `[WARN] @${senderNumber} (${Math.min(count, limit)}/${limit}) - ${reason} are not allowed.`,
+            text: skGroup('⚠️', 'WARN', [
+                ['USER', `@${senderNumber}`],
+                ['REASON', reason],
+                ['COUNT', `${Math.min(count, limit)} / ${limit}`]
+            ]),
             mentions: [sender]
         })
     } catch (e) {}
@@ -605,7 +624,13 @@ async function enforceProtection(sock, ctx, msg, content, from, sender, senderNu
         try {
             await sock.groupParticipantsUpdate(from, [sender], 'remove')
             delete ctx.warningCounts[from][key]
-            await sock.sendMessage(from, { text: `[KICKED] @${senderNumber} reached the warning limit.`, mentions: [sender] })
+            await sock.sendMessage(from, {
+                text: skGroup('🚫', 'KICKED', [
+                    ['USER', `@${senderNumber}`],
+                    ['REASON', 'Warning limit reached']
+                ]),
+                mentions: [sender]
+            })
         } catch (e) {}
     }
     return true
@@ -659,21 +684,30 @@ async function saveStatus(sock, ctx, ci, sender) {
                 const buffer = await downloadBuffer(sock, c.key, c.message)
                 await sendSaved(sock, sender, info, buffer, 'Saved status')
                 return true
-            } catch (e) {
-                console.log('Status download failed:', e?.message || e)
-            }
+            } catch (e) { console.log('Status download failed:', e?.message || e) }
             continue
         }
         const t = c.message.conversation || c.message.extendedTextMessage?.text
-        if (t) {
-            await sock.sendMessage(sender, { text: 'Saved status text:\n\n' + t })
-            return true
-        }
+        if (t) { await sock.sendMessage(sender, { text: 'Saved status text:\n\n' + t }); return true }
     }
     return false
 }
 
 // ─────────────────────────── save / hmm / vv ───────────────────────────
+// Shared per-user cooldown for .save/.hmm/.vv: these commands pull ephemeral/view-once
+// media, which is exactly the kind of rapid, bot-shaped activity WhatsApp's anti-automation
+// systems watch for. One minute between uses (per user, per session) keeps it human-paced.
+function checkExtractCooldown(ctx, sender) {
+    if (!ctx.extractCooldown) ctx.extractCooldown = {}
+    const key = cleanJid(sender)
+    const now = Date.now()
+    const last = ctx.extractCooldown[key] || 0
+    const remaining = 60000 - (now - last)
+    if (remaining > 0) return Math.ceil(remaining / 1000)
+    ctx.extractCooldown[key] = now
+    return 0
+}
+
 async function handleSave(sock, ctx, msg, content, from, sender) {
     const prefix = ctx.cfg.prefix
     const ci = getContextInfo(content)
@@ -684,23 +718,27 @@ async function handleSave(sock, ctx, msg, content, from, sender) {
         }
     }
 
-    if (!ci || (!ci.quotedMessage && !ci.stanzaId)) {
-        await toDM({ text: `[X] Reply to a status, or to a photo/video in a chat, with ${prefix}save` })
+    const wait = checkExtractCooldown(ctx, sender)
+    if (wait > 0) {
+        await toDM({ text: skError(`Please wait ${wait}s before using ${prefix}save again.`) })
         return
     }
 
-    // Status (Updates tab) reply
+    if (!ci || (!ci.quotedMessage && !ci.stanzaId)) {
+        await toDM({ text: skError(`Reply to a status or a photo/video with ${prefix}save`) })
+        return
+    }
+
     if (ci.remoteJid === 'status@broadcast') {
         let saved = false
         try { saved = await saveStatus(sock, ctx, ci, sender) } catch (e) { console.log('Save status error:', e?.message || e) }
-        if (!saved) await toDM({ text: '[X] Could not save status. It may be expired, hidden, or restricted by WhatsApp.' })
+        if (!saved) await toDM({ text: skError('Could not save status. It may be expired or hidden.') })
         await cleanup()
         return
     }
 
-    // Normal chat message
     if (!ci.quotedMessage) {
-        await toDM({ text: '[X] Could not read the message you replied to.' })
+        await toDM({ text: skError('Could not read the replied message.') })
         return
     }
     const quoted = unwrapEphemeral(ci.quotedMessage)
@@ -710,16 +748,17 @@ async function handleSave(sock, ctx, msg, content, from, sender) {
     if (!info) {
         const t = quoted.conversation || quoted.extendedTextMessage?.text
         if (t) await toDM({ text: 'Saved text:\n\n' + t })
-        else await toDM({ text: '[X] That message has no media to save.' })
+        else await toDM({ text: skError('That message has no media to save.') })
         await cleanup()
         return
     }
     try {
         const buffer = await downloadBuffer(sock, getQuotedKey(sock, from, ci), message)
+        await sleep(1500 + Math.random() * 2500) // human-like pause before sending the saved media
         await sendSaved(sock, sender, info, buffer, 'Saved')
     } catch (e) {
         console.log('.save error:', e?.message || e)
-        await toDM({ text: '[X] Failed to save that media. It may have expired.' })
+        await toDM({ text: skError('Failed to save that media. It may have expired.') })
     }
     await cleanup()
 }
@@ -730,6 +769,12 @@ async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind) {
     const say = (text) => (silent
         ? sock.sendMessage(sender, { text })
         : sock.sendMessage(from, { text }, { quoted: msg })).catch(() => {})
+
+    const wait = checkExtractCooldown(ctx, sender)
+    if (wait > 0) {
+        await say(skError(`Please wait ${wait}s before using ${prefix}${kind} again.`))
+        return
+    }
 
     const ci = getContextInfo(content)
     const quoted = ci?.quotedMessage ? unwrapEphemeral(ci.quotedMessage) : null
@@ -744,20 +789,24 @@ async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind) {
     }
 
     if (!target) {
-        if (!ci) await say(`[X] Reply to a view-once photo/video with ${prefix}${kind}`)
-        else await say(`[X] This only works on *view-once* media.\n\nHow to use:\n1. Wait for a view-once photo/video\n2. Do NOT open it\n3. Reply to it with ${prefix}${kind}`)
+        if (!ci) await say(skError(`Reply to a view-once photo/video/voice note with ${prefix}${kind}`))
+        else await say(skError('This only works on unopened view-once media.'))
         return
     }
 
     try {
         const buffer = await downloadBuffer(sock, key, target.message)
+        await sleep(1500 + Math.random() * 2500) // human-like pause before sending
         const caption = silent ? 'Saved view-once' : 'View-once revealed'
-        const payload = target.type === 'image' ? { image: buffer, caption } : { video: buffer, caption }
+        let payload
+        if (target.type === 'image') payload = { image: buffer, caption }
+        else if (target.type === 'video') payload = { video: buffer, caption }
+        else payload = { audio: buffer, mimetype: target.message.audioMessage?.mimetype || 'audio/ogg; codecs=opus', ptt: true }
         if (silent) await sock.sendMessage(sender, payload)
         else await sock.sendMessage(from, payload, { quoted: msg })
     } catch (e) {
         console.log(`.${kind} error:`, e?.message || e)
-        await say('[X] Failed to get that view-once. WhatsApp may have already deleted it.')
+        await say(skError('Failed to get that view-once. WhatsApp may have deleted it.'))
     }
     if (silent && msg.key.fromMe) {
         try { await sock.sendMessage(from, { delete: msg.key }) } catch (e) {}
@@ -779,13 +828,41 @@ async function processMessage(sock, ctx, msg, type) {
 
     const isGroup = from.endsWith('@g.us')
     const fromMe = !!msg.key.fromMe
-    // Real sender: your own account for your own messages, otherwise the chat/participant.
     const sender = fromMe ? getBotJid(sock) : (isGroup ? (msg.key.participant || msg.participant) : from)
     if (!sender) return
     const senderNumber = cleanNumber(sender)
     const owner = fromMe
 
+    if (isGroup && sender && !fromMe) {
+        if (!ctx.activity) ctx.activity = {}
+        if (!ctx.activity[from]) ctx.activity[from] = {}
+        const _k = cleanJid(sender)
+        const _prev = ctx.activity[from][_k] || { count: 0, last: 0 }
+        ctx.activity[from][_k] = { count: _prev.count + 1, last: Date.now() }
+    }
+
     const content = unwrap(msg.message)
+
+    // .antidelete — WhatsApp delivers a deletion as a protocolMessage(type REVOKE) pointing
+    // at the original message's key. If we cached that message, repost it into the group.
+    if (isGroup && content?.protocolMessage?.type === 0) {
+        const settings = ctx.groupSettings[from]
+        if (settings?.antidelete) {
+            const delId = content.protocolMessage.key?.id
+            const cached = delId ? ctx.messageCache?.get(delId) : null
+            if (cached) {
+                sock.sendMessage(from, {
+                    text: skGroup('🗑️', 'MESSAGE DELETED', [
+                        ['USER', `@${cleanNumber(cached.sender)}`],
+                        ['CONTENT', cached.hasMedia ? `[${cached.mediaType}]` : (cached.body || '(no text)')]
+                    ], cached.sender),
+                    mentions: [cached.sender]
+                }).catch(() => {})
+            }
+        }
+        return
+    }
+
     const body = content.conversation ||
         content.extendedTextMessage?.text ||
         content.imageMessage?.caption ||
@@ -796,20 +873,17 @@ async function processMessage(sock, ctx, msg, type) {
     const prefix = ctx.cfg.prefix
     const isCmd = text.startsWith(prefix)
 
-    // Commands that work for everyone, in any mode
     if (isCmd) {
         if (lowerText === prefix + 'hmm') { await handleViewOnceCmd(sock, ctx, msg, content, from, sender, 'hmm'); return }
         if (lowerText === prefix + 'vv') { await handleViewOnceCmd(sock, ctx, msg, content, from, sender, 'vv'); return }
         if (lowerText === prefix + 'save') { await handleSave(sock, ctx, msg, content, from, sender); return }
     }
 
-    // Protection runs first, in every mode, and never on the linked account's own messages
     if (isGroup && !fromMe) {
         const handled = await enforceProtection(sock, ctx, msg, content, from, sender, senderNumber, text)
         if (handled) return
     }
 
-    // Private mode: only the linked account can use the bot
     if (ctx.cfg.mode === 'private' && !fromMe) return
 
     if (ctx.cfg.read && !fromMe) {
@@ -819,9 +893,19 @@ async function processMessage(sock, ctx, msg, type) {
         try { await sock.sendPresenceUpdate('available', from) } catch (e) {}
     }
 
-    if (!isCmd) return
-    const args = text.slice(prefix.length).trim().split(/\s+/)
-    const cmd = (args.shift() || '').toLowerCase()
+    const hasPending = !!(ctx.pendingConfirm && ctx.pendingConfirm[from])
+    const isBareYesNo = (lowerText === 'yes' || lowerText === 'no')
+
+    let args, cmd
+    if (isCmd) {
+        args = text.slice(prefix.length).trim().split(/\s+/)
+        cmd = (args.shift() || '').toLowerCase()
+    } else if (hasPending && isBareYesNo) {
+        args = []
+        cmd = lowerText
+    } else {
+        return
+    }
     if (!cmd || !/^[a-z0-9]+$/.test(cmd)) return
 
     if (ctx.cfg.delay) await sleep(3000 + Math.random() * 3000)
@@ -832,7 +916,7 @@ async function processMessage(sock, ctx, msg, type) {
         await handleCommand(sock, ctx, msg, content, from, isGroup, sender, senderNumber, owner, cmd, args)
     } catch (e) {
         console.log(`Command .${cmd} error:`, e?.message || e)
-        try { await sock.sendMessage(from, { text: '[X] Something went wrong running that command.' }, { quoted: msg }) } catch (e2) {}
+        try { await sock.sendMessage(from, { text: skError('Something went wrong running that command.') }, { quoted: msg }) } catch (e2) {}
     } finally {
         if (ctx.cfg.typing) {
             try { await sock.sendPresenceUpdate('paused', from) } catch (e) {}
@@ -840,11 +924,52 @@ async function processMessage(sock, ctx, msg, type) {
     }
 }
 
+// ─────────────────────────── send throttle (anti-ban) ───────────────────────────
+// Wraps sock.sendMessage once per socket so every existing call site in the file
+// (warnings, kicks, menus, .save/.hmm/.vv, everything) automatically gets: a small
+// randomized gap between any two outgoing messages (avoids bursty, bot-shaped traffic),
+// and an automatic cooldown if WhatsApp starts returning rate-limit-shaped errors.
+function attachSendThrottle(sock) {
+    const original = sock.sendMessage.bind(sock)
+    let queue = Promise.resolve()
+    let lastSend = 0
+    let backoffUntil = 0
+
+    sock.sendMessage = (...sendArgs) => {
+        const run = queue.then(async () => {
+            const now1 = Date.now()
+            if (backoffUntil > now1) await sleep(backoffUntil - now1)
+
+            const gap = 400 + Math.random() * 900 // 0.4-1.3s human-like spacing
+            const since = Date.now() - lastSend
+            if (since < gap) await sleep(gap - since)
+
+            try {
+                const result = await original(...sendArgs)
+                lastSend = Date.now()
+                return result
+            } catch (e) {
+                lastSend = Date.now()
+                const status = e?.output?.statusCode || e?.status
+                const msg = String(e?.message || e)
+                if (status === 429 || /rate.?limit|too many requests/i.test(msg)) {
+                    backoffUntil = Date.now() + 30000
+                    console.log('[THROTTLE] Rate-limit signal from WhatsApp, backing off 30s')
+                }
+                throw e
+            }
+        })
+        // Keep the queue chain alive even if this particular send rejects.
+        queue = run.catch(() => {})
+        return run
+    }
+}
+
 // ─────────────────────────── session ───────────────────────────
 function stopSocket(sessionId) {
     const s = sessions[sessionId]
     if (!s) return
-    s.gen = (s.gen || 0) + 1 // invalidates every handler of the old socket
+    s.gen = (s.gen || 0) + 1
     try { s.sock?.end(undefined) } catch (e) {}
 }
 
@@ -881,6 +1006,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
         logger: silentLogger,
         browser: ['Ubuntu', 'Chrome', '20.0.04']
     })
+    attachSendThrottle(sock)
 
     s.sock = sock
     s.number = phoneNumber
@@ -933,23 +1059,153 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
     sock.ev.on('group-participants.update', async (update) => {
         if (!isCurrent()) return
         try {
-            const { id, participants, action } = update
+            const { id, participants, action, author } = update
             delete ctx.metaCache[id]
-            const ws = ctx.welcomeSettings[id]
-            if (!ws) return
+            const ws = ctx.welcomeSettings[id] || {}
+
+            let memberCount = null
+            try {
+                const meta = await getGroupMeta(ctx, sock, id, true)
+                memberCount = meta.participants.length
+            } catch (e) {}
+
             for (const p of participants) {
                 const jid = typeof p === 'string' ? p : p.id
-                if (!jid || isBotJid(sock, jid)) continue
+                if (!jid) continue
+
+                if (isBotJid(sock, jid)) {
+                    if (action === 'remove') console.log(`[${sessionId}] Bot removed from ${id}`)
+                    continue
+                }
+
                 const num = cleanNumber(jid)
+
                 if (action === 'add' && ws.welcome) {
-                    const t = (ws.welcomeMsg || 'Welcome @user 👋').replace(/@user|{user}/gi, '@' + num)
-                    await sock.sendMessage(id, { text: t, mentions: [jid] })
-                } else if ((action === 'remove' || action === 'leave') && ws.goodbye) {
-                    const t = (ws.goodbyeMsg || 'Goodbye @user 👋').replace(/@user|{user}/gi, '@' + num)
-                    await sock.sendMessage(id, { text: t, mentions: [jid] })
+                    const fields = [['USER', `@${num}`]]
+                    const mentions = [jid]
+                    if (author && !isBotJid(sock, author)) {
+                        fields.push(['ADDED BY', `@${cleanNumber(author)}`])
+                        mentions.push(author)
+                    } else {
+                        fields.push(['JOINED VIA', '🔗 INVITE LINK'])
+                    }
+                    if (memberCount !== null) fields.push(['MEMBERS', String(memberCount)])
+                    await sock.sendMessage(id, {
+                        text: skGroup('🎉', 'WELCOME', fields),
+                        mentions
+                    })
+                }
+
+                if (action === 'remove' && ws.goodbye) {
+                    const fields = [['USER', `@${num}`]]
+                    const mentions = [jid]
+                    const wasKicked = author && author !== jid && !isBotJid(sock, author)
+                    if (wasKicked) {
+                        fields.push(['BY', `@${cleanNumber(author)}`])
+                        mentions.push(author)
+                        if (memberCount !== null) fields.push(['MEMBERS', String(memberCount)])
+                        await sock.sendMessage(id, {
+                            text: skGroup('👢', 'REMOVED', fields),
+                            mentions
+                        })
+                    } else {
+                        fields.push(['LEFT', 'Left the group'])
+                        if (memberCount !== null) fields.push(['MEMBERS', String(memberCount)])
+                        await sock.sendMessage(id, {
+                            text: skGroup('👋', 'GOODBYE', fields),
+                            mentions
+                        })
+                    }
+                }
+
+                if (action === 'promote' && ws.promote) {
+                    const fields = [['USER', `@${num}`], ['ROLE', '👑 ADMIN']]
+                    const mentions = [jid]
+                    if (author && !isBotJid(sock, author) && author !== jid) {
+                        fields.splice(1, 0, ['BY', `@${cleanNumber(author)}`])
+                        mentions.push(author)
+                    }
+                    await sock.sendMessage(id, {
+                        text: skGroup('👑', 'PROMOTED', fields),
+                        mentions
+                    })
+                }
+
+                if (action === 'demote' && ws.demote) {
+                    const fields = [['USER', `@${num}`], ['ROLE', '👤 MEMBER']]
+                    const mentions = [jid]
+                    if (author && !isBotJid(sock, author) && author !== jid) {
+                        fields.splice(1, 0, ['BY', `@${cleanNumber(author)}`])
+                        mentions.push(author)
+                    }
+                    await sock.sendMessage(id, {
+                        text: skGroup('⬇️', 'DEMOTED', fields),
+                        mentions
+                    })
                 }
             }
         } catch (e) { console.log('Group update error:', e?.message || e) }
+    })
+
+    sock.ev.on('groups.update', async (updates) => {
+        if (!isCurrent()) return
+        try {
+            for (const update of updates || []) {
+                const id = update.id
+                if (!id) continue
+                delete ctx.metaCache[id]
+                const updater = update.author || update.participant || null
+                const updaterNum = updater ? cleanNumber(updater) : null
+                const mentions = updater && !isBotJid(sock, updater) ? [updater] : []
+
+                if (update.subject !== undefined && update.subject) {
+                    const fields = []
+                    if (updaterNum && !isBotJid(sock, updater)) fields.push(['BY', `@${updaterNum}`])
+                    fields.push(['NEW NAME', update.subject])
+                    await sock.sendMessage(id, { text: skGroup('📝', 'NAME CHANGED', fields), mentions })
+                }
+
+                if (update.desc !== undefined) {
+                    const fields = []
+                    if (updaterNum && !isBotJid(sock, updater)) fields.push(['BY', `@${updaterNum}`])
+                    fields.push(['NEW DESC', update.desc || '(empty)'])
+                    await sock.sendMessage(id, { text: skGroup('📝', 'DESC UPDATED', fields), mentions })
+                }
+
+                if (update.announce !== undefined) {
+                    const locked = !!update.announce
+                    await sock.sendMessage(id, {
+                        text: skGroup(locked ? '🔒' : '🔓', locked ? 'GROUP LOCKED' : 'GROUP UNLOCKED', [
+                            ['STATUS', locked ? '🔒 ADMINS ONLY' : '🟢 EVERYONE']
+                        ])
+                    })
+                }
+
+                if (update.picture !== undefined && update.picture !== null) {
+                    await sock.sendMessage(id, {
+                        text: skGroup('🖼️', 'ICON CHANGED', [['GROUP', update.subject || id]])
+                    })
+                }
+            }
+        } catch (e) { console.log('Groups update error:', e?.message || e) }
+    })
+
+    sock.ev.on('groups.upsert', async (groups) => {
+        if (!isCurrent()) return
+        try {
+            for (const g of groups || []) {
+                const id = g.id
+                if (!id) continue
+                delete ctx.metaCache[id]
+                await sock.sendMessage(id, {
+                    text: skGroup('👹', 'I HAVE ARRIVED', [
+                        ['GROUP', g.subject || 'Unnamed'],
+                        ['MEMBERS', String((g.participants || []).length)],
+                        ['TIP', 'Type .menu for commands']
+                    ])
+                })
+            }
+        } catch (e) { console.log('Groups upsert error:', e?.message || e) }
     })
 
     if (!sock.authState.creds.registered) {
@@ -964,9 +1220,892 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
     }
 
     return sock
+}// ─────────────────────────── ffmpeg (replaces sharp) ───────────────────────────
+let FFMPEG_AVAILABLE = false
+function checkFfmpeg() {
+    execFile('ffmpeg', ['-version'], { timeout: 10000 }, (err) => {
+        FFMPEG_AVAILABLE = !err
+        if (err) console.log('[FFMPEG] not found. Install with: pkg install ffmpeg')
+    })
+}
+function runFfmpeg(args) {
+    return new Promise((resolve, reject) => {
+        execFile('ffmpeg', args, { timeout: 30000 }, (err) => { if (err) reject(err); else resolve() })
+    })
 }
 
-// ─────────────────────────── web dashboard ───────────────────────────
+// ─────────────────────────── confirm-gate helpers ───────────────────────────
+function skConfirmBox(actionLabel, byJid, warning) {
+    let out = `╭━〔 ⚠️ *SUKUNA REALM* 〕━╮\n┃\n`
+    out += `┃     ⚠️ *CONFIRM*\n┃\n`
+    out += `┃  ◈ *ACTION*\n┃  └─ ${actionLabel}\n┃\n`
+    if (byJid) out += `┃  ◈ *BY*\n┃  └─ @${cleanNumber(byJid)}\n┃\n`
+    if (warning) out += `┃  ◈ *WARNING*\n┃  └─ ${warning}\n┃\n`
+    out += `┃  ⏳ Expires in 30s\n┃\n`
+    out += `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n\n`
+    out += `Reply with:\n▸ *yes*\n▸ *no*`
+    return out
+}
+function skCancelledBox(actionLabel) {
+    let out = `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n┃\n`
+    out += `┃    ❌ *CANCELLED*\n┃\n`
+    out += `┃  ◈ *ACTION*\n┃  └─ ${actionLabel}\n┃\n`
+    out += `┃  ◈ *STATUS*\n┃  └─ 🔴 ABORTED\n┃\n`
+    out += `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`
+    return out
+}
+
+// ─────────────────────────── commands ───────────────────────────
+async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, senderNumber, owner, cmd, args) {
+    const prefix = ctx.cfg.prefix
+    const reply = (text, mentions) => sock.sendMessage(from, mentions ? { text, mentions } : { text }, { quoted: msg })
+    const now = new Date()
+
+    // CONFIRM GATE first
+    if (ctx.pendingConfirm && ctx.pendingConfirm[from]) {
+        const pending = ctx.pendingConfirm[from]
+        if (Date.now() - pending.ts > 30000) {
+            delete ctx.pendingConfirm[from]
+        } else if (pending.by === sender) {
+            if (cmd === 'yes') {
+                delete ctx.pendingConfirm[from]
+                return executeConfirmed(sock, ctx, msg, content, from, isGroup, sender, senderNumber, owner, pending.action)
+            } else if (cmd === 'no') {
+                delete ctx.pendingConfirm[from]
+                return reply(skCancelledBox(pending.label))
+            } else {
+                delete ctx.pendingConfirm[from]
+            }
+        }
+    }
+
+    let adminCache = null
+    const canManage = async () => {
+        if (owner) return true
+        if (!isGroup) return false
+        if (adminCache === null) adminCache = await checkAdmin(ctx, sock, from, [sender])
+        return adminCache
+    }
+    const needGroup = async () => {
+        if (isGroup) return true
+        await reply(skError('Group only.'))
+        return false
+    }
+    const needManage = async () => {
+        if (!(await needGroup())) return false
+        if (await canManage()) return true
+        await reply(skError('Admin only.'))
+        return false
+    }
+    const needOwner = async () => {
+        if (owner) return true
+        await reply(skError('Owner only.'))
+        return false
+    }
+
+    if (cmd === 'ping') return reply(skBasic('⚡', [['STATUS', '⚡ ONLINE']]))
+    if (cmd === 'alive') return reply(skInfo('𖤐', 'BOT ALIVE', [['STATUS', '🟢 READY'], ['SYSTEM', '⚡ ONLINE']]))
+    if (cmd === 'time') {
+        return reply(skBasic('⏰', [
+            ['DATE', now.toLocaleDateString('en-US', { timeZone: TIMEZONE })],
+            ['DAY', now.toLocaleDateString('en-US', { weekday: 'long', timeZone: TIMEZONE })],
+            ['TIME', now.toLocaleTimeString('en-US', { timeZone: TIMEZONE })]
+        ]))
+    }
+    if (cmd === 'info') {
+        return reply(skInfo('⚡', 'BOT INFO', [
+            ['OWNER', ownerName(sock)],
+            ['MODE', ctx.cfg.mode],
+            ['PREFIX', prefix],
+            ['SESSIONS', String(Object.keys(sessions).length)],
+            ['UPTIME', formatUptime(process.uptime())]
+        ]))
+    }
+    if (cmd === 'menu' || cmd === 'help') {
+        const menuText = renderMenu(ctx, sock)
+        if (fs.existsSync(LOGO_PATH)) {
+            try {
+                const buffer = fs.readFileSync(LOGO_PATH)
+                await sock.sendMessage(from, { image: buffer, caption: menuText }, { quoted: msg })
+                return
+            } catch (e) { console.log('Menu image failed:', e?.message || e) }
+        }
+        return reply(menuText)
+    }
+    if (cmd === 'mars') {
+        return reply(skInfo('🔒', 'HIDDEN COMMANDS', [
+            ['.vv', 'Reveal view-once in chat'],
+            ['.hmm', 'Silent save view-once to DM'],
+            ['.save', 'Save status / photo to DM']
+        ]))
+    }
+    if (cmd === 'mode') {
+        if (!(await needOwner())) return
+        if (args[0] === 'public' || args[0] === 'private') {
+            ctx.cfg.mode = args[0]
+            saveCtx(ctx)
+            return reply(skBasic('⚙️', [['MODE', args[0] === 'public' ? '🟢 PUBLIC' : '🔒 PRIVATE']]))
+        }
+        return reply(skBasic('⚙️', [['MODE', ctx.cfg.mode]]))
+    }
+    if (cmd === 'prefix') {
+        if (!(await needOwner())) return
+        if (args[0]) {
+            if (args[0].length > 3) return reply(skError('Prefix max 3 chars.'))
+            ctx.cfg.prefix = args[0]
+            saveCtx(ctx)
+            return reply(skBasic('🔧', [['PREFIX', args[0]]]))
+        }
+        return reply(skBasic('🔧', [['PREFIX', ctx.cfg.prefix]]))
+    }
+    const toggles = ['typing', 'delay', 'read', 'online', 'autoreact', 'statusview']
+    if (toggles.includes(cmd)) {
+        if (!(await needOwner())) return
+        if (args[0] === 'on' || args[0] === 'off') {
+            ctx.cfg[cmd] = args[0] === 'on'
+            saveCtx(ctx)
+            return reply(skBasic('⚡', [[cmd.toUpperCase(), args[0] === 'on' ? '🟢 ON' : '🔴 OFF']]))
+        }
+        return reply(skBasic('⚡', [[cmd.toUpperCase(), ctx.cfg[cmd] ? '🟢 ON' : '🔴 OFF']]))
+    }
+
+    if (cmd === 'joke') return reply(skContent('😄', 'JOKE', getRandom(jokes)))
+    if (cmd === 'quote') return reply(skContent('💬', 'QUOTE', getRandom(quotes)))
+    if (cmd === 'fact') return reply(skContent('🧠', 'FACT', getRandom(facts)))
+    if (cmd === 'truth') return reply(skContent('❓', 'TRUTH', getRandom(truths)))
+    if (cmd === 'dare') return reply(skContent('🔥', 'DARE', getRandom(dares)))
+    if (cmd === 'roast') return reply(skContent('💀', 'ROAST', getRandom(roasts)))
+    if (cmd === 'compliment') return reply(skContent('💖', 'COMPLIMENT', getRandom(compliments)))
+    if (cmd === 'dice') return reply(skBasic('🎲', [['RESULT', String(Math.floor(Math.random() * 6) + 1)]]))
+    if (cmd === 'coin') return reply(skBasic('🪙', [['RESULT', Math.random() < 0.5 ? 'HEADS' : 'TAILS']]))
+    if (cmd === '8ball') {
+        const answers = ['Yes', 'No', 'Maybe', 'Ask later', 'Absolutely', 'Doubtful', 'Good feeling', 'Very doubtful']
+        return reply(skContent('🎱', 'ANSWER', getRandom(answers)))
+    }
+    if (cmd === 'rate') {
+        const thing = args.join(' ')
+        if (!thing) return reply(skError('Usage: ' + prefix + 'rate <thing>'))
+        return reply(skBasic('⭐', [['THING', thing], ['RATING', `${Math.floor(Math.random() * 10) + 1}/10`]]))
+    }
+    if (cmd === 'ship') {
+        if (args.length < 2) return reply(skError('Usage: ' + prefix + 'ship <a> <b>'))
+        return reply(skBasic('💕', [['PAIR', `${args[0]} + ${args[1]}`], ['MATCH', `${Math.floor(Math.random() * 100) + 1}%`]]))
+    }
+
+    if (cmd === 'calc') {
+        if (!args.length) return reply(skError('Usage: ' + prefix + 'calc 2+2*3'))
+        try { return reply(skBasic('🧮', [['INPUT', args.join(' ')], ['RESULT', String(safeCalc(args.join(' ')))]])) }
+        catch (e) { return reply(skError('Invalid math.')) }
+    }
+
+    if (cmd === 'sticker') {
+        if (!FFMPEG_AVAILABLE) return reply(skError('Image tools need ffmpeg on the server.'))
+        const ci = getContextInfo(content)
+        const quoted = ci?.quotedMessage ? unwrapEphemeral(ci.quotedMessage) : null
+        if (!quoted || !quoted.imageMessage) return reply(skError('Reply to an image.'))
+        const inPath = path.join(os.tmpdir(), `sk_in_${crypto.randomBytes(6).toString('hex')}.jpg`)
+        const outPath = path.join(os.tmpdir(), `sk_out_${crypto.randomBytes(6).toString('hex')}.webp`)
+        try {
+            const buffer = await downloadBuffer(sock, getQuotedKey(sock, from, ci), quoted)
+            fs.writeFileSync(inPath, buffer)
+            await runFfmpeg([
+                '-y', '-i', inPath,
+                '-vf', 'scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000',
+                outPath
+            ])
+            const webp = fs.readFileSync(outPath)
+            await sock.sendMessage(from, { sticker: webp }, { quoted: msg })
+        } catch (e) {
+            console.log('.sticker error:', e?.message || e)
+            return reply(skError('Failed to create sticker.'))
+        } finally {
+            try { fs.unlinkSync(inPath) } catch (e) {}
+            try { fs.unlinkSync(outPath) } catch (e) {}
+        }
+        return
+    }
+
+    if (cmd === 'toimg') {
+        if (!FFMPEG_AVAILABLE) return reply(skError('Image tools need ffmpeg on the server.'))
+        const ci = getContextInfo(content)
+        const quoted = ci?.quotedMessage ? unwrapEphemeral(ci.quotedMessage) : null
+        if (!quoted || !quoted.stickerMessage) return reply(skError('Reply to a sticker.'))
+        const inPath = path.join(os.tmpdir(), `sk_in_${crypto.randomBytes(6).toString('hex')}.webp`)
+        const outPath = path.join(os.tmpdir(), `sk_out_${crypto.randomBytes(6).toString('hex')}.png`)
+        try {
+            const buffer = await downloadBuffer(sock, getQuotedKey(sock, from, ci), quoted)
+            fs.writeFileSync(inPath, buffer)
+            await runFfmpeg(['-y', '-i', inPath, outPath])
+            const png = fs.readFileSync(outPath)
+            await sock.sendMessage(from, { image: png, caption: 'Sticker converted' }, { quoted: msg })
+        } catch (e) {
+            console.log('.toimg error:', e?.message || e)
+            return reply(skError('Failed to convert sticker.'))
+        } finally {
+            try { fs.unlinkSync(inPath) } catch (e) {}
+            try { fs.unlinkSync(outPath) } catch (e) {}
+        }
+        return
+    }
+
+    if (cmd === 'tt') {
+        if (!YTDLP_AVAILABLE) return
+        if (isGroup) return reply(skError('.tt only works in private chat.'))
+        if (!owner) return reply(skError('Owner only.'))
+        const url = args[0]
+        if (!url || !isTikTokUrl(url)) return reply(skError('Invalid TikTok URL.'))
+        const tnow = Date.now()
+        ctx.ttUsage = (ctx.ttUsage || []).filter(t => tnow - t < 3600000)
+        if (ctx.ttUsage.length >= 2) return reply(skError('TikTok limit reached. Try later.'))
+        ctx.ttUsage.push(tnow)
+        await reply(skBasic('📥', [['STATUS', '⏳ DOWNLOADING'], ['SOURCE', 'TikTok']]))
+        const outPath = path.join(os.tmpdir(), `tt_${crypto.randomBytes(6).toString('hex')}.mp4`)
+        try {
+            await runYtDlp(url, outPath)
+            if (!fs.existsSync(outPath)) throw new Error('no output')
+            if (fs.statSync(outPath).size > 30 * 1024 * 1024) return reply(skError('Video > 30MB.'))
+            await sleep(10000)
+            const buffer = fs.readFileSync(outPath)
+            await sock.sendMessage(from, { video: buffer, caption: 'TikTok download' }, { quoted: msg })
+        } catch (e) {
+            console.log('.tt error:', e?.message || e)
+            return reply(skError('Download failed. Video may be private or yt-dlp not installed.'))
+        } finally {
+            try { fs.unlinkSync(outPath) } catch (e) {}
+        }
+        return
+    }
+
+    if (cmd === 'warn') {
+        if (!(await needManage())) return
+        const target = getTarget(content)
+        if (!target) return reply(skError('Mention or reply to a user.'))
+        const guard = await guardTarget(ctx, sock, from, target)
+        if (guard) return reply(guard)
+        if (!ctx.warningCounts[from]) ctx.warningCounts[from] = {}
+        const key = cleanJid(target)
+        ctx.warningCounts[from][key] = (ctx.warningCounts[from][key] || 0) + 1
+        const limit = ctx.warnLimit[from] || 3
+        const count = ctx.warningCounts[from][key]
+        if (count >= limit) {
+            try {
+                const r = await participantsUpdate(sock, from, [target], 'remove')
+                if (!r.ok) return reply(skError('Could not remove them. Am I admin?'))
+                delete ctx.warningCounts[from][key]
+                return sock.sendMessage(from, {
+                    text: skGroup('🚫', 'KICKED', [
+                        ['USER', `@${cleanNumber(target)}`],
+                        ['COUNT', `${limit} / ${limit}`]
+                    ], sender),
+                    mentions: [target]
+                })
+            } catch (e) { return reply(skError('Failed to kick.')) }
+        }
+        return sock.sendMessage(from, {
+            text: skGroup('⚠️', 'WARN', [
+                ['USER', `@${cleanNumber(target)}`],
+                ['COUNT', `${count} / ${limit}`]
+            ], sender),
+            mentions: [target]
+        })
+    }
+    if (cmd === 'warncount') {
+        if (!(await needManage())) return
+        const num = parseInt(args[0])
+        if (!num || num < 1) return reply(skError('Usage: ' + prefix + 'warncount <n>'))
+        ctx.warnLimit[from] = num
+        saveCtx(ctx)
+        return reply(skGroup('⚙️', 'WARN LIMIT', [['LIMIT', String(num)]], sender))
+    }
+    if (cmd === 'warnlist') {
+        if (!(await needManage())) return
+        const list = ctx.warningCounts[from] || {}
+        const keys = Object.keys(list)
+        if (keys.length === 0) return reply(skBasic('📋', [['WARNED', 'none']]))
+        const lines = keys.map(k => `• ${cleanNumber(k)} ─→ ${list[k]}`).join('\n')
+        return reply(skContent('📋', 'WARN LIST', '\n' + lines))
+    }
+    if (cmd === 'resetwarn') {
+        if (!(await needManage())) return
+        const target = getTarget(content)
+        if (!target) return reply(skError('Mention or reply to a user.'))
+        if (ctx.warningCounts[from]) delete ctx.warningCounts[from][cleanJid(target)]
+        return sock.sendMessage(from, {
+            text: skGroup('✅', 'RESET WARN', [['USER', `@${cleanNumber(target)}`], ['STATUS', '🟢 CLEARED']], sender),
+            mentions: [target]
+        })
+    }
+
+    const protectCmds = ['antilink', 'antispam', 'antibot', 'antimedia', 'antitag', 'antiforward']
+    if (protectCmds.includes(cmd)) {
+        if (!(await needManage())) return
+        if (!ctx.groupSettings[from]) ctx.groupSettings[from] = {}
+        if (args[0] === 'on' || args[0] === 'off') {
+            ctx.groupSettings[from][cmd] = args[0] === 'on'
+            saveCtx(ctx)
+            const emoji = { antilink: '🔗', antispam: '🚫', antibot: '🤖', antimedia: '🖼️', antitag: '🏷️', antiforward: '↪️' }[cmd]
+            return reply(skGroup(emoji, cmd.toUpperCase(), [['STATUS', args[0] === 'on' ? '🟢 ENABLED' : '🔴 DISABLED']], sender))
+        }
+        const cur = ctx.groupSettings[from][cmd] ? '🟢 ON' : '🔴 OFF'
+        return reply(skBasic('🛡️', [[cmd.toUpperCase(), cur]]))
+    }
+
+    if (cmd === 'lockdown') {
+        if (!(await needManage())) return
+        if (!ctx.groupSettings[from]) ctx.groupSettings[from] = {}
+        const s = ctx.groupSettings[from]
+        s.antilink = true; s.antimedia = true; s.antitag = true; s.antiforward = true; s.antispam = true
+        saveCtx(ctx)
+        try { await sock.groupSettingUpdate(from, 'announcement') } catch (e) {}
+        return reply(skGroup('🔒', 'LOCKDOWN', [
+            ['ANTILINK', '🟢 ON'], ['ANTISPAM', '🟢 ON'],
+            ['ANTIMEDIA', '🟢 ON'], ['ANTITAG', '🟢 ON'],
+            ['ANTIFORWARD', '🟢 ON'], ['GROUP MUTE', '🔒 ADMINS ONLY']
+        ], sender))
+    }
+    if (cmd === 'unlockdown') {
+        if (!(await needManage())) return
+        if (!ctx.groupSettings[from]) ctx.groupSettings[from] = {}
+        const s = ctx.groupSettings[from]
+        s.antilink = false; s.antimedia = false; s.antitag = false; s.antiforward = false; s.antispam = false
+        saveCtx(ctx)
+        try { await sock.groupSettingUpdate(from, 'not_announcement') } catch (e) {}
+        return reply(skGroup('🔓', 'UNLOCKDOWN', [
+            ['ANTILINK', '🔴 OFF'], ['ANTISPAM', '🔴 OFF'],
+            ['ANTIMEDIA', '🔴 OFF'], ['ANTITAG', '🔴 OFF'],
+            ['ANTIFORWARD', '🔴 OFF'], ['GROUP MUTE', '🟢 EVERYONE']
+        ], sender))
+    }
+
+    if (cmd === 'kick') {
+        if (!(await needManage())) return
+        const ci = getContextInfo(content)
+        const mentions = [...(ci?.mentionedJid || [])]
+        if (ci?.participant && !mentions.includes(ci.participant)) mentions.push(ci.participant)
+        if (mentions.length === 0) return reply(skError('Mention or reply to a user.'))
+        if (mentions.length > 5) return reply(skError('Max 5 users per kick.'))
+        const filtered = []
+        for (const t of mentions) {
+            if (isBotJid(sock, t)) continue
+            if (await checkAdmin(ctx, sock, from, [t])) continue
+            filtered.push(t)
+        }
+        if (filtered.length === 0) return reply(skError('No valid targets (bot/admins excluded).'))
+        try {
+            const r = await participantsUpdate(sock, from, filtered, 'remove')
+            if (!r.ok) return reply(skError('Could not kick. Am I admin?'))
+            return sock.sendMessage(from, {
+                text: skGroup('👢', 'KICK', [
+                    ['USERS', filtered.map(t => '@' + cleanNumber(t)).join(', ')]
+                ], sender),
+                mentions: filtered
+            })
+        } catch (e) { return reply(skError('Failed to kick.')) }
+    }
+
+    if (cmd === 'add') {
+        if (!(await needManage())) return
+        const digits = (args[0] || '').replace(/[^0-9]/g, '')
+        if (digits.length < 7) return reply(skError('Usage: ' + prefix + 'add <number>'))
+        try {
+            const r = await participantsUpdate(sock, from, [normalizeJid(digits)], 'add')
+            if (r.ok) return reply(skGroup('➕', 'ADD', [['USER', `+${digits}`], ['STATUS', '🟢 ADDED']], sender))
+            const st = String(r.res?.[0]?.status)
+            if (st === '403') return reply(skError('User only allows adds via link.'))
+            if (st === '409') return reply(skError('Already in group.'))
+            if (st === '408') return reply(skError('Recently left the group.'))
+            return reply(skError('Could not add.'))
+        } catch (e) { return reply(skError('Failed to add.')) }
+    }
+
+    if (cmd === 'promote' || cmd === 'demote') {
+        if (!(await needManage())) return
+        const target = getTarget(content)
+        if (!target) return reply(skError('Mention or reply to a user.'))
+        try {
+            const r = await participantsUpdate(sock, from, [target], cmd)
+            if (!r.ok) return reply(skError(`Could not ${cmd}. Am I admin?`))
+            const newRole = cmd === 'promote' ? '👑 ADMIN' : '👤 MEMBER'
+            const emoji = cmd === 'promote' ? '👑' : '⬇️'
+            return sock.sendMessage(from, {
+                text: skGroup(emoji, cmd.toUpperCase() + 'D', [
+                    ['USER', `@${cleanNumber(target)}`],
+                    ['ROLE', newRole]
+                ], sender),
+                mentions: [target]
+            })
+        } catch (e) { return reply(skError(`Failed to ${cmd}.`)) }
+    }
+
+    if (cmd === 'demoteall') {
+        if (!(await needManage())) return
+        const meta = await getGroupMeta(ctx, sock, from, true)
+        const creator = meta.owner || meta.creator || null
+        const admins = meta.participants.filter(p => p.admin && p.id !== creator && !isBotJid(sock, p.id))
+        if (admins.length === 0) return reply(skBasic('✅', [['ADMINS', 'none to demote']]))
+        ctx.pendingConfirm[from] = { action: 'demoteall', by: sender, ts: Date.now(), label: 'DEMOTE ALL', targets: admins.map(a => a.id) }
+        return reply(skConfirmBox('DEMOTE ALL ADMINS', sender, `Will demote ${admins.length} admin(s). Creator is exempt.`))
+    }
+
+    if (cmd === 'del') {
+        if (!(await needManage())) return
+        const ci = getContextInfo(content)
+        if (!ci?.stanzaId) return reply(skError('Reply to a message to delete it.'))
+        try {
+            await sock.sendMessage(from, {
+                delete: {
+                    remoteJid: from,
+                    id: ci.stanzaId,
+                    participant: ci.participant || undefined,
+                    fromMe: false
+                }
+            })
+        } catch (e) { return reply(skError('Could not delete. Am I admin?')) }
+        return
+    }
+
+    if (cmd === 'left') {
+        if (!(await needManage())) return
+        try {
+            await reply(skBasic('👋', [['STATUS', '🚪 LEAVING GROUP']]))
+            await sleep(1500)
+            await sock.groupLeave(from)
+        } catch (e) { return reply(skError('Failed to leave.')) }
+        return
+    }
+
+    if (cmd === 'mute' || cmd === 'unmute') {
+        if (!(await needManage())) return
+        try {
+            await sock.groupSettingUpdate(from, cmd === 'mute' ? 'announcement' : 'not_announcement')
+            const emoji = cmd === 'mute' ? '🔇' : '🔊'
+            const grp = cmd === 'mute' ? '🔒 ADMINS ONLY' : '🟢 EVERYONE'
+            return reply(skGroup(emoji, cmd.toUpperCase() + ' GROUP', [['GROUP', grp]], sender))
+        } catch (e) { return reply(skError('Failed. Am I admin?')) }
+    }
+
+    if (cmd === 'tagall' || cmd === 'hidetag') {
+        if (!(await needManage())) return
+        try {
+            const meta = await getGroupMeta(ctx, sock, from, true)
+            const mentions = meta.participants.map(p => p.id)
+            const message = args.join(' ') || 'Attention everyone!'
+            if (cmd === 'hidetag') {
+                return sock.sendMessage(from, { text: message, mentions })
+            }
+            const lines = ['*Tag All*', '', message, '']
+            mentions.forEach(jid => { lines.push(`@${cleanNumber(jid)}`) })
+            return sock.sendMessage(from, { text: lines.join('\n'), mentions })
+        } catch (e) { return reply(skError('Failed to fetch members.')) }
+    }
+
+    if (cmd === 'pin') {
+        if (!(await needManage())) return
+        const ci = getContextInfo(content)
+        if (!ci?.stanzaId) return reply(skError('Reply to a message to pin it.'))
+        try {
+            await sock.sendMessage(from, { pin: { remoteJid: from, id: ci.stanzaId, fromMe: false, participant: ci.participant } })
+            return reply(skBasic('📌', [['STATUS', '🟢 PINNED']]))
+        } catch (e) { return reply(skError('Pin not supported by this Baileys version.')) }
+    }
+
+    if (cmd === 'groupinfo') {
+        if (!(await needGroup())) return
+        try {
+            const meta = await getGroupMeta(ctx, sock, from, true)
+            return reply(skInfo('📊', 'GROUP INFO', [
+                ['NAME', meta.subject],
+                ['ID', meta.id],
+                ['MEMBERS', String(meta.participants.length)],
+                ['ADMINS', String(meta.participants.filter(p => p.admin).length)],
+                ['CREATOR', cleanNumber(meta.owner || 'unknown')]
+            ]))
+        } catch (e) { return reply(skError('Failed to fetch group info.')) }
+    }
+
+    if (cmd === 'groupdesc') {
+        if (!(await needGroup())) return
+        try {
+            const meta = await getGroupMeta(ctx, sock, from, true)
+            return reply(skContent('📝', 'GROUP DESC', meta.desc || '(empty)'))
+        } catch (e) { return reply(skError('Failed to fetch description.')) }
+    }
+
+    if (cmd === 'link') {
+        if (!(await needManage())) return
+        try {
+            const code = await sock.groupInviteCode(from)
+            return reply(skInfo('🔗', 'GROUP LINK', [['GROUP', (await getGroupMeta(ctx, sock, from)).subject], ['LINK', `https://chat.whatsapp.com/${code}`]]))
+        } catch (e) { return reply(skError('Failed. Am I admin?')) }
+    }
+
+    if (cmd === 'revoke') {
+        if (!(await needManage())) return
+        try {
+            await sock.groupRevokeInvite(from)
+            return reply(skGroup('🔐', 'REVOKE LINK', [['STATUS', '🟢 NEW LINK GENERATED']], sender))
+        } catch (e) { return reply(skError('Failed. Am I admin?')) }
+    }
+
+    if (cmd === 'admins') {
+        if (!(await needGroup())) return
+        try {
+            const meta = await getGroupMeta(ctx, sock, from, true)
+            const admins = meta.participants.filter(p => p.admin)
+            const lines = admins.map(a => `• ${cleanNumber(a.id)}`).join('\n')
+            return reply(skContent('👑', 'GROUP ADMINS', '\n' + lines))
+        } catch (e) { return reply(skError('Failed to fetch admins.')) }
+    }
+
+    if (cmd === 'members') {
+        if (!(await needGroup())) return
+        try {
+            const meta = await getGroupMeta(ctx, sock, from, true)
+            const lines = meta.participants.map(p => `• ${cleanNumber(p.id)}`).join('\n')
+            return reply(skContent('👥', `MEMBERS (${meta.participants.length})`, '\n' + lines))
+        } catch (e) { return reply(skError('Failed to fetch members.')) }
+    }
+
+    if (cmd === 'grouplist') {
+        try {
+            const all = await sock.groupFetchAllParticipating()
+            const entries = Object.values(all).map(g => `• ${g.subject} ─→ ${cleanNumber(g.id)}`)
+            if (entries.length === 0) return reply(skBasic('📡', [['GROUPS', 'none']]))
+            return reply(skContent('📡', `GROUPS (${entries.length})`, '\n' + entries.join('\n')))
+        } catch (e) { return reply(skError('Failed to fetch groups.')) }
+    }
+
+    if (cmd === 'topmembers') {
+        if (!(await needGroup())) return
+        try {
+            const act = (ctx.activity && ctx.activity[from]) || {}
+            const entries = Object.entries(act).sort((a, b) => (b[1].count || 0) - (a[1].count || 0)).slice(0, 10)
+            if (entries.length === 0) return reply(skBasic('📊', [['ACTIVITY', 'no data yet']]))
+            const lines = entries.map(([jid, v]) => `• ${cleanNumber(jid)} ─→ ${v.count || 0}`).join('\n')
+            return reply(skContent('📊', 'TOP MEMBERS', '\n' + lines))
+        } catch (e) { return reply(skError('Failed to compute.')) }
+    }
+
+    if (cmd === 'kickinactive') {
+        if (!(await needManage())) return
+        const days = parseInt(args[0]) || 30
+        if (days < 1 || days > 365) return reply(skError('Days must be 1-365.'))
+        ctx.pendingKickDays = days
+        ctx.pendingConfirm[from] = { action: 'kickinactive', by: sender, ts: Date.now(), label: 'KICK INACTIVE' }
+        return reply(skConfirmBox(`KICK INACTIVE (${days} days)`, sender, 'Will kick members idle for that period.'))
+    }
+
+    if (cmd === 'requests') {
+        if (!(await needManage())) return
+        try {
+            const list = await sock.groupRequestParticipantsList(from)
+            if (!list || list.length === 0) return reply(skBasic('📋', [['REQUESTS', 'none']]))
+            const lines = list.map(r => `• ${cleanNumber(r.jid)}`).join('\n')
+            return reply(skContent('📋', `JOIN REQUESTS (${list.length})`, '\n' + lines))
+        } catch (e) { return reply(skError('Failed to fetch requests.')) }
+    }
+    if (cmd === 'approveall') {
+        if (!(await needManage())) return
+        try {
+            const list = await sock.groupRequestParticipantsList(from)
+            if (!list || list.length === 0) return reply(skBasic('✅', [['REQUESTS', 'none']]))
+            const jids = list.map(r => r.jid)
+            await sock.groupRequestParticipantsUpdate(from, jids, 'approve')
+            return reply(skGroup('✅', 'APPROVE ALL', [['COUNT', String(jids.length)]], sender))
+        } catch (e) { return reply(skError('Failed to approve.')) }
+    }
+    if (cmd === 'rejectall') {
+        if (!(await needManage())) return
+        try {
+            const list = await sock.groupRequestParticipantsList(from)
+            if (!list || list.length === 0) return reply(skBasic('❌', [['REQUESTS', 'none']]))
+            const jids = list.map(r => r.jid)
+            await sock.groupRequestParticipantsUpdate(from, jids, 'reject')
+            return reply(skGroup('❌', 'REJECT ALL', [['COUNT', String(jids.length)]], sender))
+        } catch (e) { return reply(skError('Failed to reject.')) }
+    }
+
+    if (cmd === 'setname') {
+        if (!(await needManage())) return
+        const txt = args.join(' ')
+        if (!txt) return reply(skError('Usage: ' + prefix + 'setname <name>'))
+        try {
+            await sock.groupUpdateSubject(from, txt)
+            return reply(skGroup('📝', 'NAME CHANGED', [['NEW NAME', txt]], sender))
+        } catch (e) { return reply(skError('Failed. Am I admin?')) }
+    }
+    if (cmd === 'setdesc') {
+        if (!(await needManage())) return
+        const txt = args.join(' ')
+        if (!txt) return reply(skError('Usage: ' + prefix + 'setdesc <text>'))
+        try {
+            await sock.groupUpdateDescription(from, txt)
+            return reply(skGroup('📝', 'DESC UPDATED', [['STATUS', '🟢 SAVED']], sender))
+        } catch (e) { return reply(skError('Failed. Am I admin?')) }
+    }
+
+    if (cmd === 'welcome' || cmd === 'goodbye') {
+        if (!(await needManage())) return
+        if (!ctx.welcomeSettings[from]) ctx.welcomeSettings[from] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
+        if (args[0] === 'on' || args[0] === 'off') {
+            ctx.welcomeSettings[from][cmd] = args[0] === 'on'
+            saveCtx(ctx)
+            const emoji = cmd === 'welcome' ? '🎉' : '👋'
+            return reply(skGroup(emoji, cmd.toUpperCase(), [['STATUS', args[0] === 'on' ? '🟢 ENABLED' : '🔴 DISABLED']], sender))
+        }
+        const cur = ctx.welcomeSettings[from][cmd] ? '🟢 ON' : '🔴 OFF'
+        return reply(skBasic('⚙️', [[cmd.toUpperCase(), cur]]))
+    }
+    if (cmd === 'setwelcome' || cmd === 'setgoodbye') {
+        if (!(await needManage())) return
+        const txt = args.join(' ')
+        if (!txt) return reply(skError('Usage: ' + prefix + cmd + ' <text>'))
+        if (!ctx.welcomeSettings[from]) ctx.welcomeSettings[from] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
+        ctx.welcomeSettings[from][cmd === 'setwelcome' ? 'welcomeMsg' : 'goodbyeMsg'] = txt
+        saveCtx(ctx)
+        return reply(skGroup('📝', 'SET MESSAGE', [['TYPE', cmd.toUpperCase().replace('SET', '')], ['STATUS', '🟢 SAVED']], sender))
+    }
+
+    if (cmd === 'promotenotify' || cmd === 'demotenotify') {
+        if (!(await needManage())) return
+        if (!ctx.welcomeSettings[from]) ctx.welcomeSettings[from] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '', promote: false, demote: false }
+        const key = cmd === 'promotenotify' ? 'promote' : 'demote'
+        if (args[0] === 'on' || args[0] === 'off') {
+            ctx.welcomeSettings[from][key] = args[0] === 'on'
+            saveCtx(ctx)
+            const emoji = key === 'promote' ? '👑' : '⬇️'
+            return reply(skGroup(emoji, cmd.toUpperCase(), [['STATUS', args[0] === 'on' ? '🟢 ENABLED' : '🔴 DISABLED']], sender))
+        }
+        const cur = ctx.welcomeSettings[from][key] ? '🟢 ON' : '🔴 OFF'
+        return reply(skBasic('⚙️', [[cmd.toUpperCase(), cur]]))
+    }
+
+    if (cmd === 'poll') {
+        if (!(await needGroup())) return
+        const parts = args.join(' ').split('|').map(s => s.trim()).filter(Boolean)
+        if (parts.length < 3) return reply(skError('Usage: ' + prefix + 'poll Q | Opt1 | Opt2'))
+        const [question, ...options] = parts
+        ctx.activePolls[from] = { question, options, votes: {} }
+        const optLines = options.map((opt, i) => `${i + 1}. ${opt}`).join('\n')
+        return reply(skContent('📊', 'POLL', `${question}\n\n${optLines}\n\nVote with ${prefix}vote <n>`))
+    }
+    if (cmd === 'vote') {
+        if (!ctx.activePolls[from]) return reply(skError('No active poll.'))
+        const num = parseInt(args[0]) - 1
+        if (isNaN(num) || num < 0 || num >= ctx.activePolls[from].options.length) return reply(skError('Invalid vote.'))
+        ctx.activePolls[from].votes[cleanJid(sender)] = num
+        return reply(skBasic('🗳️', [['VOTED', ctx.activePolls[from].options[num]]]))
+    }
+    if (cmd === 'endpoll') {
+        if (!(await needManage())) return
+        if (!ctx.activePolls[from]) return reply(skError('No active poll.'))
+        const poll = ctx.activePolls[from]
+        const tally = {}
+        poll.options.forEach((_, i) => { tally[i] = 0 })
+        Object.values(poll.votes).forEach(v => { tally[v]++ })
+        const lines = poll.options.map((opt, i) => `${opt}: ${tally[i]}`).join('\n')
+        delete ctx.activePolls[from]
+        return reply(skContent('📊', 'POLL RESULTS', `${poll.question}\n\n${lines}`))
+    }
+
+    return
+}
+
+async function executeConfirmed(sock, ctx, msg, content, from, isGroup, sender, senderNumber, owner, action) {
+    if (!isGroup) return
+    if (action === 'demoteall') {
+        try {
+            const meta = await getGroupMeta(ctx, sock, from, true)
+            const creator = meta.owner || meta.creator || null
+            const admins = meta.participants.filter(p => p.admin && p.id !== creator && !isBotJid(sock, p.id))
+            if (admins.length === 0) return
+            const jids = admins.map(a => a.id)
+            await sock.groupParticipantsUpdate(from, jids, 'demote')
+            await sock.sendMessage(from, {
+                text: skGroup('⬇️', 'DEMOTE ALL', [
+                    ['ADMINS DEMOTED', String(jids.length)],
+                    ['EXEMPT', '👑 CREATOR']
+                ], sender),
+                mentions: jids
+            })
+        } catch (e) {
+            console.log('demoteall error:', e?.message || e)
+            try { await sock.sendMessage(from, { text: skError('Failed to demote.') }) } catch (e2) {}
+        }
+        return
+    }
+    if (action === 'kickinactive') {
+        try {
+            const meta = await getGroupMeta(ctx, sock, from, true)
+            const creator = meta.owner || meta.creator || null
+            const days = ctx.pendingKickDays || 30
+            const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+            const act = (ctx.activity && ctx.activity[from]) || {}
+            const inactive = meta.participants.filter(p => {
+                if (p.id === creator) return false
+                if (isBotJid(sock, p.id)) return false
+                if (p.admin) return false
+                const last = act[cleanJid(p.id)]?.last || 0
+                return last < cutoff
+            }).map(p => p.id)
+            if (inactive.length === 0) {
+                return sock.sendMessage(from, { text: skBasic('✅', [['INACTIVE', 'none found']]) })
+            }
+            await sock.groupParticipantsUpdate(from, inactive, 'remove')
+            await sock.sendMessage(from, {
+                text: skGroup('👢', 'KICK INACTIVE', [
+                    ['DAYS', String(days)],
+                    ['KICKED', String(inactive.length)]
+                ], sender),
+                mentions: inactive
+            })
+        } catch (e) {
+            console.log('kickinactive error:', e?.message || e)
+            try { await sock.sendMessage(from, { text: skError('Failed to kick inactive.') }) } catch (e2) {}
+        }
+        return
+    }
+}// ─────────────────────────── menu ───────────────────────────
+function renderGroupCommandsBox(p) {
+    return (
+        `╭━〔 👥 *GROUP COMMANDS* 〕━╮\n` +
+        `\n` +
+        `  🛡️ *PROTECTION*\n` +
+        `  ▸ ${p}antilink ─→ Block links\n` +
+        `  ▸ ${p}antispam ─→ Block spam\n` +
+        `  ▸ ${p}antibot ─→ Remove bots\n` +
+        `  ▸ ${p}antimedia ─→ Block media\n` +
+        `  ▸ ${p}antitag ─→ Block mass tags\n` +
+        `  ▸ ${p}antiforward ─→ Block forwarded\n` +
+        `  ▸ ${p}lockdown ─→ Lock everything\n` +
+        `  ▸ ${p}unlockdown ─→ Unlock everything\n` +
+        `\n` +
+        `  👤 *MEMBERS*\n` +
+        `  ▸ ${p}kick ─→ Remove user(s)\n` +
+        `  ▸ ${p}add ─→ Add user\n` +
+        `  ▸ ${p}promote ─→ Make admin\n` +
+        `  ▸ ${p}demote ─→ Remove admin\n` +
+        `  ▸ ${p}demoteall ─→ Demote all admins\n` +
+        `  ▸ ${p}mute ─→ Lock chat\n` +
+        `  ▸ ${p}unmute ─→ Unlock chat\n` +
+        `  ▸ ${p}del ─→ Delete a message\n` +
+        `  ▸ ${p}left ─→ Bot leaves group\n` +
+        `  ▸ ${p}topmembers ─→ Most active\n` +
+        `  ▸ ${p}kickinactive ─→ Kick idle\n` +
+        `\n` +
+        `  📢 *COMMUNICATION*\n` +
+        `  ▸ ${p}tagall ─→ Tag everyone\n` +
+        `  ▸ ${p}hidetag ─→ Silent tag\n` +
+        `  ▸ ${p}pin ─→ Pin replied msg\n` +
+        `\n` +
+        `  📊 *INFO*\n` +
+        `  ▸ ${p}groupinfo ─→ Group details\n` +
+        `  ▸ ${p}groupdesc ─→ Group desc\n` +
+        `  ▸ ${p}link ─→ Invite link\n` +
+        `  ▸ ${p}revoke ─→ Reset link\n` +
+        `  ▸ ${p}admins ─→ List admins\n` +
+        `  ▸ ${p}members ─→ List members\n` +
+        `  ▸ ${p}grouplist ─→ All groups\n` +
+        `\n` +
+        `  🚪 *JOIN REQUESTS*\n` +
+        `  ▸ ${p}requests ─→ Pending list\n` +
+        `  ▸ ${p}approveall ─→ Approve all\n` +
+        `  ▸ ${p}rejectall ─→ Reject all\n` +
+        `\n` +
+        `  ⚙️ *SETTINGS*\n` +
+        `  ▸ ${p}setname ─→ Change name\n` +
+        `  ▸ ${p}setdesc ─→ Change desc\n` +
+        `\n` +
+        `  🎉 *WELCOME*\n` +
+        `  ▸ ${p}welcome ─→ Toggle welcome\n` +
+        `  ▸ ${p}goodbye ─→ Toggle goodbye\n` +
+        `  ▸ ${p}setwelcome ─→ Set welcome\n` +
+        `  ▸ ${p}setgoodbye ─→ Set goodbye\n` +
+        `  ▸ ${p}promotenotify ─→ Toggle promote msg\n` +
+        `  ▸ ${p}demotenotify ─→ Toggle demote msg\n` +
+        `\n` +
+        `  ⚠️ *WARN*\n` +
+        `  ▸ ${p}warn ─→ Warn a user\n` +
+        `  ▸ ${p}warncount ─→ Set limit\n` +
+        `  ▸ ${p}warnlist ─→ List warned\n` +
+        `  ▸ ${p}resetwarn ─→ Clear warnings\n` +
+        `\n` +
+        `  📊 *POLLS*\n` +
+        `  ▸ ${p}poll ─→ Create poll\n` +
+        `  ▸ ${p}vote ─→ Vote\n` +
+        `  ▸ ${p}endpoll ─→ End poll\n` +
+        `\n` +
+        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`
+    )
+}
+
+function renderMenu(ctx, sock) {
+    const p = ctx.cfg.prefix
+    const d = new Date()
+    const dateStr = d.toLocaleDateString('en-US', { timeZone: TIMEZONE })
+    const timeStr = d.toLocaleTimeString('en-US', { timeZone: TIMEZONE })
+    return (
+        `╭━〔 𖤐 *SUKUNA REALM* 〕━╮\n` +
+        `\n` +
+        `▸ OWNER ─→ ${ownerName(sock)}\n` +
+        `▸ MODE ─→ ${ctx.cfg.mode}\n` +
+        `▸ PREFIX ─→ ${p}\n` +
+        `▸ DATE ─→ ${dateStr}\n` +
+        `▸ TIME ─→ ${timeStr}\n` +
+        `▸ UPTIME ─→ ${formatUptime(process.uptime())}\n` +
+        `▸ SESSIONS ─→ ${Object.keys(sessions).length}\n` +
+        `\n` +
+        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n` +
+        `\n` +
+        `╭━〔 ⚡ *BASIC* 〕━╮\n` +
+        `▸ ${p}ping ─→ Check status\n` +
+        `▸ ${p}alive ─→ Say hi\n` +
+        `▸ ${p}time ─→ Date + time\n` +
+        `▸ ${p}info ─→ Bot info\n` +
+        `▸ ${p}menu ─→ This menu\n` +
+        `▸ ${p}mode ─→ public/private\n` +
+        `▸ ${p}prefix ─→ Change prefix\n` +
+        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n` +
+        `\n` +
+        `╭━〔 🎉 *FUN* 〕━╮\n` +
+        `▸ ${p}joke ─→ Random joke\n` +
+        `▸ ${p}quote ─→ Motivation\n` +
+        `▸ ${p}fact ─→ Fun fact\n` +
+        `▸ ${p}dice ─→ Roll a dice\n` +
+        `▸ ${p}coin ─→ Flip a coin\n` +
+        `▸ ${p}truth ─→ Truth question\n` +
+        `▸ ${p}dare ─→ Dare challenge\n` +
+        `▸ ${p}roast ─→ Roast someone\n` +
+        `▸ ${p}compliment ─→ Compliment\n` +
+        `▸ ${p}8ball ─→ Magic 8-ball\n` +
+        `▸ ${p}rate ─→ Rate a thing\n` +
+        `▸ ${p}ship ─→ Compatibility\n` +
+        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n` +
+        `\n` +
+        renderGroupCommandsBox(p) +
+        `\n\n` +
+        `╭━〔 ⚙️ *OWNER SETTINGS* 〕━╮\n` +
+        `▸ ${p}typing ─→ Typing toggle\n` +
+        `▸ ${p}delay ─→ Delay toggle\n` +
+        `▸ ${p}read ─→ Read toggle\n` +
+        `▸ ${p}online ─→ Online toggle\n` +
+        `▸ ${p}statusview ─→ View statuses\n` +
+        `▸ ${p}autoreact ─→ Auto react\n` +
+        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n` +
+        `\n` +
+        `╭━〔 🛠️ *UTILITY* 〕━╮\n` +
+        `▸ ${p}calc ─→ Calculate math\n` +
+        `▸ ${p}sticker ─→ Make sticker\n` +
+        `▸ ${p}toimg ─→ Sticker to image\n` +
+        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n` +
+        `\n` +
+        `╭━〔 📥 *DOWNLOADER* 〕━╮\n` +
+        `▸ ${p}tt <url> ─→ TikTok (owner)\n` +
+        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n` +
+        `\n` +
+        `        ⟡ *SUKUNA REALM* ⟡`
+    )
+}// ─────────────────────────── web dashboard ───────────────────────────
 function checkAuth(header) {
     try {
         const b64 = header.split(' ')[1]
@@ -975,9 +2114,7 @@ function checkAuth(header) {
         const a = crypto.createHash('sha256').update(pass).digest()
         const b = crypto.createHash('sha256').update(DASHBOARD_PASSWORD).digest()
         return crypto.timingSafeEqual(a, b)
-    } catch (e) {
-        return false
-    }
+    } catch (e) { return false }
 }
 
 function sniffImageType(buf) {
@@ -1018,13 +2155,7 @@ const server = http.createServer(async (req, res) => {
             let aborted = false
             req.on('data', c => {
                 size += c.length
-                if (size > 5 * 1024 * 1024) {
-                    aborted = true
-                    res.writeHead(413)
-                    res.end('Too large')
-                    req.destroy()
-                    return
-                }
+                if (size > 5 * 1024 * 1024) { aborted = true; res.writeHead(413); res.end('Too large'); req.destroy(); return }
                 chunks.push(c)
             })
             req.on('end', async () => {
@@ -1038,8 +2169,7 @@ const server = http.createServer(async (req, res) => {
                         for (const part of parts) {
                             if (part.includes('filename=') && /Content-Type: image/i.test(part)) {
                                 const headerEnd = part.indexOf('\r\n\r\n')
-                                let imgData = part.slice(headerEnd + 4)
-                                imgData = imgData.replace(/\r\n$/, '')
+                                let imgData = part.slice(headerEnd + 4).replace(/\r\n$/, '')
                                 const imgBuffer = Buffer.from(imgData, 'binary')
                                 if (sniffImageType(imgBuffer)) {
                                     fs.writeFileSync(LOGO_PATH, imgBuffer)
@@ -1061,10 +2191,7 @@ const server = http.createServer(async (req, res) => {
                 const buf = fs.readFileSync(LOGO_PATH)
                 res.writeHead(200, { 'Content-Type': sniffImageType(buf) || 'image/png' })
                 res.end(buf)
-            } else {
-                res.writeHead(404)
-                res.end('No logo')
-            }
+            } else { res.writeHead(404); res.end('No logo') }
             return
         }
 
@@ -1125,7 +2252,7 @@ server.listen(PORT, () => {
     console.log(`Web server listening on port ${PORT}`)
 })
 
-// ─────────────────────────── tiktok downloader (.tt) ───────────────────────────
+// ─────────────────────────── tiktok downloader ───────────────────────────
 let YTDLP_AVAILABLE = false
 function checkYtDlp() {
     execFile('yt-dlp', ['--version'], { timeout: 10000 }, (err) => {
@@ -1140,13 +2267,9 @@ function isTikTokUrl(str) {
         if (u.protocol !== 'http:' && u.protocol !== 'https:') return false
         const host = u.hostname.toLowerCase()
         return host === 'tiktok.com' || host.endsWith('.tiktok.com')
-    } catch (e) {
-        return false
-    }
+    } catch (e) { return false }
 }
 
-// Runs yt-dlp as a subprocess with an argument array (never a shell string), so the
-// URL can never be interpreted as shell syntax regardless of its content.
 function runYtDlp(url, outPath) {
     return new Promise((resolve, reject) => {
         execFile(
@@ -1156,509 +2279,6 @@ function runYtDlp(url, outPath) {
             (err) => { if (err) reject(err); else resolve() }
         )
     })
-}
-
-// ─────────────────────────── commands ───────────────────────────
-async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, senderNumber, owner, cmd, args) {
-    const prefix = ctx.cfg.prefix
-    const reply = (text, mentions) => sock.sendMessage(from, mentions ? { text, mentions } : { text }, { quoted: msg })
-
-    let adminCache = null
-    const canManage = async () => {
-        if (owner) return true
-        if (!isGroup) return false
-        if (adminCache === null) adminCache = await checkAdmin(ctx, sock, from, [sender])
-        return adminCache
-    }
-    const needGroup = async () => {
-        if (isGroup) return true
-        await reply('[X] Group only.')
-        return false
-    }
-    const needManage = async () => {
-        if (!(await needGroup())) return false
-        if (await canManage()) return true
-        await reply('[X] Admin only.')
-        return false
-    }
-    const needOwner = async () => {
-        if (owner) return true
-        await reply('[X] Owner only.')
-        return false
-    }
-    const now = new Date()
-
-    if (cmd === 'ping') return reply('pong 🏓')
-    if (cmd === 'hello') return reply(`Hey there! 👋 I am *${BOT_NAME}*`)
-    if (cmd === 'time') return reply(`🕐 *Time:* ${now.toLocaleTimeString('en-US', { timeZone: TIMEZONE })}`)
-    if (cmd === 'date') return reply(`📅 *Date:* ${now.toLocaleDateString('en-US', { timeZone: TIMEZONE })}`)
-
-    if (cmd === 'info') {
-        return reply(
-            `╭━━━〔 *${BOT_NAME}* 〕━━━┈⊷\n` +
-            `┃ 👑 *Owner:* ${ownerName(sock)}\n` +
-            `┃ ⚙️ *Mode:* ${ctx.cfg.mode}\n` +
-            `┃ 🔧 *Prefix:* ${prefix}\n` +
-            `┃ 📡 *Sessions:* ${Object.keys(sessions).length}\n` +
-            `┃ ⏳ *Uptime:* ${formatUptime(process.uptime())}\n` +
-            `╰━━━━━━━━━━━━━━━━━┈⊷`
-        )
-    }
-
-    if (cmd === 'menu' || cmd === 'help') {
-        const menuText = renderMenu(ctx, sock)
-        if (fs.existsSync(LOGO_PATH)) {
-            try {
-                const buffer = fs.readFileSync(LOGO_PATH)
-                await sock.sendMessage(from, { image: buffer, caption: menuText }, { quoted: msg })
-                return
-            } catch (e) { console.log('Menu image failed, sending text:', e?.message || e) }
-        }
-        return reply(menuText)
-    }
-
-    if (cmd === 'mars') {
-        return reply(
-            `╭━━━〔 🔒 HIDDEN COMMANDS 〕━━━┈⊷\n\n` +
-            `👁️ *View-Once:*\n` +
-            `┃ ${prefix}vv\n` +
-            `┃ Reply to an UNOPENED view-once → reveals it in this chat\n\n` +
-            `┃ ${prefix}hmm\n` +
-            `┃ Reply to an UNOPENED view-once → saves silently to your own DM\n\n` +
-            `💾 *Save:*\n` +
-            `┃ ${prefix}save\n` +
-            `┃ Reply to a Status or to a photo/video in a chat → saves to your own DM\n` +
-            `┃ (Statuses can only be saved if the bot received them while online)\n\n` +
-            `╰━━━━━━━━━━━━━━━━━┈⊷`
-        )
-    }
-
-    // ── owner-only settings ──
-    if (cmd === 'mode') {
-        if (!(await needOwner())) return
-        if (args[0] === 'public' || args[0] === 'private') {
-            ctx.cfg.mode = args[0]
-            saveCtx(ctx)
-            return reply(`[OK] Mode set to *${ctx.cfg.mode}*`)
-        }
-        return reply(`Current mode: *${ctx.cfg.mode}*\nUsage: ${prefix}mode public/private`)
-    }
-
-    if (cmd === 'prefix') {
-        if (!(await needOwner())) return
-        if (args[0]) {
-            if (args[0].length > 3) return reply('[X] Prefix can be at most 3 characters.')
-            ctx.cfg.prefix = args[0]
-            saveCtx(ctx)
-            return reply(`[OK] Prefix changed to *${ctx.cfg.prefix}*`)
-        }
-        return reply(`Current prefix: *${ctx.cfg.prefix}*`)
-    }
-
-    const toggles = ['typing', 'delay', 'read', 'online', 'autoreact', 'statusview']
-    if (toggles.includes(cmd)) {
-        if (!(await needOwner())) return
-        if (args[0] === 'on' || args[0] === 'off') {
-            ctx.cfg[cmd] = args[0] === 'on'
-            saveCtx(ctx)
-            return reply(`[OK] *${cmd}* is now *${args[0]}*`)
-        }
-        return reply(`*${cmd}:* ${ctx.cfg[cmd] ? 'on' : 'off'}\nUsage: ${prefix}${cmd} on/off`)
-    }
-
-    // ── fun ──
-    if (cmd === 'joke') return reply('😄 ' + getRandom(jokes))
-    if (cmd === 'quote') return reply('💬 ' + getRandom(quotes))
-    if (cmd === 'fact') return reply('🧠 ' + getRandom(facts))
-    if (cmd === 'truth') return reply('❓ ' + getRandom(truths))
-    if (cmd === 'dare') return reply('🔥 ' + getRandom(dares))
-    if (cmd === 'roast') return reply('💀 ' + getRandom(roasts))
-    if (cmd === 'compliment') return reply('💖 ' + getRandom(compliments))
-    if (cmd === 'dice') return reply(`🎲 You rolled a *${Math.floor(Math.random() * 6) + 1}*!`)
-    if (cmd === 'coin') return reply(`🪙 *${Math.random() < 0.5 ? 'Heads' : 'Tails'}!*`)
-    if (cmd === '8ball') {
-        const answers = ['Yes', 'No', 'Maybe', 'Ask later', 'Absolutely', 'Doubtful', 'Good feeling', 'Very doubtful']
-        return reply('🎱 ' + getRandom(answers))
-    }
-    if (cmd === 'rate') {
-        const thing = args.join(' ')
-        if (!thing) return reply('Usage: ' + prefix + 'rate <thing>')
-        return reply(`⭐ I rate *${thing}* a *${Math.floor(Math.random() * 10) + 1}/10*`)
-    }
-    if (cmd === 'ship') {
-        if (args.length < 2) return reply('Usage: ' + prefix + 'ship <name1> <name2>')
-        return reply(`💕 *${args[0]}* + *${args[1]}* = *${Math.floor(Math.random() * 100) + 1}%*`)
-    }
-
-    // ── utility ──
-    if (cmd === 'calc') {
-        if (!args.length) return reply('Usage: ' + prefix + 'calc 2+2*3')
-        try {
-            return reply(`🧮 *Result:* ${safeCalc(args.join(' '))}`)
-        } catch (e) { return reply('[X] Invalid math') }
-    }
-
-    if (cmd === 'sticker') {
-        const ci = getContextInfo(content)
-        const quoted = ci?.quotedMessage ? unwrapEphemeral(ci.quotedMessage) : null
-        if (!quoted || !quoted.imageMessage) return reply('[X] Reply to an image.')
-        if (!sharp) return reply('[X] Sticker maker needs the *sharp* package installed on the server (npm i sharp).')
-        try {
-            const buffer = await downloadBuffer(sock, getQuotedKey(sock, from, ci), quoted)
-            const webp = await sharp(buffer)
-                .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-                .webp()
-                .toBuffer()
-            return sock.sendMessage(from, { sticker: webp }, { quoted: msg })
-        } catch (e) { return reply('[X] Failed to create sticker.') }
-    }
-
-    if (cmd === 'toimg') {
-        const ci = getContextInfo(content)
-        const quoted = ci?.quotedMessage ? unwrapEphemeral(ci.quotedMessage) : null
-        if (!quoted || !quoted.stickerMessage) return reply('[X] Reply to a sticker.')
-        try {
-            let buffer = await downloadBuffer(sock, getQuotedKey(sock, from, ci), quoted)
-            if (sharp) buffer = await sharp(buffer).png().toBuffer()
-            return sock.sendMessage(from, { image: buffer, caption: 'Sticker converted' }, { quoted: msg })
-        } catch (e) { return reply('[X] Failed to convert sticker.') }
-    }
-
-    if (cmd === 'tt') {
-        if (!YTDLP_AVAILABLE) return // disabled silently: yt-dlp is not installed on this server
-        if (isGroup) return reply('[X] .tt only works in private chat.')
-        if (!owner) return reply('[X] Owner only.')
-        const url = args[0]
-        if (!url || !isTikTokUrl(url)) return reply('[X] Please send a valid TikTok URL.')
-
-        const now = Date.now()
-        ctx.ttUsage = (ctx.ttUsage || []).filter(t => now - t < 3600000)
-        if (ctx.ttUsage.length >= 2) return reply('[X] TikTok download limit reached. Try again later.')
-        ctx.ttUsage.push(now)
-
-        await reply('[OK] Downloading TikTok...')
-        const outPath = path.join(os.tmpdir(), `tt_${crypto.randomBytes(6).toString('hex')}.mp4`)
-        try {
-            await runYtDlp(url, outPath)
-            if (!fs.existsSync(outPath)) throw new Error('yt-dlp produced no output file')
-            if (fs.statSync(outPath).size > 30 * 1024 * 1024) {
-                return reply('[X] Video is larger than 30MB, cannot send.')
-            }
-            await sleep(10000)
-            const buffer = fs.readFileSync(outPath)
-            await sock.sendMessage(from, { video: buffer, caption: 'TikTok download' }, { quoted: msg })
-        } catch (e) {
-            console.log('.tt error:', e?.message || e)
-            return reply('[X] Download failed. The video may be private, deleted, or yt-dlp is not installed.')
-        } finally {
-            try { fs.unlinkSync(outPath) } catch (e) {}
-        }
-        return
-    }
-
-    // ── warnings ──
-    if (cmd === 'warn') {
-        if (!(await needManage())) return
-        const target = getTarget(content)
-        if (!target) return reply('[X] Mention or reply to a user.')
-        const guard = await guardTarget(ctx, sock, from, target)
-        if (guard) return reply(guard)
-        if (!ctx.warningCounts[from]) ctx.warningCounts[from] = {}
-        const key = cleanJid(target)
-        ctx.warningCounts[from][key] = (ctx.warningCounts[from][key] || 0) + 1
-        const limit = ctx.warnLimit[from] || 3
-        const count = ctx.warningCounts[from][key]
-        if (count >= limit) {
-            try {
-                const r = await participantsUpdate(sock, from, [target], 'remove')
-                if (!r.ok) return reply(`[WARN] @${cleanNumber(target)} (${limit}/${limit}) but I could not remove them. Make sure I am a group admin.`, [target])
-                delete ctx.warningCounts[from][key]
-                return reply(`[KICKED] @${cleanNumber(target)} (${limit}/${limit} warnings).`, [target])
-            } catch (e) { return reply('[X] Failed to kick user. Make sure I am a group admin.') }
-        }
-        return reply(`[WARN] @${cleanNumber(target)} (${count}/${limit}).`, [target])
-    }
-
-    if (cmd === 'warncount') {
-        if (!(await needManage())) return
-        const num = parseInt(args[0])
-        if (!num || num < 1) return reply('Usage: ' + prefix + 'warncount <number>')
-        ctx.warnLimit[from] = num
-        saveCtx(ctx)
-        return reply(`[OK] Warning limit set to *${num}*`)
-    }
-
-    if (cmd === 'warnlist') {
-        if (!(await needManage())) return
-        const list = ctx.warningCounts[from] || {}
-        const keys = Object.keys(list)
-        if (keys.length === 0) return reply('[OK] No warned users.')
-        let out = '[WARN] *Warned Users:*\n\n'
-        for (const [jid, count] of Object.entries(list)) out += `@${cleanNumber(jid)}: ${count} warnings\n`
-        return reply(out, keys)
-    }
-
-    if (cmd === 'resetwarn') {
-        if (!(await needManage())) return
-        const target = getTarget(content)
-        if (!target) return reply('[X] Mention or reply to a user.')
-        if (ctx.warningCounts[from]) delete ctx.warningCounts[from][cleanJid(target)]
-        return reply(`[OK] Warnings reset for @${cleanNumber(target)}`, [target])
-    }
-
-    // ── protection toggles ──
-    const protectCmds = ['antilink', 'antispam', 'antibot', 'antimedia', 'antitag', 'antiforward']
-    if (protectCmds.includes(cmd)) {
-        if (!(await needManage())) return
-        if (!ctx.groupSettings[from]) ctx.groupSettings[from] = {}
-        if (args[0] === 'on' || args[0] === 'off') {
-            ctx.groupSettings[from][cmd] = args[0] === 'on'
-            saveCtx(ctx)
-            return reply(`[OK] *${cmd}* is now *${args[0]}*`)
-        }
-        return reply(`*${cmd}:* ${ctx.groupSettings[from][cmd] ? 'on' : 'off'}\nUsage: ${prefix}${cmd} on/off`)
-    }
-
-    // ── member management ──
-    if (cmd === 'kick') {
-        if (!(await needManage())) return
-        const target = getTarget(content)
-        if (!target) return reply('[X] Mention or reply to a user.')
-        const guard = await guardTarget(ctx, sock, from, target)
-        if (guard) return reply(guard)
-        try {
-            const r = await participantsUpdate(sock, from, [target], 'remove')
-            if (!r.ok) return reply('[X] Could not kick. Make sure I am a group admin.')
-            return reply(`[OK] Kicked @${cleanNumber(target)}`, [target])
-        } catch (e) { return reply('[X] Failed. Make sure I am a group admin.') }
-    }
-
-    if (cmd === 'add') {
-        if (!(await needManage())) return
-        const digits = (args[0] || '').replace(/[^0-9]/g, '')
-        if (digits.length < 7) return reply('Usage: ' + prefix + 'add <number with country code>')
-        try {
-            const r = await participantsUpdate(sock, from, [normalizeJid(digits)], 'add')
-            if (r.ok) return reply('[OK] Added.')
-            const st = String(r.res?.[0]?.status)
-            if (st === '403') return reply('[X] That user only allows adds via invite link.')
-            if (st === '409') return reply('[X] That user is already in the group.')
-            if (st === '408') return reply('[X] That user recently left the group.')
-            return reply('[X] Could not add. Make sure I am a group admin.')
-        } catch (e) { return reply('[X] Failed. Make sure I am a group admin.') }
-    }
-
-    if (cmd === 'promote' || cmd === 'demote') {
-        if (!(await needManage())) return
-        const target = getTarget(content)
-        if (!target) return reply('[X] Mention or reply to a user.')
-        try {
-            const r = await participantsUpdate(sock, from, [target], cmd)
-            if (!r.ok) return reply(`[X] Could not ${cmd}. Make sure I am a group admin.`)
-            return reply(`[OK] ${cmd === 'promote' ? 'Promoted' : 'Demoted'} @${cleanNumber(target)}`, [target])
-        } catch (e) { return reply('[X] Failed. Make sure I am a group admin.') }
-    }
-
-    if (cmd === 'mute' || cmd === 'unmute') {
-        if (!(await needManage())) return
-        try {
-            await sock.groupSettingUpdate(from, cmd === 'mute' ? 'announcement' : 'not_announcement')
-            return reply(`[OK] Group ${cmd === 'mute' ? 'muted' : 'unmuted'}.`)
-        } catch (e) { return reply('[X] Failed. Make sure I am a group admin.') }
-    }
-
-    if (cmd === 'tagall' || cmd === 'hidetag') {
-        if (!(await needManage())) return
-        try {
-            const groupMeta = await getGroupMeta(ctx, sock, from, true)
-            const mentions = groupMeta.participants.map(p => p.id)
-            const message = args.join(' ') || 'Attention everyone!'
-            if (cmd === 'hidetag') return sock.sendMessage(from, { text: message, mentions })
-            let out = '*Tag All:*\n\n' + message + '\n\n'
-            mentions.forEach(jid => { out += `@${cleanNumber(jid)} ` })
-            return sock.sendMessage(from, { text: out, mentions })
-        } catch (e) { return reply('[X] Failed to fetch group members.') }
-    }
-
-    // ── group info ──
-    if (cmd === 'groupinfo') {
-        if (!(await needGroup())) return
-        try {
-            const meta = await getGroupMeta(ctx, sock, from, true)
-            return reply(
-                `╭━━━〔 *GROUP INFO* 〕━━━┈⊷\n` +
-                `┃ *Name:* ${meta.subject}\n` +
-                `┃ *Members:* ${meta.participants.length}\n` +
-                `┃ *Admins:* ${meta.participants.filter(p => p.admin).length}\n` +
-                `╰━━━━━━━━━━━━━━━┈⊷`
-            )
-        } catch (e) { return reply('[X] Failed to fetch group info.') }
-    }
-
-    if (cmd === 'link') {
-        if (!(await needManage())) return
-        try { const code = await sock.groupInviteCode(from); return reply(`https://chat.whatsapp.com/${code}`) }
-        catch (e) { return reply('[X] Failed. Make sure I am a group admin.') }
-    }
-
-    if (cmd === 'revoke') {
-        if (!(await needManage())) return
-        try { await sock.groupRevokeInvite(from); return reply('[OK] Link revoked.') }
-        catch (e) { return reply('[X] Failed. Make sure I am a group admin.') }
-    }
-
-    if (cmd === 'admins') {
-        if (!(await needGroup())) return
-        try {
-            const meta = await getGroupMeta(ctx, sock, from, true)
-            const admins = meta.participants.filter(p => p.admin)
-            let out = '*Admins:*\n\n'
-            admins.forEach(a => { out += `@${cleanNumber(a.id)}\n` })
-            return reply(out, admins.map(a => a.id))
-        } catch (e) { return reply('[X] Failed to fetch admins.') }
-    }
-
-    if (cmd === 'members') {
-        if (!(await needGroup())) return
-        try {
-            const meta = await getGroupMeta(ctx, sock, from, true)
-            let out = `*Members (${meta.participants.length}):*\n\n`
-            meta.participants.forEach(p => { out += `@${cleanNumber(p.id)}\n` })
-            return reply(out, meta.participants.map(p => p.id))
-        } catch (e) { return reply('[X] Failed to fetch members.') }
-    }
-
-    // ── welcome / goodbye ──
-    if (cmd === 'welcome' || cmd === 'goodbye') {
-        if (!(await needManage())) return
-        if (!ctx.welcomeSettings[from]) ctx.welcomeSettings[from] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
-        if (args[0] === 'on' || args[0] === 'off') {
-            ctx.welcomeSettings[from][cmd] = args[0] === 'on'
-            saveCtx(ctx)
-            return reply(`[OK] *${cmd}* is now *${args[0]}*`)
-        }
-        return reply(`*${cmd}:* ${ctx.welcomeSettings[from][cmd] ? 'on' : 'off'}\nUsage: ${prefix}${cmd} on/off`)
-    }
-
-    if (cmd === 'setwelcome' || cmd === 'setgoodbye') {
-        if (!(await needManage())) return
-        const txt = args.join(' ')
-        if (!txt) return reply('Usage: ' + prefix + cmd + ' <text>  (use @user for the member)')
-        if (!ctx.welcomeSettings[from]) ctx.welcomeSettings[from] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
-        ctx.welcomeSettings[from][cmd === 'setwelcome' ? 'welcomeMsg' : 'goodbyeMsg'] = txt
-        saveCtx(ctx)
-        return reply('[OK] Set.')
-    }
-
-    // ── polls ──
-    if (cmd === 'poll') {
-        if (!(await needGroup())) return
-        const parts = args.join(' ').split('|').map(s => s.trim()).filter(Boolean)
-        if (parts.length < 3) return reply('Usage: ' + prefix + 'poll Question | Opt1 | Opt2')
-        const [question, ...options] = parts
-        ctx.activePolls[from] = { question, options, votes: {} }
-        let out = `*Poll:* ${question}\n\n`
-        options.forEach((opt, i) => { out += `${i + 1}. ${opt}\n` })
-        out += `\nVote with ${prefix}vote <number>`
-        return reply(out)
-    }
-
-    if (cmd === 'vote') {
-        if (!ctx.activePolls[from]) return reply('[X] No active poll.')
-        const num = parseInt(args[0]) - 1
-        if (isNaN(num) || num < 0 || num >= ctx.activePolls[from].options.length) return reply('[X] Invalid vote.')
-        ctx.activePolls[from].votes[cleanJid(sender)] = num
-        return reply(`[OK] Voted for *${ctx.activePolls[from].options[num]}*`)
-    }
-
-    if (cmd === 'endpoll') {
-        if (!(await needManage())) return
-        if (!ctx.activePolls[from]) return reply('[X] No active poll.')
-        const poll = ctx.activePolls[from]
-        const tally = {}
-        poll.options.forEach((_, i) => { tally[i] = 0 })
-        Object.values(poll.votes).forEach(v => { tally[v]++ })
-        let out = `*Poll Results:* ${poll.question}\n\n`
-        poll.options.forEach((opt, i) => { out += `${opt}: ${tally[i]} votes\n` })
-        delete ctx.activePolls[from]
-        return reply(out)
-    }
-
-    // Unknown command: ignore silently so normal chat starting with the prefix is not spammed.
-}
-
-// ─────────────────────────── menu ───────────────────────────
-function renderGroupCommandsBox(p) {
-    return (
-        `╭━━━〔 👥 GROUP COMMANDS 〕━━━┈⊷\n` +
-        `┃ *Protection:*\n` +
-        `┃ ${p}antilink  ${p}antispam\n` +
-        `┃ ${p}antibot   ${p}antimedia\n` +
-        `┃ ${p}antitag   ${p}antiforward\n` +
-        `┃\n` +
-        `┃ *Members:*\n` +
-        `┃ ${p}kick  ${p}add\n` +
-        `┃ ${p}promote  ${p}demote\n` +
-        `┃ ${p}mute  ${p}unmute\n` +
-        `┃\n` +
-        `┃ *Communication:*\n` +
-        `┃ ${p}tagall  ${p}hidetag\n` +
-        `┃\n` +
-        `┃ *Info:*\n` +
-        `┃ ${p}groupinfo  ${p}link\n` +
-        `┃ ${p}revoke  ${p}admins\n` +
-        `┃ ${p}members\n` +
-        `┃\n` +
-        `┃ *Welcome:*\n` +
-        `┃ ${p}welcome  ${p}goodbye\n` +
-        `┃ ${p}setwelcome  ${p}setgoodbye\n` +
-        `┃\n` +
-        `┃ *Warn:*\n` +
-        `┃ ${p}warn  ${p}warncount\n` +
-        `┃ ${p}warnlist  ${p}resetwarn\n` +
-        `┃\n` +
-        `┃ *Polls:*\n` +
-        `┃ ${p}poll  ${p}vote  ${p}endpoll\n` +
-        `╰━━━━━━━━━━━━━━━┈⊷`
-    )
-}
-
-function renderMenu(ctx, sock) {
-    const p = ctx.cfg.prefix
-    const d = new Date()
-    return (
-        `╭━━━━━━━〔 👹 ${BOT_NAME} 〕━━━━━━━╮\n\n` +
-        `      BOT INFO\n\n` +
-        `👤 OWNER  : ${ownerName(sock)}\n` +
-        `⚙️ MODE   : ${ctx.cfg.mode}\n` +
-        `🔧 PREFIX : ${p}\n` +
-        `📅 DATE   : ${d.toLocaleDateString('en-US', { timeZone: TIMEZONE })}\n` +
-        `🕐 TIME   : ${d.toLocaleTimeString('en-US', { timeZone: TIMEZONE })}\n` +
-        `⏳ UPTIME : ${formatUptime(process.uptime())}\n` +
-        `📡 SESSIONS: ${Object.keys(sessions).length}\n\n` +
-        `╰━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-        `╭━━━〔 BASIC 〕━━━┈⊷\n` +
-        `┃ ${p}ping  ${p}hello  ${p}time  ${p}date\n` +
-        `┃ ${p}info  ${p}menu   ${p}mode  ${p}prefix\n` +
-        `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `╭━━━〔 FUN 〕━━━┈⊷\n` +
-        `┃ ${p}joke  ${p}quote  ${p}fact  ${p}dice\n` +
-        `┃ ${p}coin  ${p}truth  ${p}dare  ${p}roast\n` +
-        `┃ ${p}compliment  ${p}8ball  ${p}rate  ${p}ship\n` +
-        `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        renderGroupCommandsBox(p) + `\n\n` +
-        `╭━━━〔 OWNER SETTINGS 〕━━━┈⊷\n` +
-        `┃ ${p}typing  ${p}delay  ${p}read  ${p}online\n` +
-        `┃ ${p}statusview  ${p}autoreact\n` +
-        `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `╭━━━〔 UTILITY 〕━━━┈⊷\n` +
-        `┃ ${p}calc  ${p}sticker  ${p}toimg\n` +
-        `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `╭━━━〔 DOWNLOADER 〕━━━┈⊷\n` +
-        `┃ ${p}tt <url>  (owner only)\n` +
-        `╰━━━━━━━━━━━━━━━┈⊷\n\n` +
-        `POWERED BY ${BOT_NAME}`
-    )
 }
 
 // ─────────────────────────── dashboard page ───────────────────────────
@@ -1733,9 +2353,7 @@ ${logoHtml}
 <script>
 function makeForm(action, number, label, extraStyle) {
     var f = document.createElement('form');
-    f.method = 'POST';
-    f.action = '/dashboard';
-    f.style.display = 'inline';
+    f.method = 'POST'; f.action = '/dashboard'; f.style.display = 'inline';
     var a = document.createElement('input'); a.type = 'hidden'; a.name = 'action'; a.value = action;
     var n = document.createElement('input'); n.type = 'hidden'; n.name = 'number'; n.value = number;
     var b = document.createElement('button'); b.type = 'submit'; b.textContent = label;
@@ -1743,28 +2361,22 @@ function makeForm(action, number, label, extraStyle) {
     f.appendChild(a); f.appendChild(n); f.appendChild(b);
     return f;
 }
-
 async function refreshSessions() {
     try {
         var res = await fetch('/api/sessions', { credentials: 'same-origin' });
         var data = await res.json();
         document.getElementById('info-uptime').textContent = data.uptime;
         document.getElementById('info-count').textContent = data.count;
-
         var list = document.getElementById('sessions-list');
         var pairDiv = document.getElementById('pairing-display');
-        pairDiv.innerHTML = '';
-        list.innerHTML = '';
-
+        pairDiv.innerHTML = ''; list.innerHTML = '';
         if (data.sessions.length === 0) {
             list.innerHTML = '<p style="color:#888;font-size:13px">No sessions yet.</p>';
             return;
         }
-
         data.sessions.forEach(function (s) {
             var card = document.createElement('div');
             card.className = 'session';
-
             var info = document.createElement('div');
             info.className = 'session-info';
             var lines = [
@@ -1783,14 +2395,12 @@ async function refreshSessions() {
                 if (idx < lines.length - 1) info.appendChild(document.createElement('br'));
             });
             card.appendChild(info);
-
             var actions = document.createElement('div');
             actions.className = 'session-actions';
             actions.appendChild(makeForm('reconnect', s.number, 'Reconnect'));
             actions.appendChild(makeForm('disconnect', s.number, 'Disconnect', 'background:#880000'));
             card.appendChild(actions);
             list.appendChild(card);
-
             if (s.pairingCode && s.status !== 'active') {
                 var p = document.createElement('div');
                 var label = document.createElement('p');
@@ -1807,25 +2417,17 @@ async function refreshSessions() {
                 pairDiv.appendChild(p);
             }
         });
-    } catch (e) {
-        console.log('Refresh error:', e);
-    }
+    } catch (e) { console.log('Refresh error:', e); }
 }
-
 function copyCode(code) {
-    navigator.clipboard.writeText(code).then(function () {
-        alert('Copied: ' + code);
-    }).catch(function () {
-        var ta = document.createElement('textarea');
-        ta.value = code;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
+    navigator.clipboard.writeText(code).then(function () { alert('Copied: ' + code); })
+    .catch(function () {
+        var ta = document.createElement('textarea'); ta.value = code;
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
         alert('Copied: ' + code);
     });
 }
-
 refreshSessions();
 </script>
 
@@ -1833,23 +2435,19 @@ refreshSessions();
 }
 
 // ─────────────────────────── telegram control bot ───────────────────────────
-// Bot: @DarkMatrix_XBot. Token comes from TELEGRAM_TOKEN; if unset, this whole
-// section is skipped (no crash). Only TELEGRAM_ALLOWED_USER_ID may use it.
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || ''
 const TELEGRAM_ALLOWED_USER_ID = 7959585602
 let tgBot = null
-const tgPending = new Map() // chatId -> pending action ('connect')
+const tgPending = new Map()
 
-function tgAuth(id) {
-    return Number(id) === TELEGRAM_ALLOWED_USER_ID
-}
+function tgAuth(id) { return Number(id) === TELEGRAM_ALLOWED_USER_ID }
 
 function tgMainKeyboard() {
     return {
         inline_keyboard: [
-            [{ text: '🔗 Connect WhatsApp', callback_data: 'connect' }, { text: '📊 Status', callback_data: 'status' }],
+            [{ text: '🔗 Connect', callback_data: 'connect' }, { text: '📊 Status', callback_data: 'status' }],
             [{ text: '📋 Sessions', callback_data: 'sessions' }, { text: '🔄 Reconnect', callback_data: 'reconnect' }],
-            [{ text: '❌ Disconnect', callback_data: 'disconnect' }, { text: '📁 WhatsApp Menu', callback_data: 'wa_menu' }]
+            [{ text: '❌ Disconnect', callback_data: 'disconnect' }, { text: '📂 Menu', callback_data: 'wa_menu' }]
         ]
     }
 }
@@ -1857,38 +2455,58 @@ function tgBackKeyboard() {
     return { inline_keyboard: [[{ text: '🔙 Back to Menu', callback_data: 'menu' }]] }
 }
 
-// Edits the tapped message in place when possible (nicer UX), falls back to a new message.
-// Retries once without parse_mode if Markdown parsing fails on unpredictable content.
 async function tgEditOrSend(chatId, messageId, text, keyboard, parseMode = 'Markdown') {
     const opts = { reply_markup: keyboard }
     if (parseMode) opts.parse_mode = parseMode
     if (messageId) {
         try { await tgBot.editMessageText(text, { ...opts, chat_id: chatId, message_id: messageId }); return } catch (e) {}
     }
-    try {
-        await tgBot.sendMessage(chatId, text, opts)
-    } catch (e) {
-        console.log('[TELEGRAM] send error, retrying without parse_mode:', e?.message || e)
+    try { await tgBot.sendMessage(chatId, text, opts) }
+    catch (e) {
         try { await tgBot.sendMessage(chatId, text, { reply_markup: keyboard }) }
         catch (e2) { console.log('[TELEGRAM] send failed:', e2?.message || e2) }
     }
 }
 
 async function tgShowMenu(chatId, messageId) {
-    await tgEditOrSend(chatId, messageId, `🤖 *${BOT_NAME} — Control Panel*\n\nChoose an option below:`, tgMainKeyboard())
+    const text =
+        `╭━〔 𖤐 *SUKUNA REALM* 〕━╮\n` +
+        `\n` +
+        `       ⚡ *CONTROL PANEL*\n` +
+        `\n` +
+        `▸ Select an option below\n` +
+        `▸ to manage sessions.\n` +
+        `\n` +
+        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n` +
+        `\n` +
+        `        ⟡ *SUKUNA REALM* ⟡`
+    await tgEditOrSend(chatId, messageId, text, tgMainKeyboard())
 }
 
 async function tgShowStatus(chatId, messageId) {
     const list = Object.values(sessions)
     let text
     if (list.length === 0) {
-        text = '📊 *Status*\n\nNo sessions yet.'
+        text =
+            `╭━〔 📊 *SUKUNA REALM* 〕━╮\n\n` +
+            `       📊 *STATUS*\n\n` +
+            `◈ *SESSIONS*\n` +
+            `└─ none connected\n\n` +
+            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+            `        ⟡ *SUKUNA REALM* ⟡`
     } else {
         const active = list.filter(s => s.status === 'active')
-        text = `📊 *Status*\n\nActive: ${active.length} / ${list.length} total\n\n`
-        text += active.length
-            ? active.map(s => `• *${s.number}* — up ${s.connectedAt ? formatUptime((Date.now() - new Date(s.connectedAt).getTime()) / 1000) : '-'}`).join('\n')
-            : '_No active sessions._'
+        const lines = list.map(s =>
+            `◈ *${s.number}*\n└─ ${s.status === 'active' ? '🟢 ACTIVE' : s.status === 'connecting' ? '🟡 CONNECTING' : s.status === 'reconnecting' ? '🟠 RECONNECTING' : '🔴 OFFLINE'}`
+        ).join('\n\n')
+        text =
+            `╭━〔 📊 *SUKUNA REALM* 〕━╮\n\n` +
+            `       📊 *STATUS*\n\n` +
+            `◈ *TOTAL*\n` +
+            `└─ ${active.length} / ${list.length} active\n\n` +
+            `${lines}\n\n` +
+            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+            `        ⟡ *SUKUNA REALM* ⟡`
     }
     await tgEditOrSend(chatId, messageId, text, tgBackKeyboard())
 }
@@ -1897,101 +2515,197 @@ async function tgShowSessions(chatId, messageId) {
     const entries = Object.entries(sessions)
     let text
     if (entries.length === 0) {
-        text = '📋 *Sessions*\n\nNo sessions yet.'
+        text =
+            `╭━〔 📋 *SUKUNA REALM* 〕━╮\n\n` +
+            `       📋 *SESSIONS*\n\n` +
+            `◈ *LIST*\n└─ empty\n\n` +
+            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+            `        ⟡ *SUKUNA REALM* ⟡`
     } else {
-        text = '📋 *Sessions*\n\n' + entries.map(([, s]) =>
-            `*${s.number}*\nStatus: ${s.status}\nMode: ${s.ctx?.cfg?.mode || '-'}\nConnected: ${s.connectedAt ? new Date(s.connectedAt).toLocaleString() : '-'}`
+        const blocks = entries.map(([, s]) =>
+            `◈ *${s.number}*\n` +
+            `├─ STATUS\n│  └─ ${s.status}\n` +
+            `├─ MODE\n│  └─ ${s.ctx?.cfg?.mode || '-'}\n` +
+            `└─ SINCE\n   └─ ${s.connectedAt ? new Date(s.connectedAt).toLocaleString() : '-'}`
         ).join('\n\n')
+        text =
+            `╭━〔 📋 *SUKUNA REALM* 〕━╮\n\n` +
+            `       📋 *SESSIONS*\n\n` +
+            `${blocks}\n\n` +
+            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+            `        ⟡ *SUKUNA REALM* ⟡`
     }
     await tgEditOrSend(chatId, messageId, text, tgBackKeyboard())
 }
 
 async function tgShowReconnectList(chatId, messageId) {
     const ids = Object.keys(sessions)
-    if (ids.length === 0) { await tgEditOrSend(chatId, messageId, '🔄 *Reconnect*\n\nNo sessions yet.', tgBackKeyboard()); return }
+    if (ids.length === 0) {
+        await tgEditOrSend(chatId, messageId,
+            `╭━〔 🔄 *SUKUNA REALM* 〕━╮\n\n` +
+            `      🔄 *RECONNECT*\n\n` +
+            `◈ *SESSIONS*\n└─ none\n\n` +
+            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            tgBackKeyboard())
+        return
+    }
     const rows = ids.map(id => [{ text: `🔄 ${sessions[id].number} (${sessions[id].status})`, callback_data: `reconnect:${id}` }])
     rows.push([{ text: '🔙 Back to Menu', callback_data: 'menu' }])
-    await tgEditOrSend(chatId, messageId, '🔄 *Reconnect*\n\nSelect a number:', { inline_keyboard: rows })
+    await tgEditOrSend(chatId, messageId,
+        `╭━〔 🔄 *SUKUNA REALM* 〕━╮\n\n` +
+        `      🔄 *RECONNECT*\n\n` +
+        `◈ *SELECT A SESSION*\n\n` +
+        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+        { inline_keyboard: rows })
 }
 
 async function tgShowDisconnectList(chatId, messageId) {
     const ids = Object.keys(sessions)
-    if (ids.length === 0) { await tgEditOrSend(chatId, messageId, '❌ *Disconnect*\n\nNo sessions yet.', tgBackKeyboard()); return }
+    if (ids.length === 0) {
+        await tgEditOrSend(chatId, messageId,
+            `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
+            `     ❌ *DISCONNECT*\n\n` +
+            `◈ *SESSIONS*\n└─ none\n\n` +
+            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            tgBackKeyboard())
+        return
+    }
     const rows = ids.map(id => [{ text: `❌ ${sessions[id].number} (${sessions[id].status})`, callback_data: `disconnect:${id}` }])
     rows.push([{ text: '🔙 Back to Menu', callback_data: 'menu' }])
-    await tgEditOrSend(chatId, messageId, '❌ *Disconnect*\n\nSelect a number to disconnect:', { inline_keyboard: rows })
+    await tgEditOrSend(chatId, messageId,
+        `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
+        `     ❌ *DISCONNECT*\n\n` +
+        `◈ *SELECT A SESSION*\n\n` +
+        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+        { inline_keyboard: rows })
 }
 
 async function tgShowWaMenu(chatId, messageId) {
     const active = Object.values(sessions).find(s => s.status === 'active' && s.sock && s.ctx)
     if (!active) {
-        await tgEditOrSend(chatId, messageId, '[X] No active WhatsApp session yet. Connect one first.', tgBackKeyboard())
+        await tgEditOrSend(chatId, messageId,
+            `╭━〔 ⚠️ *SUKUNA REALM* 〕━╮\n\n` +
+            `       ⚠️ *NOTICE*\n\n` +
+            `◈ *STATUS*\n└─ ❌ No active WhatsApp\n     session yet\n\n` +
+            `⚡ Connect one first.\n\n` +
+            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            tgBackKeyboard())
         return
     }
-    await tgEditOrSend(chatId, messageId, renderMenu(active.ctx, active.sock), tgBackKeyboard())
+    const menuText = renderMenu(active.ctx, active.sock)
+    const wrapped = `╭━〔 𖤐 *SUKUNA REALM* 〕━╮\n\n▸ WHATSAPP MENU\n\n${menuText}\n\n╰━━━━━━━━━━━━━━━━━━━━━━━━╯`
+    await tgEditOrSend(chatId, messageId, wrapped, tgBackKeyboard())
 }
 
-// Polls up to `timeoutMs` for the pairing code to appear. Tracks the session's `gen` so a
-// poll started by an earlier attempt stops reporting once a newer startSession() supersedes it.
 async function tgPollPairingCode(sessionId, gen, timeoutMs = 15000, intervalMs = 1000) {
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
         const s = sessions[sessionId]
-        if (!s || s.gen !== gen) return null // session gone or superseded by a newer attempt
+        if (!s || s.gen !== gen) return null
         if (s.pairingCode) return s.pairingCode
-        if (s.status === 'active') return null // already linked, no code to show
+        if (s.status === 'active') return null
         await sleep(intervalMs)
     }
     return null
 }
 
-// Mirrors the dashboard's "connect" action, then polls for the pairing code (startSession's
-// own 3s delay means it isn't set the instant startSession() resolves).
 async function tgConnectNumber(chatId, rawNumber) {
     const cleanNum = String(rawNumber || '').replace(/[^0-9]/g, '')
     if (cleanNum.length < 7) {
-        await tgBot.sendMessage(chatId, '[X] Invalid number. Send digits only, with country code.', { reply_markup: tgBackKeyboard() })
+        await tgBot.sendMessage(chatId,
+            `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
+            `       ❌ *INVALID*\n\n` +
+            `▸ Send digits only,\n▸ with country code.\n\n` +
+            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         return
     }
     const sessionId = 'sess_' + cleanNum
     try {
         const existing = sessions[sessionId]
         if (existing?.status === 'active') {
-            await tgBot.sendMessage(chatId, `[OK] *${cleanNum}* is already connected.`, { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
+            await tgBot.sendMessage(chatId,
+                `╭━〔 ✅ *SUKUNA REALM* 〕━╮\n\n` +
+                `       ✅ *ONLINE*\n\n` +
+                `◈ *NUMBER*\n└─ ${cleanNum}\n\n` +
+                `◈ *STATUS*\n└─ 🟢 ALREADY ACTIVE\n\n` +
+                `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
             return
         }
-        if (!existing) {
-            await startSession(sessionId, cleanNum)
-        } else if (existing.status === 'logged out') {
-            stopSocket(sessionId)
-            await startSession(sessionId, cleanNum, true)
-        }
+        if (!existing) await startSession(sessionId, cleanNum)
+        else if (existing.status === 'logged out') { stopSocket(sessionId); await startSession(sessionId, cleanNum, true) }
+
         const gen = sessions[sessionId]?.gen
-        await tgBot.sendMessage(chatId, `⏳ Connecting *${cleanNum}*... waiting for pairing code.`, { parse_mode: 'Markdown' })
+        await tgBot.sendMessage(chatId,
+            `╭━〔 ⚡ *SUKUNA REALM* 〕━╮\n\n` +
+            `      ⚡ *CONNECTING*\n\n` +
+            `◈ *NUMBER*\n└─ ${cleanNum}\n\n` +
+            `◈ *STATUS*\n└─ 🟡 WAITING\n\n` +
+            `🔐 Preparing pairing code.\n   Please wait...\n\n` +
+            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            { parse_mode: 'Markdown' })
+
         const code = await tgPollPairingCode(sessionId, gen)
         const s = sessions[sessionId]
         if (code) {
-            await tgBot.sendMessage(chatId, `🔗 *Pairing code for ${cleanNum}:*\n\n\`${code}\`\n\nWhatsApp → Linked Devices → Link with phone number.`, { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
+            await tgBot.sendMessage(chatId,
+                `╭━〔 🔗 *SUKUNA REALM* 〕━╮\n\n` +
+                `       🔗 *PAIRING*\n\n` +
+                `◈ *NUMBER*\n└─ ${cleanNum}\n\n` +
+                `🔑 *CODE*\n└─ \`${code}\`\n\n` +
+                `⚡ WhatsApp →\n   Linked Devices →\n   Link with phone number.\n\n` +
+                `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         } else if (s?.status === 'active') {
-            await tgBot.sendMessage(chatId, `[OK] *${cleanNum}* connected.`, { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
+            await tgBot.sendMessage(chatId,
+                `╭━〔 ✅ *SUKUNA REALM* 〕━╮\n\n` +
+                `       ✅ *ONLINE*\n\n` +
+                `◈ *NUMBER*\n└─ ${cleanNum}\n\n` +
+                `◈ *STATUS*\n└─ 🟢 CONNECTED\n\n` +
+                `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         } else {
-            await tgBot.sendMessage(chatId, `[X] Pairing code was not generated in time (current status: ${s?.status || 'unknown'}). Try /reconnect ${cleanNum}.`, { reply_markup: tgBackKeyboard() })
+            await tgBot.sendMessage(chatId,
+                `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
+                `       ❌ *TIMEOUT*\n\n` +
+                `◈ *NUMBER*\n└─ ${cleanNum}\n\n` +
+                `◈ *STATUS*\n└─ 🔴 FAILED\n\n` +
+                `⚡ Try /reconnect ${cleanNum}\n\n` +
+                `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         }
     } catch (e) {
         console.log('[TELEGRAM] connect error:', e?.message || e)
-        await tgBot.sendMessage(chatId, '[X] Failed to start session: ' + (e?.message || 'unknown error'), { reply_markup: tgBackKeyboard() })
+        await tgBot.sendMessage(chatId,
+            `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
+            `       ❌ *FAILED*\n\n` +
+            `▸ ${(e?.message || 'unknown error').slice(0, 80)}\n\n` +
+            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
     }
 }
 
-// Mirrors the dashboard's "reconnect" action (same cooldown map, same hasCreds check), then
-// polls for a pairing code the same way tgConnectNumber does.
 async function tgReconnectSession(chatId, sessionId) {
     const existing = sessions[sessionId]
-    if (!existing) { await tgBot.sendMessage(chatId, '[X] Session not found.', { reply_markup: tgBackKeyboard() }); return }
+    if (!existing) {
+        await tgBot.sendMessage(chatId,
+            `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
+            `    ❌ *NOT FOUND*\n\n` +
+            `▸ Session does not exist.\n\n` +
+            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
+        return
+    }
     const number = existing.number
     const now = Date.now()
     if (reconnectCooldown[sessionId] && now - reconnectCooldown[sessionId] < 30000) {
-        await tgBot.sendMessage(chatId, '[X] Please wait before reconnecting again.', { reply_markup: tgBackKeyboard() })
+        await tgBot.sendMessage(chatId,
+            `╭━〔 ⚠️ *SUKUNA REALM* 〕━╮\n\n` +
+            `       ⚠️ *SLOW DOWN*\n\n` +
+            `▸ Please wait before\n▸ reconnecting again.\n\n` +
+            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         return
     }
     reconnectCooldown[sessionId] = now
@@ -2003,65 +2717,99 @@ async function tgReconnectSession(chatId, sessionId) {
             : fs.existsSync(path.join(SESSION_DIR, sessionId, 'creds.json'))
         await startSession(sessionId, number, !hasCreds)
         const gen = sessions[sessionId]?.gen
-        await tgBot.sendMessage(chatId, `⏳ Reconnecting *${number}*... waiting for pairing code (if needed).`, { parse_mode: 'Markdown' })
+        await tgBot.sendMessage(chatId,
+            `╭━〔 🔄 *SUKUNA REALM* 〕━╮\n\n` +
+            `     🔄 *RECONNECTING*\n\n` +
+            `◈ *NUMBER*\n└─ ${number}\n\n` +
+            `◈ *STATUS*\n└─ 🟡 WAITING\n\n` +
+            `⚡ If a code is required,\n   it will appear next.\n\n` +
+            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            { parse_mode: 'Markdown' })
         const code = await tgPollPairingCode(sessionId, gen)
         const s = sessions[sessionId]
         if (code) {
-            await tgBot.sendMessage(chatId, `🔗 *New pairing code for ${number}:*\n\n\`${code}\``, { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
+            await tgBot.sendMessage(chatId,
+                `╭━〔 🔗 *SUKUNA REALM* 〕━╮\n\n` +
+                `      🔗 *PAIRING*\n\n` +
+                `◈ *NUMBER*\n└─ ${number}\n\n` +
+                `🔑 *CODE*\n└─ \`${code}\`\n\n` +
+                `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         } else if (s?.status === 'active') {
-            await tgBot.sendMessage(chatId, `[OK] *${number}* reconnected.`, { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
+            await tgBot.sendMessage(chatId,
+                `╭━〔 ✅ *SUKUNA REALM* 〕━╮\n\n` +
+                `       ✅ *ONLINE*\n\n` +
+                `◈ *NUMBER*\n└─ ${number}\n\n` +
+                `◈ *STATUS*\n└─ 🟢 CONNECTED\n\n` +
+                `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         } else {
-            await tgBot.sendMessage(chatId, `[X] Pairing code was not generated in time (current status: ${s?.status || 'unknown'}). Try /reconnect ${number} again.`, { reply_markup: tgBackKeyboard() })
+            await tgBot.sendMessage(chatId,
+                `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
+                `       ❌ *TIMEOUT*\n\n` +
+                `◈ *NUMBER*\n└─ ${number}\n\n` +
+                `⚡ Try /reconnect again\n\n` +
+                `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         }
     } catch (e) {
         console.log('[TELEGRAM] reconnect error:', e?.message || e)
-        await tgBot.sendMessage(chatId, '[X] Reconnect failed.', { reply_markup: tgBackKeyboard() })
+        await tgBot.sendMessage(chatId,
+            `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
+            `    ❌ *RECONNECT FAILED*\n\n` +
+            `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
     }
 }
 
-// Mirrors the dashboard's "disconnect" action exactly.
 async function tgDisconnectSession(chatId, sessionId) {
     const existing = sessions[sessionId]
-    if (!existing) { await tgBot.sendMessage(chatId, '[X] Session not found.', { reply_markup: tgBackKeyboard() }); return }
+    if (!existing) {
+        await tgBot.sendMessage(chatId,
+            `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
+            `    ❌ *NOT FOUND*\n\n╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+            { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
+        return
+    }
     const number = existing.number
     try { await existing.sock.logout() } catch (e) {}
     stopSocket(sessionId)
     delete sessions[sessionId]
     try { fs.rmSync(path.join(SESSION_DIR, sessionId), { recursive: true, force: true }) } catch (e) {}
     await deleteSessionFromMongo(sessionId)
-    await tgBot.sendMessage(chatId, `[OK] Disconnected *${number}*.`, { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
+    await tgBot.sendMessage(chatId,
+        `╭━〔 ❌ *SUKUNA REALM* 〕━╮\n\n` +
+        `     ❌ *DISCONNECTED*\n\n` +
+        `◈ *NUMBER*\n└─ ${number}\n\n` +
+        `◈ *STATUS*\n└─ ⚫ OFFLINE\n\n` +
+        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+        { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
 }
 
 function tgHelpText() {
-    return '*Commands:*\n\n' +
-        '/start - main menu\n' +
-        '/connect <number> - link a WhatsApp number\n' +
-        '/status - show session statuses\n' +
-        '/sessions - list all sessions\n' +
-        '/reconnect <number> - reconnect a session\n' +
-        '/disconnect <number> - disconnect a session\n' +
-        '/menu - main menu\n' +
-        '/help - this message'
+    return (
+        `╭━〔 ⚡ *SUKUNA REALM* 〕━╮\n\n` +
+        `      ⚡ *COMMANDS*\n\n` +
+        `▸ /start ─→ Main menu\n` +
+        `▸ /connect <n> ─→ Link\n` +
+        `▸ /status ─→ Sessions\n` +
+        `▸ /sessions ─→ List all\n` +
+        `▸ /reconnect <n> ─→ Retry\n` +
+        `▸ /disconnect <n> ─→ Unlink\n` +
+        `▸ /menu ─→ Panel\n` +
+        `▸ /help ─→ This\n\n` +
+        `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+        `        ⟡ *SUKUNA REALM* ⟡`
+    )
 }
 
 function initTelegram() {
-    if (!TELEGRAM_TOKEN) {
-        console.log('[TELEGRAM] TELEGRAM_TOKEN not set. Skipping Telegram integration.')
-        return
-    }
+    if (!TELEGRAM_TOKEN) { console.log('[TELEGRAM] TELEGRAM_TOKEN not set. Skipping.'); return }
     let TelegramBot
-    try {
-        TelegramBot = require('node-telegram-bot-api')
-    } catch (e) {
-        console.log('[TELEGRAM] node-telegram-bot-api not found. Run: npm install node-telegram-bot-api')
-        return
-    }
-    try {
-        tgBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true })
-    } catch (e) {
-        console.log('[TELEGRAM] Failed to start bot:', e?.message || e)
-        return
-    }
+    try { TelegramBot = require('node-telegram-bot-api') }
+    catch (e) { console.log('[TELEGRAM] node-telegram-bot-api not found. Run: npm install node-telegram-bot-api'); return }
+    try { tgBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true }) }
+    catch (e) { console.log('[TELEGRAM] Failed to start bot:', e?.message || e); return }
 
     let tgPollErrorCount = 0
     let tgLastPollError = ''
@@ -2071,46 +2819,31 @@ function initTelegram() {
         if (errMsg === tgLastPollError) tgPollErrorCount++
         else { tgLastPollError = errMsg; tgPollErrorCount = 1 }
         if (tgPollErrorCount === 3) {
-            console.log('[TELEGRAM] Polling has failed 3 times in a row with the same error. TELEGRAM_TOKEN is likely invalid or revoked.')
+            console.log('[TELEGRAM] Polling failed 3x. TELEGRAM_TOKEN may be invalid.')
         }
     })
 
-    tgBot.onText(/^\/start\b/, async (msg) => {
-        if (!tgAuth(msg.from.id)) return
-        tgPending.delete(msg.chat.id)
-        await tgShowMenu(msg.chat.id)
-    })
-    tgBot.onText(/^\/menu\b/, async (msg) => {
-        if (!tgAuth(msg.from.id)) return
-        tgPending.delete(msg.chat.id)
-        await tgShowMenu(msg.chat.id)
-    })
-    tgBot.onText(/^\/help\b/, async (msg) => {
-        if (!tgAuth(msg.from.id)) return
-        tgPending.delete(msg.chat.id)
-        await tgBot.sendMessage(msg.chat.id, tgHelpText(), { parse_mode: 'Markdown' })
-    })
+    tgBot.onText(/^\/start\b/, async (msg) => { if (!tgAuth(msg.from.id)) return; tgPending.delete(msg.chat.id); await tgShowMenu(msg.chat.id) })
+    tgBot.onText(/^\/menu\b/, async (msg) => { if (!tgAuth(msg.from.id)) return; tgPending.delete(msg.chat.id); await tgShowMenu(msg.chat.id) })
+    tgBot.onText(/^\/help\b/, async (msg) => { if (!tgAuth(msg.from.id)) return; tgPending.delete(msg.chat.id); await tgBot.sendMessage(msg.chat.id, tgHelpText(), { parse_mode: 'Markdown' }) })
     tgBot.onText(/^\/connect(?:\s+(.+))?/, async (msg, match) => {
         if (!tgAuth(msg.from.id)) return
         const num = match?.[1]
         if (!num) {
             tgPending.set(msg.chat.id, 'connect')
-            await tgBot.sendMessage(msg.chat.id, '🔗 Send me the WhatsApp number (digits only, with country code).', { reply_markup: tgBackKeyboard() })
+            await tgBot.sendMessage(msg.chat.id,
+                `╭━〔 🔗 *SUKUNA REALM* 〕━╮\n\n` +
+                `       🔗 *CONNECT*\n\n` +
+                `▸ Send the WhatsApp\n▸ number with country\n▸ code (digits only).\n\n` +
+                `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
             return
         }
         tgPending.delete(msg.chat.id)
         await tgConnectNumber(msg.chat.id, num)
     })
-    tgBot.onText(/^\/status\b/, async (msg) => {
-        if (!tgAuth(msg.from.id)) return
-        tgPending.delete(msg.chat.id)
-        await tgShowStatus(msg.chat.id)
-    })
-    tgBot.onText(/^\/sessions\b/, async (msg) => {
-        if (!tgAuth(msg.from.id)) return
-        tgPending.delete(msg.chat.id)
-        await tgShowSessions(msg.chat.id)
-    })
+    tgBot.onText(/^\/status\b/, async (msg) => { if (!tgAuth(msg.from.id)) return; tgPending.delete(msg.chat.id); await tgShowStatus(msg.chat.id) })
+    tgBot.onText(/^\/sessions\b/, async (msg) => { if (!tgAuth(msg.from.id)) return; tgPending.delete(msg.chat.id); await tgShowSessions(msg.chat.id) })
     tgBot.onText(/^\/reconnect(?:\s+(.+))?/, async (msg, match) => {
         if (!tgAuth(msg.from.id)) return
         tgPending.delete(msg.chat.id)
@@ -2126,7 +2859,6 @@ function initTelegram() {
         await tgDisconnectSession(msg.chat.id, 'sess_' + num)
     })
 
-    // Plain-text follow-up, used after "Connect WhatsApp" asks for a number.
     tgBot.on('message', async (msg) => {
         if (!msg.text || msg.text.startsWith('/')) return
         if (!tgAuth(msg.from.id)) return
@@ -2142,7 +2874,7 @@ function initTelegram() {
         const messageId = query.message?.message_id
         if (!chatId) return
         if (!tgAuth(query.from.id)) {
-            try { await tgBot.answerCallbackQuery(query.id, { text: '🚫 Not authorized.', show_alert: true }) } catch (e) {}
+            try { await tgBot.answerCallbackQuery(query.id, { text: '🚫 Access Denied', show_alert: true }) } catch (e) {}
             return
         }
         try { await tgBot.answerCallbackQuery(query.id) } catch (e) {}
@@ -2154,16 +2886,19 @@ function initTelegram() {
             if (data === 'wa_menu') { await tgShowWaMenu(chatId, messageId); return }
             if (data === 'connect') {
                 tgPending.set(chatId, 'connect')
-                await tgEditOrSend(chatId, messageId, '🔗 Send me the WhatsApp number to connect (digits only, with country code).', tgBackKeyboard())
+                await tgEditOrSend(chatId, messageId,
+                    `╭━〔 🔗 *SUKUNA REALM* 〕━╮\n\n` +
+                    `       🔗 *CONNECT*\n\n` +
+                    `▸ Send the WhatsApp\n▸ number with country\n▸ code (digits only).\n\n` +
+                    `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+                    tgBackKeyboard())
                 return
             }
             if (data === 'reconnect') { await tgShowReconnectList(chatId, messageId); return }
             if (data === 'disconnect') { await tgShowDisconnectList(chatId, messageId); return }
             if (data.startsWith('reconnect:')) { await tgReconnectSession(chatId, data.slice('reconnect:'.length)); return }
             if (data.startsWith('disconnect:')) { await tgDisconnectSession(chatId, data.slice('disconnect:'.length)); return }
-        } catch (e) {
-            console.log('[TELEGRAM] callback error:', e?.message || e)
-        }
+        } catch (e) { console.log('[TELEGRAM] callback error:', e?.message || e) }
     })
 
     console.log('[TELEGRAM] Bot started: @DarkMatrix_XBot')
@@ -2180,9 +2915,7 @@ async function restoreSessions() {
             const a = await authCollection.distinct('sid')
             const l = await legacyCollection.distinct('_id')
             ids = [...new Set([...a, ...l])]
-        } catch (e) {
-            console.log('[MONGO] Restore error:', e.message)
-        }
+        } catch (e) { console.log('[MONGO] Restore error:', e.message) }
     } else if (fs.existsSync(SESSION_DIR)) {
         ids = fs.readdirSync(SESSION_DIR).filter(d => d.startsWith('sess_'))
     }
@@ -2197,3 +2930,4 @@ async function restoreSessions() {
 restoreSessions().catch(e => console.log('Restore failed:', e.message))
 initTelegram()
 checkYtDlp()
+checkFfmpeg()
