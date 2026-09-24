@@ -45,6 +45,7 @@ const SESSION_DIR = path.join('.', 'sessions')
 const LOGO_PATH = path.join('.', 'logo.png')
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'Mars2000'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
+const GROQ_API_KEY = process.env.GROQ_API_KEY || ''
 
 const silentLogger = P({ level: 'silent' })
 const sessions = {}
@@ -1954,26 +1955,27 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         return
     }
 
-    if (cmd === 'ai') {
-        const question = args.join(' ')
-        if (!question) return reply(skError('Usage: ' + prefix + 'ai <question>'))
-        if (!GEMINI_API_KEY) return reply(skError('GEMINI_API_KEY not set. Add it to .env and restart.'))
-        try {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`
-            const data = await httpPostJson(url, {
-                contents: [{ parts: [{ text: question }] }]
-            }, {}, 30000)
-            const answer = data?.candidates?.[0]?.content?.parts?.[0]?.text
-            if (!answer) return reply(skError('No response from AI.'))
-            return reply(skInfo('🤖', 'AI', [
-                ['QUESTION', question.slice(0, 200)],
-                ['ANSWER', answer.slice(0, 1500)]
-            ]))
-        } catch (e) {
-            console.log('.ai error:', e?.message || e)
-            return reply(skError('AI request failed. Check your API key.'))
-        }
+if (cmd === 'ai') {
+    const question = args.join(' ')
+    if (!question) return reply(skError('Usage: ' + prefix + 'ai <question>'))
+    if (!GROQ_API_KEY) return reply(skError('GROQ_API_KEY not set. Add it to .env and restart.'))
+    try {
+        const url = 'https://api.groq.com/openai/v1/chat/completions'
+        const data = await httpPostJson(url, {
+            model: 'openai/gpt-oss-120b',
+            messages: [{ role: 'user', content: question }]
+        }, { 'Authorization': `Bearer ${GROQ_API_KEY}` }, 60000)
+        const answer = data?.choices?.[0]?.message?.content
+        if (!answer) return reply(skError('No response from AI.'))
+        return reply(skInfo('🤖', 'AI', [
+            ['QUESTION', question.slice(0, 200)],
+            ['ANSWER', answer.slice(0, 1500)]
+        ]))
+    } catch (e) {
+        console.log('.ai error:', e?.message || e)
+        return reply(skError('AI request failed: ' + (e?.message || 'unknown')))
     }
+}
 
     if (cmd === 'walink') {
         const raw = args.join(' ')
@@ -3207,7 +3209,8 @@ async function tgShowStatus(chatId, messageId) {
 
 async function tgShowSessions(chatId, messageId) {
     const entries = Object.entries(sessions)
-    let text    if (entries.length === 0) {
+    let text
+    if (entries.length === 0) {
         text =
             `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
             `📋 𝐒𝐄𝐒𝐒𝐈𝐎𝐍𝐒\n\n` +
