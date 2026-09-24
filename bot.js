@@ -9,9 +9,11 @@
  *   BOT_TIMEZONE        (optional) e.g. Africa/Lagos
  *   PORT                (optional) default: 3000
  *   TELEGRAM_TOKEN      (optional) Telegram bot token. If unset, Telegram is skipped.
+ *   GEMINI_API_KEY      (optional) Google Gemini API key for .ai
  *
- * System tools: ffmpeg (needed for .sticker / .toimg), yt-dlp (needed for .tt)
- * Optional npm: node-telegram-bot-api (needed for Telegram control), qrcode (needed for .qrcode)
+ * System tools: ffmpeg (needed for .sticker / .toimg), yt-dlp (needed for .tt),
+ *               dwebp and webpmux (needed for .toimg), libwebp is the package
+ * Optional npm: node-telegram-bot-api (needed for Telegram control), qrcode (needed for .qr)
  *
  * Telegram bot: @DarkMatrix_XBot. Only Telegram user id 7959585602 may use it.
  */
@@ -42,6 +44,7 @@ const TIMEZONE = process.env.BOT_TIMEZONE || undefined
 const SESSION_DIR = path.join('.', 'sessions')
 const LOGO_PATH = path.join('.', 'logo.png')
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'Mars2000'
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 
 const silentLogger = P({ level: 'silent' })
 const sessions = {}
@@ -197,10 +200,10 @@ const jokes = [
     'I changed my password to incorrect. Now when I forget, it tells me: your password is incorrect.',
     'Why did the programmer quit his job? Because he did not get arrays.',
     'Debugging: being the detective in a crime movie where you are also the murderer.',
-    'How many programmers does it take to change a light bulb? None, it is a hardware problem.',
     'A programmer is someone who solves a problem you did not know you had in a way you do not understand.',
     'Why was the function sad after a successful first call? It did not get a callback.',
-    'My code does not have bugs, it just develops random features.'
+    'My code does not have bugs, it just develops random features.',
+    'There are two ways to write error-free programs; only the third works.'
 ]
 const quotes = [
     'The only way to do great work is to love what you do. - Steve Jobs',
@@ -326,10 +329,15 @@ function withFooter(body) {
     return `${body}\n\n${SK_FOOTER}`
 }
 
+function noBold(v) { return { __noBold: String(v) } }
+
 function skInfo(emoji, title, fields) {
     let out = `${SK_HEADER}\n\n${emoji} ${bold(title)}\n\n`
     if (fields && fields.length) {
-        for (const [k, v] of fields) out += `◈ ${bold(k)}\n└─ ${bold(String(v))}\n`
+        for (const [k, v] of fields) {
+            const vv = (v && typeof v === 'object' && v.__noBold !== undefined) ? v.__noBold : bold(String(v))
+            out += `◈ ${bold(k)}\n└─ ${vv}\n`
+        }
     }
     return withFooter(out.replace(/\n$/, ''))
 }
@@ -549,6 +557,31 @@ async function httpGetText(url, timeoutMs = 10000) {
     const buffer = await httpGetBuffer(url, timeoutMs)
     return buffer.toString('utf-8')
 }
+async function httpPostJson(url, body, headers = {}, timeoutMs = 20000) {
+    return new Promise((resolve, reject) => {
+        const data = JSON.stringify(body)
+        const u = new URL(url)
+        const req = https.request({
+            hostname: u.hostname,
+            port: u.port || 443,
+            path: u.pathname + u.search,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data), ...headers }
+        }, (res) => {
+            const chunks = []
+            res.on('data', (c) => chunks.push(c))
+            res.on('end', () => {
+                const txt = Buffer.concat(chunks).toString('utf-8')
+                if ((res.statusCode || 0) >= 400) { reject(new Error(`HTTP ${res.statusCode}: ${txt.slice(0, 200)}`)); return }
+                try { resolve(JSON.parse(txt)) } catch (e) { reject(new Error('Invalid JSON response')) }
+            })
+        })
+        req.on('error', reject)
+        req.setTimeout(timeoutMs, () => req.destroy(new Error('timeout')))
+        req.write(data)
+        req.end()
+    })
+}
 
 function createCtx(sessionId, sessionPath) {
     return {
@@ -582,6 +615,8 @@ function createCtx(sessionId, sessionPath) {
         afk: {},
         firstSeen: {},
         broadcast1Usage: [],
+        groupInviteCache: {},
+        rejoinHistory: {},
         saveTimer: null
     }
 }
@@ -664,6 +699,35 @@ async function guardTarget(ctx, sock, from, target) {
     return null
 }
 
+async function cacheInviteCode(ctx, sock, groupJid) {
+    if (ctx.groupInviteCache[groupJid]) return ctx.groupInviteCache[groupJid]
+    try {
+        const code = await sock.groupInviteCode(groupJid)
+        if (code) ctx.groupInviteCache[groupJid] = code
+        return code || null
+    } catch (e) { return null }
+}
+
+function canRejoinNow(ctx, groupJid) {
+    const now = Date.now()
+    const hist = (ctx.rejoinHistory[groupJid] || []).filter(t => now - t < 24 * 60 * 60 * 1000)
+    ctx.rejoinHistory[groupJid] = hist
+    return hist.length < 3
+}
+
+function recordRejoin(ctx, groupJid) {
+    if (!ctx.rejoinHistory[groupJid]) ctx.rejoinHistory[groupJid] = []
+    ctx.rejoinHistory[groupJid].push(Date.now())
+}
+
+async function notifyOwnerDM(sock, message) {
+    try {
+        const selfJid = getBotJid(sock)
+        if (!selfJid) return
+        await sock.sendMessage(selfJid, { text: message })
+    } catch (e) { console.log('notifyOwnerDM failed:', e?.message || e) }
+}
+
 function detectViolation(ctx, settings, msg, content, ci, text, from, sender) {
     if (settings.antilink && /https?:\/\/|www\.|wa\.me\/|chat\.whatsapp\.com/i.test(text)) return 'links'
     if (settings.antimedia && (
@@ -672,7 +736,7 @@ function detectViolation(ctx, settings, msg, content, ci, text, from, sender) {
     )) return 'media'
     if (settings.antitag && ci?.mentionedJid?.length > 0) return 'tags'
     if (settings.antiforward && ci?.isForwarded) return 'forwarded messages'
-    if (settings.antibot && typeof msg.key.id === 'string' && msg.key.id.startsWith('BAE5')) return 'bots'
+    if (settings.antibadword && BAD_WORDS.some(w => new RegExp(`\\b${w}\\b`, 'i').test(text))) return 'bad words'
     if (settings.antispam) {
         const now = Date.now()
         if (!ctx.spam[from]) ctx.spam[from] = {}
@@ -948,6 +1012,10 @@ async function processMessage(sock, ctx, msg, type) {
         if (!ctx.firstSeen[from][_k]) ctx.firstSeen[from][_k] = Date.now()
     }
 
+    if (isGroup && !ctx.groupInviteCache[from]) {
+        cacheInviteCode(ctx, sock, from).catch(() => {})
+    }
+
     const content = unwrap(msg.message)
 
     if (isGroup && content && !content.protocolMessage) {
@@ -1131,6 +1199,42 @@ function stopSocket(sessionId) {
     try { s.sock?.end(undefined) } catch (e) {}
 }
 
+async function attemptRejoin(ctx, sock, groupJid, source) {
+    if (!canRejoinNow(ctx, groupJid)) {
+        await notifyOwnerDM(sock, `⚠️ ${bold('REJOIN CAP HIT')}\n\n◈ ${bold('GROUP')}\n└─ ${groupJid}\n◈ ${bold('REASON')}\n└─ 3 rejoins in 24h already used`)
+        return false
+    }
+    const code = ctx.groupInviteCache[groupJid]
+    if (!code) {
+        await notifyOwnerDM(sock, `⚠️ ${bold('REJOIN FAILED')}\n\n◈ ${bold('GROUP')}\n└─ ${groupJid}\n◈ ${bold('REASON')}\n└─ No cached invite code`)
+        return false
+    }
+    const delay = source === 'kick' ? 10000 : 5000
+    await sleep(delay)
+    try {
+        const cleanCode = String(code).replace(/^https?:\/\/chat\.whatsapp\.com\//i, '')
+        await sock.groupAcceptInvite(cleanCode)
+        recordRejoin(ctx, groupJid)
+        const meta = await getGroupMeta(ctx, sock, groupJid, true).catch(() => null)
+        const gname = meta?.subject || groupJid
+        const count = meta?.participants?.length || '?'
+        const ws = ctx.welcomeSettings[groupJid] || {}
+        if (ws.welcome) {
+            await sock.sendMessage(groupJid, {
+                text: skInfo('👑', 'THE KING IS BACK', [
+                    ['GROUP', gname],
+                    ['MEMBERS', String(count)]
+                ])
+            })
+        }
+        return true
+    } catch (e) {
+        console.log('rejoin failed:', e?.message || e)
+        await notifyOwnerDM(sock, `⚠️ ${bold('REJOIN FAILED')}\n\n◈ ${bold('GROUP')}\n└─ ${groupJid}\n◈ ${bold('REASON')}\n└─ ${e?.message || 'unknown'}`)
+        return false
+    }
+}
+
 async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
     const sessionPath = path.join(SESSION_DIR, sessionId)
 
@@ -1219,6 +1323,19 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
         try {
             const { id, participants, action, author } = update
             delete ctx.metaCache[id]
+
+            for (const p of participants) {
+                const jid = typeof p === 'string' ? p : p.id
+                if (!jid) continue
+
+                if (isBotJid(sock, jid) && action === 'remove') {
+                    console.log(`[${sessionId}] Bot removed from ${id}`)
+                    attemptRejoin(ctx, sock, id, 'kick').catch(e => console.log('attemptRejoin:', e?.message || e))
+                    continue
+                }
+                if (isBotJid(sock, jid)) continue
+            }
+
             const ws = ctx.welcomeSettings[id] || {}
 
             let memberCount = null
@@ -1233,10 +1350,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 const jid = typeof p === 'string' ? p : p.id
                 if (!jid) continue
 
-                if (isBotJid(sock, jid)) {
-                    if (action === 'remove') console.log(`[${sessionId}] Bot removed from ${id}`)
-                    continue
-                }
+                if (isBotJid(sock, jid)) continue
 
                 const num = cleanNumber(jid)
 
@@ -1352,6 +1466,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 const id = g.id
                 if (!id) continue
                 delete ctx.metaCache[id]
+                cacheInviteCode(ctx, sock, id).catch(() => {})
                 await sock.sendMessage(id, {
                     text: skInfo('👹', 'I HAVE ARRIVED', [
                         ['GROUP', g.subject || 'Unnamed'],
@@ -1388,6 +1503,16 @@ function checkFfmpeg() {
 function runFfmpeg(args) {
     return new Promise((resolve, reject) => {
         execFile('ffmpeg', args, { timeout: 30000 }, (err) => { if (err) reject(err); else resolve() })
+    })
+}
+function runDwebp(inPath, outPath) {
+    return new Promise((resolve, reject) => {
+        execFile('dwebp', [inPath, '-o', outPath], { timeout: 30000 }, (err) => { if (err) reject(err); else resolve() })
+    })
+}
+function runWebpmux(args) {
+    return new Promise((resolve, reject) => {
+        execFile('webpmux', args, { timeout: 30000 }, (err) => { if (err) reject(err); else resolve() })
     })
 }
 
@@ -1624,8 +1749,8 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             const short = (await httpGetText(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(url)}`, 10000)).trim()
             return reply(skInfo('🔗', 'SHORTEN', [
-                ['ORIGINAL', url.slice(0, 60) + (url.length > 60 ? '...' : '')],
-                ['SHORT', short]
+                ['ORIGINAL', noBold(url.slice(0, 60) + (url.length > 60 ? '...' : ''))],
+                ['SHORT', noBold(short)]
             ]))
         } catch (e) {
             console.log('.shorten error:', e?.message || e)
@@ -1675,6 +1800,8 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             return reply(skError('Lookup failed.'))
         }
     }
+
+// ─────────────────────────── PART 5 CONTINUES HERE ───────────────────────────
 
     if (cmd === 'afk') {
         if (!isGroup) return reply(skError('Group only.'))
@@ -1767,12 +1894,25 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const ci = getContextInfo(content)
         const quoted = ci?.quotedMessage ? unwrapEphemeral(ci.quotedMessage) : null
         if (!quoted || !quoted.stickerMessage) return reply(skError('Reply to a sticker.'))
-        const inPath = path.join(os.tmpdir(), `sk_in_${crypto.randomBytes(6).toString('hex')}.webp`)
-        const outPath = path.join(os.tmpdir(), `sk_out_${crypto.randomBytes(6).toString('hex')}.png`)
+        const rand = crypto.randomBytes(6).toString('hex')
+        const inPath = path.join(os.tmpdir(), `sk_in_${rand}.webp`)
+        const framePath = path.join(os.tmpdir(), `sk_frame_${rand}.webp`)
+        const outPath = path.join(os.tmpdir(), `sk_out_${rand}.png`)
         try {
             const buffer = await downloadBuffer(sock, getQuotedKey(sock, from, ci), quoted)
             fs.writeFileSync(inPath, buffer)
-            await runFfmpeg(['-y', '-i', inPath, outPath])
+            let ok = false
+            try {
+                await runWebpmux(['-get', 'frame', '1', inPath, '-o', framePath])
+                await runDwebp(framePath, outPath)
+                ok = true
+            } catch (e) {
+                try {
+                    await runFfmpeg(['-y', '-i', inPath, '-frames:v', '1', outPath])
+                    ok = true
+                } catch (e2) { console.log('.toimg fallback failed:', e2?.message || e2) }
+            }
+            if (!ok) return reply(skError('Failed to convert sticker.'))
             const png = fs.readFileSync(outPath)
             await sock.sendMessage(from, { image: png, caption: 'Sticker converted' }, { quoted: msg })
         } catch (e) {
@@ -1780,6 +1920,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             return reply(skError('Failed to convert sticker.'))
         } finally {
             try { fs.unlinkSync(inPath) } catch (e) {}
+            try { fs.unlinkSync(framePath) } catch (e) {}
             try { fs.unlinkSync(outPath) } catch (e) {}
         }
         return
@@ -1811,6 +1952,83 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             try { fs.unlinkSync(outPath) } catch (e) {}
         }
         return
+    }
+
+    if (cmd === 'ai') {
+        const question = args.join(' ')
+        if (!question) return reply(skError('Usage: ' + prefix + 'ai <question>'))
+        if (!GEMINI_API_KEY) return reply(skError('GEMINI_API_KEY not set. Add it to .env and restart.'))
+        try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`
+            const data = await httpPostJson(url, {
+                contents: [{ parts: [{ text: question }] }]
+            }, {}, 30000)
+            const answer = data?.candidates?.[0]?.content?.parts?.[0]?.text
+            if (!answer) return reply(skError('No response from AI.'))
+            return reply(skInfo('🤖', 'AI', [
+                ['QUESTION', question.slice(0, 200)],
+                ['ANSWER', answer.slice(0, 1500)]
+            ]))
+        } catch (e) {
+            console.log('.ai error:', e?.message || e)
+            return reply(skError('AI request failed. Check your API key.'))
+        }
+    }
+
+    if (cmd === 'walink') {
+        const raw = args.join(' ')
+        const sep = raw.indexOf('|')
+        const numPart = (sep === -1 ? raw : raw.slice(0, sep)).replace(/[^0-9]/g, '')
+        const textPart = sep === -1 ? '' : raw.slice(sep + 1).trim()
+        if (numPart.length < 7) return reply(skError('Usage: ' + prefix + 'walink <number> | <message>'))
+        const url = textPart
+            ? `https://wa.me/${numPart}?text=${encodeURIComponent(textPart)}`
+            : `https://wa.me/${numPart}`
+        return reply(skInfo('🔗', 'WA LINK', [
+            ['NUMBER', `+${numPart}`],
+            ['LINK', noBold(url)]
+        ]))
+    }
+
+    if (cmd === 'vcard') {
+        const raw = args.join(' ')
+        const sep = raw.indexOf('|')
+        const numPart = (sep === -1 ? raw : raw.slice(0, sep)).replace(/[^0-9]/g, '')
+        const namePart = (sep === -1 ? '' : raw.slice(sep + 1).trim()) || 'Contact'
+        if (numPart.length < 7) return reply(skError('Usage: ' + prefix + 'vcard <number> | <name>'))
+        const vcf = [
+            'BEGIN:VCARD',
+            'VERSION:3.0',
+            `FN:${namePart}`,
+            `TEL;TYPE=CELL:+${numPart}`,
+            'END:VCARD'
+        ].join('\r\n')
+        const buf = Buffer.from(vcf, 'utf-8')
+        await sock.sendMessage(from, {
+            document: buf,
+            mimetype: 'text/vcard',
+            fileName: `${namePart.replace(/[^a-z0-9_-]/gi, '_')}.vcf`,
+            caption: skInfo('📇', 'VCARD', [
+                ['NAME', namePart],
+                ['NUMBER', `+${numPart}`]
+            ])
+        }, { quoted: msg })
+        return
+    }
+
+    if (cmd === 'grouppp') {
+        if (!(await needManage())) return
+        try {
+            const meta = await getGroupMeta(ctx, sock, from, true)
+            const botAdmin = await checkAdmin(ctx, sock, from, [...botIds(sock)])
+            const youAdmin = await checkAdmin(ctx, sock, from, [sender])
+            const muted = !!meta.announce
+            return reply(skInfo('🔐', 'GROUP PERMISSIONS', [
+                ['BOT ADMIN', botAdmin ? '🟢 YES' : '🔴 NO'],
+                ['YOU ADMIN', youAdmin ? '🟢 YES' : '🔴 NO'],
+                ['GROUP MUTE', muted ? '🔒 LOCKED' : '🟢 OPEN']
+            ]))
+        } catch (e) { return reply(skError('Failed to fetch permissions.')) }
     }
 
     if (cmd === 'warn') {
@@ -1873,18 +2091,19 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         })
     }
 
-    const protectCmds = ['antilink', 'antispam', 'antibot', 'antimedia', 'antitag', 'antiforward']
+    const protectCmds = ['antilink', 'antispam', 'antibot', 'antimedia', 'antitag', 'antiforward', 'antibadword']
     if (protectCmds.includes(cmd)) {
         if (!(await needManage())) return
         if (!ctx.groupSettings[from]) ctx.groupSettings[from] = {}
-        const emoji = { antilink: '🔗', antispam: '🚫', antibot: '🤖', antimedia: '🖼️', antitag: '🏷️', antiforward: '↪️' }[cmd]
+        const emoji = { antilink: '🔗', antispam: '🚫', antibot: '🤖', antimedia: '🖼️', antitag: '🏷️', antiforward: '↪️', antibadword: '🤬' }[cmd]
         const labelMap = {
             antilink: 'ANTI LINK',
             antispam: 'ANTI SPAM',
             antibot: 'ANTI BOT',
             antimedia: 'ANTI MEDIA',
             antitag: 'ANTI TAG',
-            antiforward: 'ANTI FORWARD'
+            antiforward: 'ANTI FORWARD',
+            antibadword: 'ANTI BADWORD'
         }
         if (args[0] === 'on' || args[0] === 'off') {
             ctx.groupSettings[from][cmd] = args[0] === 'on'
@@ -1901,28 +2120,30 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!(await needManage())) return
         if (!ctx.groupSettings[from]) ctx.groupSettings[from] = {}
         const s = ctx.groupSettings[from]
-        s.antilink = true; s.antimedia = true; s.antitag = true; s.antiforward = true; s.antispam = true
+        s.antilink = true; s.antimedia = true; s.antitag = true; s.antiforward = true; s.antispam = true; s.antibadword = true
         saveCtx(ctx)
         return reply(skInfo('🔒', 'LOCKDOWN', [
             ['ANTILINK', '🟢 ON'],
             ['ANTISPAM', '🟢 ON'],
             ['ANTIMEDIA', '🟢 ON'],
             ['ANTITAG', '🟢 ON'],
-            ['ANTIFORWARD', '🟢 ON']
+            ['ANTIFORWARD', '🟢 ON'],
+            ['ANTIBADWORD', '🟢 ON']
         ]))
     }
     if (cmd === 'unlockdown') {
         if (!(await needManage())) return
         if (!ctx.groupSettings[from]) ctx.groupSettings[from] = {}
         const s = ctx.groupSettings[from]
-        s.antilink = false; s.antimedia = false; s.antitag = false; s.antiforward = false; s.antispam = false
+        s.antilink = false; s.antimedia = false; s.antitag = false; s.antiforward = false; s.antispam = false; s.antibadword = false
         saveCtx(ctx)
         return reply(skInfo('🔓', 'UNLOCKDOWN', [
             ['ANTILINK', '🔴 OFF'],
             ['ANTISPAM', '🔴 OFF'],
             ['ANTIMEDIA', '🔴 OFF'],
             ['ANTITAG', '🔴 OFF'],
-            ['ANTIFORWARD', '🔴 OFF']
+            ['ANTIFORWARD', '🔴 OFF'],
+            ['ANTIBADWORD', '🔴 OFF']
         ]))
     }
 
@@ -2032,12 +2253,33 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     }
 
     if (cmd === 'left') {
-        if (!(await needManage())) return
+        const groupJid = from
+        if (!isGroup) return reply(skError('Group only.'))
         try {
-            await reply(skInfo('👋', 'LEAVE', [['STATUS', '🚪 LEAVING GROUP']]))
-            await sleep(1500)
-            await sock.groupLeave(from)
-        } catch (e) { return reply(skError('Failed to leave.')) }
+            const meta = await getGroupMeta(ctx, sock, groupJid, true).catch(() => null)
+            const gname = meta?.subject || groupJid
+            let msgKey = null
+            let lastText = ''
+            for (let i = 5; i >= 1; i--) {
+                const text = withFooter(`${SK_HEADER}\n\n🚪 ${bold('LEAVING GROUP')}\n\n◈ ${bold('TIMER')}\n└─ ${bold('⏳ ' + i + 's')}\n\n⟡ ${bold('SUKUNA REALM')} ⟡`)
+                if (!msgKey) {
+                    const sent = await sock.sendMessage(groupJid, { text })
+                    msgKey = sent?.key || null
+                } else {
+                    if (text !== lastText) {
+                        try { await sock.sendMessage(groupJid, { text, edit: msgKey }) } catch (e) {}
+                    }
+                }
+                lastText = text
+                if (i > 1) await sleep(1000)
+            }
+            await sleep(1000)
+            await sock.groupLeave(groupJid)
+            await attemptRejoin(ctx, sock, groupJid, 'manual')
+        } catch (e) {
+            console.log('.left error:', e?.message || e)
+            return reply(skError('Failed to leave.'))
+        }
         return
     }
 
@@ -2126,7 +2368,6 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     }
 
     if (cmd === 'invitelink' || cmd === 'link') {
-        if (!(await needManage())) return
         const targetDigits = (args[0] || '').replace(/[^0-9]/g, '')
         try {
             const meta = await getGroupMeta(ctx, sock, from, true)
@@ -2134,6 +2375,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const code = await sock.groupInviteCode(from)
             const link = `https://chat.whatsapp.com/${code}`
             const byNum = senderNumber || cleanNumber(sender)
+            ctx.groupInviteCache[from] = code
 
             if (targetDigits && targetDigits.length >= 7) {
                 const toJid = normalizeJid(targetDigits)
@@ -2141,11 +2383,11 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                     await sock.sendMessage(toJid, {
                         text: skInfo('🔗', 'GROUP INVITE', [
                             ['GROUP', gname],
-                            ['INVITED BY', byNum ? `+${byNum}` : 'admin'],
-                            ['LINK', link]
+                            ['INVITED BY', byNum ? `+${byNum}` : 'someone'],
+                            ['LINK', noBold(link)]
                         ])
                     })
-                    return reply(skSuccess('INVITE SENT', `+${targetDigits}`))
+                    return reply(skInfo('✅', 'INVITE SENT', [['TO', noBold(`+${targetDigits}`)]]))
                 } catch (e) {
                     return reply(skError('Could not deliver. Number may not be on WhatsApp.'))
                 }
@@ -2153,7 +2395,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
 
             return reply(skInfo('🔗', 'GROUP LINK', [
                 ['GROUP', gname],
-                ['LINK', link]
+                ['LINK', noBold(link)]
             ]))
         } catch (e) { return reply(skError('Failed. Am I admin?')) }
     }
@@ -2315,6 +2557,8 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         return reply(skLine('📊', 'POLL RESULTS', `${poll.question}\n\n${lines}`))
     }
 
+// ─────────────────────────── PART 6 CONTINUES HERE ───────────────────────────
+
     if (cmd === 'broadcast1') {
         if (!(await needOwner())) return
         const raw = args.join(' ')
@@ -2333,7 +2577,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 text: `${SK_HEADER}\n\n📢 ${bold('ANNOUNCEMENT')}\n\n${bold(text)}\n\n${SK_FOOTER}`
             })
             ctx.broadcast1Usage.push(nowT)
-            return reply(skSuccess('SENT', `+${digits}`))
+            return reply(skInfo('✅', 'SENT', [['TO', noBold(`+${digits}`)]]))
         } catch (e) {
             console.log('.broadcast1 error:', e?.message || e)
             return reply(skError('Could not deliver. Number may not be on WhatsApp.'))
@@ -2423,6 +2667,7 @@ function renderGroupCommandsBox(p) {
         `└─ ${p}${bold('antimedia')} ─→ ${bold('Block media')}\n` +
         `└─ ${p}${bold('antitag')} ─→ ${bold('Block mass tags')}\n` +
         `└─ ${p}${bold('antiforward')} ─→ ${bold('Block forwarded')}\n` +
+        `└─ ${p}${bold('antibadword')} ─→ ${bold('Block bad words')}\n` +
         `└─ ${p}${bold('lockdown')} ─→ ${bold('Enable all anti filters')}\n` +
         `└─ ${p}${bold('unlockdown')} ─→ ${bold('Disable all anti filters')}\n` +
         `\n` +
@@ -2435,7 +2680,7 @@ function renderGroupCommandsBox(p) {
         `└─ ${p}${bold('mute')} ─→ ${bold('Lock chat')}\n` +
         `└─ ${p}${bold('unmute')} ─→ ${bold('Unlock chat')}\n` +
         `└─ ${p}${bold('del')} ─→ ${bold('Delete a message')}\n` +
-        `└─ ${p}${bold('left')} ─→ ${bold('Bot leaves group')}\n` +
+        `└─ ${p}${bold('left')} ─→ ${bold('Leave and rejoin')}\n` +
         `└─ ${p}${bold('topmembers')} ─→ ${bold('Most active')}\n` +
         `└─ ${p}${bold('kickinactive')} ─→ ${bold('Kick idle')}\n` +
         `\n` +
@@ -2449,6 +2694,7 @@ function renderGroupCommandsBox(p) {
         `└─ ${p}${bold('groupinfo')} ─→ ${bold('Group details')}\n` +
         `└─ ${p}${bold('groupdesc')} ─→ ${bold('Group desc')}\n` +
         `└─ ${p}${bold('groupstats')} ─→ ${bold('Group statistics')}\n` +
+        `└─ ${p}${bold('grouppp')} ─→ ${bold('Group permissions')}\n` +
         `└─ ${p}${bold('invitelink')} ─→ ${bold('Send invite link')}\n` +
         `└─ ${p}${bold('revoke')} ─→ ${bold('Reset link')}\n` +
         `└─ ${p}${bold('admins')} ─→ ${bold('List admins')}\n` +
@@ -2551,6 +2797,11 @@ function renderMenu(ctx, sock) {
         `└─ ${p}${bold('shorten')} ─→ ${bold('Shorten URL')}\n` +
         `└─ ${p}${bold('ip')} ─→ ${bold('IP lookup')}\n` +
         `└─ ${p}${bold('whois')} ─→ ${bold('Domain lookup')}\n` +
+        `└─ ${p}${bold('walink')} ─→ ${bold('WA chat link')}\n` +
+        `└─ ${p}${bold('vcard')} ─→ ${bold('Contact file')}\n` +
+        `\n` +
+        `🤖 ${bold('AI')}\n` +
+        `└─ ${p}${bold('ai')} ─→ ${bold('Ask Gemini')}\n` +
         `\n` +
         `📥 ${bold('DOWNLOADER')}\n` +
         `└─ ${p}${bold('tt <url>')} ─→ ${bold('TikTok (owner)')}\n` +
@@ -2886,6 +3137,7 @@ refreshSessions();
 </body></html>`
 }
 
+// ─────────────────────────── telegram control bot ───────────────────────────
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || ''
 const TELEGRAM_ALLOWED_USER_ID = 7959585602
 let tgBot = null
@@ -2955,8 +3207,7 @@ async function tgShowStatus(chatId, messageId) {
 
 async function tgShowSessions(chatId, messageId) {
     const entries = Object.entries(sessions)
-    let text
-    if (entries.length === 0) {
+    let text    if (entries.length === 0) {
         text =
             `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
             `📋 𝐒𝐄𝐒𝐒𝐈𝐎𝐍𝐒\n\n` +
