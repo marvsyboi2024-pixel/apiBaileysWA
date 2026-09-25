@@ -923,9 +923,10 @@ async function handleSave(sock, ctx, msg, content, from, sender) {
 async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind) {
     const prefix = ctx.cfg.prefix
     const silent = kind === 'hmm'
+    const selfJid = getBotJid(sock)
     const say = (text) => (silent
-        ? sock.sendMessage(sender, { text })
-        : sock.sendMessage(from, { text }, { quoted: msg })).catch(() => {})
+    ? sock.sendMessage(selfJid, { text })
+    : sock.sendMessage(from, { text }, { quoted: msg })).catch(() => {})
 
     const wait = checkExtractCooldown(ctx, sender)
     if (wait > 0) {
@@ -1329,12 +1330,18 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 const jid = typeof p === 'string' ? p : p.id
                 if (!jid) continue
 
-                if (isBotJid(sock, jid) && action === 'remove') {
-                    console.log(`[${sessionId}] Bot removed from ${id}`)
-                    attemptRejoin(ctx, sock, id, 'kick').catch(e => console.log('attemptRejoin:', e?.message || e))
-                    continue
-                }
-                if (isBotJid(sock, jid)) continue
+            if (isBotJid(sock, jid) && action === 'remove') {
+               console.log(`[${sessionId}] Bot removed from ${id}`)
+               ctx.rejoinSilent = ctx.rejoinSilent || {}
+               ctx.rejoinSilent[id] = Date.now()
+               attemptRejoin(ctx, sock, id, 'kick').catch(e => console.log('attemptRejoin:', e?.message || e))
+               continue
+            }
+            if (isBotJid(sock, jid) && action === 'add') {
+               cacheInviteCode(ctx, sock, id).catch(() => {})
+               continue
+            }
+            if (isBotJid(sock, jid)) continue
             }
 
             const ws = ctx.welcomeSettings[id] || {}
@@ -1468,7 +1475,10 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 if (!id) continue
                 delete ctx.metaCache[id]
                 cacheInviteCode(ctx, sock, id).catch(() => {})
-                await sock.sendMessage(id, {
+                if (ctx.rejoinSilent && ctx.rejoinSilent[id] && Date.now() - ctx.rejoinSilent[id] < 60000) {
+                   delete ctx.rejoinSilent[id]
+                } else {
+                    await sock.sendMessage(id, {
                     text: skInfo('👹', 'I HAVE ARRIVED', [
                         ['GROUP', g.subject || 'Unnamed'],
                         ['MEMBERS', String((g.participants || []).length)],
@@ -1476,6 +1486,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                     ])
                 })
             }
+                }
         } catch (e) { console.log('Groups upsert error:', e?.message || e) }
     })
 
@@ -1738,7 +1749,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ['RESULT', translated]
             ]))
         } catch (e) {
-            console.log('.translate error:', e?.message || e)
+            if (!/timeout/i.test(String(e?.message || e))) console.log('.translate error:', e?.message || e)
             return reply(skError('Translation failed.'))
         }
     }
@@ -2258,12 +2269,13 @@ if (cmd === 'ai') {
         const groupJid = from
         if (!isGroup) return reply(skError('Group only.'))
         try {
+            try { await cacheInviteCode(ctx, sock, groupJid) } catch (e) {}
             const meta = await getGroupMeta(ctx, sock, groupJid, true).catch(() => null)
             const gname = meta?.subject || groupJid
             let msgKey = null
             let lastText = ''
-            for (let i = 5; i >= 1; i--) {
-                const text = withFooter(`${SK_HEADER}\n\n🚪 ${bold('LEAVING GROUP')}\n\n◈ ${bold('TIMER')}\n└─ ${bold('⏳ ' + i + 's')}\n\n⟡ ${bold('SUKUNA REALM')} ⟡`)
+            for (let i = 3; i >= 1; i--) {
+                const text = withFooter(`${SK_HEADER}\n\n🚪 ${bold('LEAVING GROUP')}\n\n◈ ${bold('TIMER')}\n└─ ⏳ ${i}s`)
                 if (!msgKey) {
                     const sent = await sock.sendMessage(groupJid, { text })
                     msgKey = sent?.key || null
@@ -2277,6 +2289,8 @@ if (cmd === 'ai') {
             }
             await sleep(1000)
             await sock.groupLeave(groupJid)
+            ctx.rejoinSilent = ctx.rejoinSilent || {}
+            ctx.rejoinSilent[groupJid] = Date.now()
             await attemptRejoin(ctx, sock, groupJid, 'manual')
         } catch (e) {
             console.log('.left error:', e?.message || e)
@@ -3493,14 +3507,10 @@ function initTelegram() {
     let tgPollErrorCount = 0
     let tgLastPollError = ''
     tgBot.on('polling_error', (e) => {
-        const errMsg = e?.message || String(e)
-        console.log('[TELEGRAM] Polling error:', errMsg)
-        if (errMsg === tgLastPollError) tgPollErrorCount++
-        else { tgLastPollError = errMsg; tgPollErrorCount = 1 }
-        if (tgPollErrorCount === 3) {
-            console.log('[TELEGRAM] Polling failed 3x. TELEGRAM_TOKEN may be invalid.')
-        }
-    })
+    const errMsg = e?.message || String(e)
+    if (errMsg.includes('ENOTFOUND') || errMsg.includes('ETIMEDOUT') || errMsg.includes('ECONNRESET')) return
+    console.log('[TELEGRAM] Polling error:', errMsg)
+})
 
     tgBot.onText(/^\/start\b/, async (msg) => { if (!tgAuth(msg.from.id)) return; tgPending.delete(msg.chat.id); await tgShowMenu(msg.chat.id) })
     tgBot.onText(/^\/menu\b/, async (msg) => { if (!tgAuth(msg.from.id)) return; tgPending.delete(msg.chat.id); await tgShowMenu(msg.chat.id) })
