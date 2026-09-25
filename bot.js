@@ -598,7 +598,9 @@ function createCtx(sessionId, sessionPath) {
             online: false,
             autoreact: false,
             statusreact: false,
-            statusview: false
+            statusview: false,
+            eventsWelcome: false,
+            eventsGoodbye: false
         },
         groupSettings: {},
         warnLimit: {},
@@ -618,6 +620,7 @@ function createCtx(sessionId, sessionPath) {
         broadcast1Usage: [],
         groupInviteCache: {},
         rejoinHistory: {},
+        eventsMenu: {},
         saveTimer: null
     }
 }
@@ -1020,6 +1023,28 @@ async function processMessage(sock, ctx, msg, type) {
 
     const content = unwrap(msg.message)
 
+    if (content?.reactionMessage) {
+        const reactKey = content.reactionMessage.key
+        const reactEmoji = content.reactionMessage.text
+        if (reactKey && ctx.eventsMenu && owner) {
+            const menuEntry = ctx.eventsMenu[from]
+            if (menuEntry && menuEntry.id === reactKey.id) {
+                if (reactEmoji === '👍') {
+                    ctx.cfg.eventsWelcome = !ctx.cfg.eventsWelcome
+                    saveCtx(ctx)
+                } else if (reactEmoji === '👎') {
+                    ctx.cfg.eventsGoodbye = !ctx.cfg.eventsGoodbye
+                    saveCtx(ctx)
+                }
+                try {
+                    const text = eventsMenuText(ctx)
+                    await sock.sendMessage(from, { text, edit: menuEntry.key })
+                } catch (e) { console.log('.events edit error:', e?.message || e) }
+            }
+        }
+        return
+    }
+
     if (isGroup && content && !content.protocolMessage) {
         const body = content.conversation ||
             content.extendedTextMessage?.text ||
@@ -1220,8 +1245,7 @@ async function attemptRejoin(ctx, sock, groupJid, source) {
         const meta = await getGroupMeta(ctx, sock, groupJid, true).catch(() => null)
         const gname = meta?.subject || groupJid
         const count = meta?.participants?.length || '?'
-        const ws = ctx.welcomeSettings[groupJid] || {}
-        if (ws.welcome) {
+        if (ctx.cfg.eventsWelcome) {
             await sock.sendMessage(groupJid, {
                 text: skInfo('👑', 'THE KING IS BACK', [
                     ['GROUP', gname],
@@ -1344,8 +1368,6 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
             if (isBotJid(sock, jid)) continue
             }
 
-            const ws = ctx.welcomeSettings[id] || {}
-
             let memberCount = null
             let groupName = null
             try {
@@ -1362,7 +1384,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
 
                 const num = cleanNumber(jid)
 
-                if (action === 'add' && ws.welcome) {
+                if (action === 'add' && ctx.cfg.eventsWelcome) {
                     const fields = [['USER', `@${num}`]]
                     const mentions = [jid]
                     fields.push(['STATUS', '🟢 JOINED'])
@@ -1374,7 +1396,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                     })
                 }
 
-                if (action === 'remove' && ws.goodbye) {
+                if (action === 'remove' && ctx.cfg.eventsGoodbye) {
                     const fields = [['USER', `@${num}`]]
                     const mentions = [jid]
                     const wasKicked = author && author !== jid && !isBotJid(sock, author)
@@ -2521,19 +2543,33 @@ if (cmd === 'ai') {
         } catch (e) { return reply(skError('Failed. Am I admin?')) }
     }
 
-    if (cmd === 'welcome' || cmd === 'goodbye') {
-        if (!(await needManage())) return
-        if (!ctx.welcomeSettings[from]) ctx.welcomeSettings[from] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
-        const emoji = cmd === 'welcome' ? '🎉' : '👋'
-        if (args[0] === 'on' || args[0] === 'off') {
-            ctx.welcomeSettings[from][cmd] = args[0] === 'on'
+    if (cmd === 'events' || cmd === 'event') {
+        if (!(await needOwner())) return
+        const a0 = (args[0] || '').toLowerCase()
+        if (a0 === 'on') {
+            ctx.cfg.eventsWelcome = true
+            ctx.cfg.eventsGoodbye = true
             saveCtx(ctx)
-            return reply(skInfo(emoji, cmd.toUpperCase(), [
-                ['STATUS', args[0] === 'on' ? '🟢 ENABLED' : '🔴 DISABLED']
+            return reply(skInfo('⚙️', 'EVENTS', [
+                ['WELCOME', '🟢 ON'],
+                ['GOODBYE', '🟢 ON']
             ]))
         }
-        const cur = ctx.welcomeSettings[from][cmd] ? '🟢 ON' : '🔴 OFF'
-        return reply(skInfo(emoji, cmd.toUpperCase(), [['STATUS', cur]]))
+        if (a0 === 'off') {
+            ctx.cfg.eventsWelcome = false
+            ctx.cfg.eventsGoodbye = false
+            saveCtx(ctx)
+            return reply(skInfo('⚙️', 'EVENTS', [
+                ['WELCOME', '🔴 OFF'],
+                ['GOODBYE', '🔴 OFF']
+            ]))
+        }
+        const sent = await reply(eventsMenuText(ctx))
+        const key = sent?.key || null
+        if (key) {
+            ctx.eventsMenu[from] = { id: key.id, key, ts: Date.now() }
+        }
+        return
     }
     if (cmd === 'setwelcome' || cmd === 'setgoodbye') {
         if (!(await needManage())) return
@@ -2672,6 +2708,12 @@ async function executeConfirmed(sock, ctx, msg, content, from, isGroup, sender, 
 }
 
 // ─────────────────────────── menu ───────────────────────────
+function eventsMenuText(ctx) {
+    const w = ctx.cfg.eventsWelcome ? '🟢 ON' : '🔴 OFF'
+    const g = ctx.cfg.eventsGoodbye ? '🟢 ON' : '🔴 OFF'
+    return withFooter(`${SK_HEADER}\n\n⚙️ ${bold('EVENTS')}\n\n◈ 🎉 ${bold('WELCOME')}\n└─ React 👍 to toggle\n◈ 👋 ${bold('GOODBYE')}\n└─ React 👎 to toggle\n\n◈ ${bold('STATUS')}\n└─ 🎉 welcome: ${w}\n└─ 👋 goodbye: ${g}`)
+}
+
 function renderGroupCommandsBox(p) {
     return (
         `👥 ${bold('GROUP COMMANDS')}\n` +
@@ -2726,9 +2768,9 @@ function renderGroupCommandsBox(p) {
         `└─ ${p}${bold('setname')} ─→ ${bold('Change name')}\n` +
         `└─ ${p}${bold('setdesc')} ─→ ${bold('Change desc')}\n` +
         `\n` +
-        `◈ 🎉 ${bold('WELCOME')}\n` +
-        `└─ ${p}${bold('welcome')} ─→ ${bold('Toggle welcome')}\n` +
-        `└─ ${p}${bold('goodbye')} ─→ ${bold('Toggle goodbye')}\n` +
+        `◈ 🎉 ${bold('EVENTS')}\n` +
+        `└─ ${p}${bold('events')} ─→ ${bold('Join/leave menu')}\n` +
+        `└─ ${p}${bold('event')} ─→ ${bold('Alias for events')}\n` +
         `└─ ${p}${bold('setwelcome')} ─→ ${bold('Set welcome')}\n` +
         `└─ ${p}${bold('setgoodbye')} ─→ ${bold('Set goodbye')}\n` +
         `\n` +
