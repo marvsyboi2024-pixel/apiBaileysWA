@@ -440,11 +440,10 @@ const BAD_WORDS = [
 const MONO_OFFSET = 0x1D670
 
 function mono(text) {
-    return String(text).replace(/[A-Za-z0-9]/g, (ch) => {
+    return String(text).replace(/[A-Za-z]/g, (ch) => {
         const u = ch.charCodeAt(0)
         if (u >= 65 && u <= 90) return String.fromCodePoint(MONO_OFFSET + (u - 65))
         if (u >= 97 && u <= 122) return String.fromCodePoint(MONO_OFFSET + 26 + (u - 97))
-        if (u >= 48 && u <= 57) return String.fromCodePoint(MONO_OFFSET + 52 + (u - 48))
         return ch
     })
 }
@@ -506,7 +505,20 @@ function formatUptime(sec) {
     return `${h}h ${m}m`
 }
 function cleanNumber(jid) { return jid ? String(jid).split('@')[0].split(':')[0] : '' }
-function bestNumber(p) { return cleanNumber(p.phoneNumber || (p.jid && !String(p.jid).includes('@lid') ? p.jid : null) || (p.id && !String(p.id).includes('@lid') ? p.id : null) || p.lid || p.id) }
+function isLid(jid) { return !!jid && String(jid).includes('@lid') }
+function jidsMatch(a, b) {
+    if (!a || !b) return false
+    const na = cleanNumber(a)
+    const nb = cleanNumber(b)
+    return !!(na && nb && na === nb)
+}
+function bestNumber(p) {
+    if (!p) return ''
+    if (p.phoneNumber) return cleanNumber(p.phoneNumber)
+    if (p.id && !String(p.id).includes('@lid')) return cleanNumber(p.id)
+    if (p.jid && !String(p.jid).includes('@lid')) return cleanNumber(p.jid)
+    return ''
+}
 function cleanJid(jid) {
     if (!jid) return ''
     const [user, domain] = String(jid).split('@')
@@ -855,8 +867,12 @@ async function resolveNumber(ctx, sock, groupJid, jid) {
         const p = meta.participants.find(x =>
             [x.id, x.jid, x.lid, x.phoneNumber].some(f => f && cleanNumber(f) === target)
         )
-        if (p) return bestNumber(p)
+        if (p) {
+            const num = bestNumber(p)
+            return num
+        }
     } catch (e) {}
+    if (isLid(jid)) return ''
     return cleanNumber(jid)
 }
 
@@ -1183,10 +1199,25 @@ async function processMessage(sock, ctx, msg, type) {
     const content = unwrap(msg.message)
 
     // .hbd pending reply — user replied to a probe DM
-    if (ctx.hbdPending && ctx.hbdPending[sender]) {
-        const pending = ctx.hbdPending[sender]
+    let hbdKey = null
+    if (ctx.hbdPending) {
+        const candidates = [
+            sender,
+            msg.key?.remoteJid,
+            msg.key?.remoteJidAlt,
+            msg.key?.participantAlt
+        ].filter(Boolean)
+        for (const c of candidates) {
+            for (const k of Object.keys(ctx.hbdPending)) {
+                if (jidsMatch(k, c) || k === c) { hbdKey = k; break }
+            }
+            if (hbdKey) break
+        }
+    }
+    if (hbdKey) {
+        const pending = ctx.hbdPending[hbdKey]
         if (!fromMe && !isGroup) {
-            delete ctx.hbdPending[sender]
+            delete ctx.hbdPending[hbdKey]
             const realNum = senderNumber
             const quote = getRandom(BIRTHDAY_QUOTES)
             const namedQuote = pending.celebrant
@@ -1286,19 +1317,30 @@ async function processMessage(sock, ctx, msg, type) {
         const replier = ci?.participant ? cleanJid(ci.participant) : null
         const afkHere = ctx.afk[from] || {}
         const targets = new Set()
-        for (const m of mentioned) if (afkHere[m]) targets.add(m)
-        if (replier && afkHere[replier]) targets.add(replier)
+        for (const m of mentioned) {
+            for (const k of Object.keys(afkHere)) {
+                if (jidsMatch(k, m)) { targets.add(k); break }
+            }
+        }
+        if (replier) {
+            for (const k of Object.keys(afkHere)) {
+                if (jidsMatch(k, replier)) { targets.add(k); break }
+            }
+        }
         for (const t of targets) {
             const info = afkHere[t]
-            if (info && t !== cleanJid(sender)) {
+            if (info && !jidsMatch(t, sender)) {
                 const realNum = await resolveNumber(ctx, sock, from, t)
+                const mentionJid = realNum ? `@${realNum}` : '@'
+                const mentionsList = []
+                if (realNum) mentionsList.push(t)
                 try {
                     await sock.sendMessage(from, {
                         text: skInfo('💤', 'AFK', [
-                            ['USER', `@${realNum}`],
+                            ['USER', mentionJid],
                             ['REASON', info.reason || 'Away']
                         ]),
-                        mentions: [t]
+                        mentions: mentionsList
                     })
                 } catch (e) {}
             }
@@ -1698,14 +1740,6 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                     await sock.sendMessage(id, { text: skInfo('📝', 'DESC UPDATED', fields), mentions })
                 }
 
-                if (update.announce !== undefined) {
-                    const locked = !!update.announce
-                    await sock.sendMessage(id, {
-                        text: skInfo(locked ? '🔒' : '🔓', locked ? 'GROUP LOCKED' : 'GROUP UNLOCKED', [
-                            ['STATUS', locked ? '🔒 ADMINS ONLY' : '🟢 EVERYONE']
-                        ])
-                    })
-                }
 
                 if (update.picture !== undefined && update.picture !== null) {
                     await sock.sendMessage(id, {
@@ -2281,11 +2315,29 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const reason = args.join(' ') || 'Away'
         if (!ctx.afk[from]) ctx.afk[from] = {}
         ctx.afk[from][cleanJid(sender)] = { reason, at: Date.now() }
+        const entry = ctx.afk[from][cleanJid(sender)]
+        try {
+            const meta = await getGroupMeta(ctx, sock, from)
+            const target = cleanNumber(sender)
+            const p = meta.participants.find(x =>
+                [x.id, x.jid, x.lid, x.phoneNumber].some(f => f && cleanNumber(f) === target)
+            )
+            if (p) {
+                for (const f of [p.id, p.jid, p.lid, p.phoneNumber]) {
+                    if (f) ctx.afk[from][cleanJid(f)] = entry
+                }
+            }
+        } catch (e) {}
         return reply(skSuccess('AFK SET', reason))
     }
     if (cmd === 'back') {
         if (!isGroup) return reply(skError('Group only.'))
-        if (ctx.afk[from]) delete ctx.afk[from][cleanJid(sender)]
+        if (ctx.afk[from]) {
+            const keys = Object.keys(ctx.afk[from])
+            for (const k of keys) {
+                if (jidsMatch(k, sender)) delete ctx.afk[from][k]
+            }
+        }
         return reply(skSuccess('BACK', 'ACTIVE'))
     }
 
