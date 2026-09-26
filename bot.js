@@ -437,9 +437,6 @@ const BAD_WORDS = [
     'cunt', 'whore', 'slut', 'faggot', 'retard'
 ]
 
-const SK_HEADER = '𖥔 ── ' + mono('SUKUNA REALM') + ' ── 𖥔'
-const SK_FOOTER = '𖥔 ' + mono('A TRUE KING NEEDS NO CROWN.') + ' 𖥔'
-
 const MONO_OFFSET = 0x1D670
 
 function mono(text) {
@@ -452,6 +449,9 @@ function mono(text) {
     })
 }
 const bold = mono
+
+const SK_HEADER = '𖥔 ── ' + mono('SUKUNA REALM') + ' ── 𖥔'
+const SK_FOOTER = '𖥔 ' + mono('A TRUE KING NEEDS NO CROWN.') + ' 𖥔'
 
 function withFooter(body) {
     return `${body}\n\n${SK_FOOTER}`
