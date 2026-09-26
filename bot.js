@@ -1,3 +1,4 @@
+
 /*
  * SUKUNA REALM — WhatsApp bot (Baileys) + Telegram control panel
  *
@@ -9,7 +10,7 @@
  *   BOT_TIMEZONE        (optional) e.g. Africa/Lagos
  *   PORT                (optional) default: 3000
  *   TELEGRAM_TOKEN      (optional) Telegram bot token. If unset, Telegram is skipped.
- *   GEMINI_API_KEY      (optional) Google Gemini API key for .ai
+ *   GROQ_API_KEY        (optional) Groq API key for .ai
  *
  * System tools: ffmpeg (needed for .sticker / .toimg), yt-dlp (needed for .tt),
  *               dwebp and webpmux (needed for .toimg), libwebp is the package
@@ -44,7 +45,6 @@ const TIMEZONE = process.env.BOT_TIMEZONE || undefined
 const SESSION_DIR = path.join('.', 'sessions')
 const LOGO_PATH = path.join('.', 'logo.png')
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'Mars2000'
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const GROQ_API_KEY = process.env.GROQ_API_KEY || ''
 
 const silentLogger = P({ level: 'silent' })
@@ -196,7 +196,6 @@ const jokes = [
     'Why did the Java developer wear glasses? Because he could not C#.',
     'How many programmers does it take to change a light bulb? None, that is a hardware problem.',
     'A SQL query walks into a bar, approaches two tables and asks: can I join you?',
-    'Why do Java developers wear glasses? Because they do not C#.',
     'There are only 10 types of people: those who understand binary and those who do not.',
     'I changed my password to incorrect. Now when I forget, it tells me: your password is incorrect.',
     'Why did the programmer quit his job? Because he did not get arrays.',
@@ -204,7 +203,8 @@ const jokes = [
     'A programmer is someone who solves a problem you did not know you had in a way you do not understand.',
     'Why was the function sad after a successful first call? It did not get a callback.',
     'My code does not have bugs, it just develops random features.',
-    'There are two ways to write error-free programs; only the third works.'
+    'There are two ways to write error-free programs; only the third works.',
+    'Why do Java developers wear glasses? Because they do not C#.'
 ]
 const quotes = [
     'The only way to do great work is to love what you do. - Steve Jobs',
@@ -308,23 +308,152 @@ const compliments = [
     'You light up every room you walk into.',
     'I am glad you exist.'
 ]
+const SUKUNA_LINES = [
+    'Know your place, fool.',
+    'The only one who can defeat me is me.',
+    'I do not need a crown to be a king.',
+    'Fear is not a weakness. It is a tool.',
+    'You are standing before the King of Curses.',
+    'Domain Expansion: Malevolent Shrine.',
+    'The realm bends to my will.',
+    'I am the fallen one. The King of Curses.',
+    'Do you understand what it means to be the strongest?',
+    'Only the strong earn the right to exist.',
+    'I have no enemies. Only those who have not yet knelt.',
+    'Power is not given. It is taken.',
+    'The strong devour the weak.',
+    'I am not a monster. I am the inevitable.',
+    'When I fight, I fight to win.'
+]
+const ORACLE_LINES = [
+    'The next move is hidden. Only those who act will see it.',
+    'What you seek is already within your reach.',
+    'The path will reveal itself in time.',
+    'Do not mistake patience for weakness.',
+    'The answer lies where you have not yet looked.',
+    'A decision made in silence will echo the loudest.',
+    'The one who waits has already won.',
+    'What is lost may return in another form.',
+    'Your fear is the door. Walk through it.',
+    'The realm rewards those who move first.',
+    'Not every battle is worth fighting.',
+    'The truth you avoid is the truth you need.',
+    'Power follows those who are ready for it.',
+    'The strongest chains are the ones we forge ourselves.',
+    'What you plant today, you harvest tomorrow.'
+]
+const OMEN_LINES = [
+    'Something unexpected will appear soon.',
+    'A shift is coming. Prepare.',
+    'The realm stirs. Pay attention.',
+    'A visitor will arrive with news.',
+    'A door will open where there was a wall.',
+    'An old path will cross yours again.',
+    'A quiet moment will change everything.',
+    'A familiar name will return.',
+    'A warning will come disguised as advice.',
+    'A gift will arrive without a giver.',
+    'A shadow will pass. Do not follow it.',
+    'A promise will be tested.',
+    'A sign is already in motion.',
+    'A silence will break loudly.',
+    'A truth will surface. Be ready.'
+]
+const CURSES = [
+    'You have been chosen. Good luck.',
+    'The realm has marked you. There is no escape.',
+    'Your name is written in the dust. It will not be erased.',
+    'Fortune will find you. Whether you want it or not.',
+    'The shadows know your face.',
+    'You will walk the path you tried to avoid.',
+    'Your weakness is now visible to all.',
+    'The curse will linger. It will not kill you. It will teach you.',
+    'You will see the truth. It will not be kind.',
+    'The realm has noticed you. Prove yourself.',
+    'Every step you take is watched.',
+    'Your past has returned. It is hungry.',
+    'The seal is broken. Walk carefully.',
+    'You have inherited a debt you never knew.',
+    'The realm does not forget.'
+]
+const TRIBUTES = [
+    'Name of the Realm. Filled with honour.',
+    'Bearer of the Fallen Crown. Respected.',
+    'Keeper of the Silent Flame. Honoured.',
+    'Warden of the Eastern Shrine. Noted.',
+    'Heir to the Nameless Throne. Recognised.',
+    'Hand of the King. Trusted.',
+    'Voice of the Realm. Heard.',
+    'Shadow of the Shrine. Feared.',
+    'Vessel of Old Power. Marked.',
+    'Chosen of the Domain. Elevated.',
+    'Witness of the Curse. Awakened.',
+    'Blade of the Realm. Forged.',
+    'Guardian of the Boundary. Standing.',
+    'Keeper of the Sealed Name. Silent.',
+    'Successor of the King. Destined.'
+]
+const TECHNIQUES = [
+    'Cleave', 'Dismantle', 'Malevolent Shrine', 'Fire Arrow', 'Domain Amplification',
+    'Ten Shadows', 'Cursed Speech', 'Reverse Cursed Technique', 'Black Flash', 'Simple Domain',
+    'Ratio Technique', 'Boogie Woogie', 'Idle Transfiguration', 'Copy', 'Infinity'
+]
+const FATES = [
+    'The path ahead is unclear. Walk anyway.',
+    'Your story has not yet been written.',
+    'What is coming will change what was.',
+    'The realm has plans for you.',
+    'Your fate is your own. Do not give it away.',
+    'A great thing is close. Do not blink.',
+    'The dark will pass. Stand still.',
+    'Your name will be spoken in rooms you have never entered.',
+    'A choice will define the next chapter.',
+    'The curse will break. Not yet, but soon.',
+    'You are closer than you think.',
+    'The strong do not fear the dark.',
+    'Every wound heals. Every lesson stays.',
+    'The realm watches the patient.',
+    'What you lost was never yours. What you will find is.'
+]
+const BIRTHDAY_QUOTES = [
+    'Happy birthday{name}. May the year bring you strength, health, and endless blessings.',
+    'Another year. Another crown. Happy birthday{name}.',
+    'The realm celebrates you today{name}. Happy birthday.',
+    'May your enemies fall, your allies rise, and your year be one to remember. Happy birthday{name}.',
+    'Today the world bows to you{name}. Happy birthday.',
+    'One more year of power{name}. Happy birthday.',
+    'Born to rule. Destined to rise. Happy birthday{name}.',
+    'The realm has marked this day. Happy birthday{name}.',
+    'Live long, rule strong. Happy birthday{name}.',
+    'Blessings on your head{name}. Happy birthday.',
+    'Another chapter begins. Make it legendary. Happy birthday{name}.',
+    'The strongest are celebrated. Today is your day{name}.',
+    'From one year to the next, may your power only grow. Happy birthday{name}.',
+    'On this day, the realm pauses to honour you{name}. Happy birthday.',
+    'May this year be your finest. Happy birthday{name}.'
+]
 const BAD_WORDS = [
     'fuck', 'shit', 'bitch', 'asshole', 'bastard', 'dick', 'pussy', 'nigger', 'nigga',
     'cunt', 'whore', 'slut', 'faggot', 'retard'
 ]
 
-const SK_HEADER = '𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐'
-const SK_FOOTER = '⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡'
+const SK_HEADER = '𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔'
+const SK_FOOTER = '𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔'
 
-function bold(text) {
+const MONO_UPPER = '𝙰𝙱𝙲𝙳𝙴𝙵𝙶𝙷𝙸𝙹𝙺𝙻𝙼𝙽𝙾𝙿𝚀𝚁𝚂𝚃𝚄𝚅𝚆𝚇𝚈𝚉'
+const MONO_LOWER = '𝚊𝚋𝚌𝚍𝚎𝚏𝚐𝚑𝚒𝚓𝚔𝚕𝚖𝚗𝚘𝚙𝚚𝚛𝚜𝚝𝚞𝚟𝚠𝚡𝚢𝚣'
+const MONO_DIGIT = '𝟶𝟷𝟸𝟹𝟺𝟻𝟼𝟽𝟾𝟿'
+
+function mono(text) {
     return String(text).replace(/[A-Za-z0-9]/g, (ch) => {
-        const code = ch.charCodeAt(0)
-        if (code >= 65 && code <= 90) return String.fromCodePoint(0x1D400 + (code - 65))
-        if (code >= 97 && code <= 122) return String.fromCodePoint(0x1D41A + (code - 97))
-        if (code >= 48 && code <= 57) return String.fromCodePoint(0x1D7CE + (code - 48))
+        const u = ch.charCodeAt(0)
+        if (u >= 65 && u <= 90) return MONO_UPPER[u - 65]
+        if (u >= 97 && u <= 122) return MONO_LOWER[u - 97]
+        if (u >= 48 && u <= 57) return MONO_DIGIT[u - 48]
         return ch
     })
 }
+const bold = mono
 
 function withFooter(body) {
     return `${body}\n\n${SK_FOOTER}`
@@ -333,11 +462,11 @@ function withFooter(body) {
 function noBold(v) { return { __noBold: String(v) } }
 
 function skInfo(emoji, title, fields) {
-    let out = `${SK_HEADER}\n\n${emoji} ${bold(title)}\n\n`
+    let out = `${SK_HEADER}\n\n${emoji} ${mono(title)}\n\n`
     if (fields && fields.length) {
         for (const [k, v] of fields) {
-            const vv = (v && typeof v === 'object' && v.__noBold !== undefined) ? v.__noBold : bold(String(v))
-            out += `◈ ${bold(k)}\n└─ ${vv}\n`
+            const vv = (v && typeof v === 'object' && v.__noBold !== undefined) ? v.__noBold : mono(String(v))
+            out += `» ${mono(k)}  •  ${vv}\n`
         }
     }
     return withFooter(out.replace(/\n$/, ''))
@@ -348,19 +477,19 @@ function skInfoF(emoji, title, fields) {
 }
 
 function skLine(emoji, title, content) {
-    return withFooter(`${SK_HEADER}\n\n${emoji} ${bold(title)}\n\n${bold(content)}`)
+    return withFooter(`${SK_HEADER}\n\n${emoji} ${mono(title)}\n\n${mono(content)}`)
 }
 
 function skSuccess(title, value) {
-    return withFooter(`${SK_HEADER}\n\n✅ ${bold(title)}\n\n◈ ${bold('STATUS')}\n└─ 🟢 ${bold(String(value))}`)
+    return withFooter(`${SK_HEADER}\n\n✅ ${mono(title)}\n\n» ${mono('STATUS')}  •  🟢 ${mono(String(value))}`)
 }
 
 function skError(reason) {
-    return withFooter(`${SK_HEADER}\n\n❌ ${bold('ERROR')}\n\n◈ ${bold('REASON')}\n└─ ${bold(reason)}`)
+    return withFooter(`${SK_HEADER}\n\n❌ ${mono('ERROR')}\n\n» ${mono('REASON')}  •  ${mono(reason)}`)
 }
 
 function skDenied(role) {
-    return withFooter(`${SK_HEADER}\n\n🚫 ${bold('ACCESS DENIED')}\n\n◈ ${bold('REQUIRES')}\n└─ ${role}`)
+    return withFooter(`${SK_HEADER}\n\n🚫 ${mono('ACCESS DENIED')}\n\n» ${mono('REQUIRES')}  •  ${role}`)
 }
 
 function skGroup(emoji, title, fields) {
@@ -529,6 +658,7 @@ function safeCalc(input) {
     if (i !== tokens.length || !isFinite(result)) throw new Error('bad')
     return result
 }
+
 // ─────────────────────────── http helpers (keyless APIs) ───────────────────────────
 function httpGetBuffer(url, timeoutMs = 15000, depth = 0) {
     return new Promise((resolve, reject) => {
@@ -607,6 +737,12 @@ function createCtx(sessionId, sessionPath) {
         welcomeSettings: {},
         warningCounts: {},
         activePolls: {},
+        activeRituals: {},
+        hbdPending: {},
+        hbdHistory: {},
+        awakeningUsed: {},
+        domainUsed: {},
+        ritualUsed: {},
         spam: {},
         metaCache: {},
         statusCache: new Map(),
@@ -646,6 +782,10 @@ async function loadCtxState(ctx) {
     ctx.groupSettings = saved.groupSettings || {}
     ctx.warnLimit = saved.warnLimit || {}
     ctx.welcomeSettings = saved.welcomeSettings || {}
+    ctx.awakeningUsed = saved.awakeningUsed || {}
+    ctx.domainUsed = saved.domainUsed || {}
+    ctx.ritualUsed = saved.ritualUsed || {}
+    ctx.hbdHistory = saved.hbdHistory || {}
 }
 
 function saveCtx(ctx) {
@@ -655,7 +795,11 @@ function saveCtx(ctx) {
             cfg: ctx.cfg,
             groupSettings: ctx.groupSettings,
             warnLimit: ctx.warnLimit,
-            welcomeSettings: ctx.welcomeSettings
+            welcomeSettings: ctx.welcomeSettings,
+            awakeningUsed: ctx.awakeningUsed,
+            domainUsed: ctx.domainUsed,
+            ritualUsed: ctx.ritualUsed,
+            hbdHistory: ctx.hbdHistory
         }
         try {
             fs.mkdirSync(ctx.sessionPath, { recursive: true })
@@ -703,8 +847,23 @@ async function guardTarget(ctx, sock, from, target) {
     return null
 }
 
-async function cacheInviteCode(ctx, sock, groupJid) {
-    if (ctx.groupInviteCache[groupJid]) return ctx.groupInviteCache[groupJid]
+// Resolve a jid to a real phone number using group metadata.
+// Falls back to cleanNumber(jid) if the participant is not found.
+async function resolveNumber(ctx, sock, groupJid, jid) {
+    if (!jid) return ''
+    try {
+        const meta = await getGroupMeta(ctx, sock, groupJid)
+        const target = cleanNumber(jid)
+        const p = meta.participants.find(x =>
+            [x.id, x.jid, x.lid, x.phoneNumber].some(f => f && cleanNumber(f) === target)
+        )
+        if (p) return bestNumber(p)
+    } catch (e) {}
+    return cleanNumber(jid)
+}
+
+async function cacheInviteCode(ctx, sock, groupJid, force = false) {
+    if (!force && ctx.groupInviteCache[groupJid]) return ctx.groupInviteCache[groupJid]
     try {
         const code = await sock.groupInviteCode(groupJid)
         if (code) ctx.groupInviteCache[groupJid] = code
@@ -767,6 +926,7 @@ async function enforceProtection(sock, ctx, msg, content, from, sender, senderNu
     ctx.warningCounts[from][key] = (ctx.warningCounts[from][key] || 0) + 1
     const limit = ctx.warnLimit[from] || 3
     const count = ctx.warningCounts[from][key]
+    const realNum = await resolveNumber(ctx, sock, from, sender)
 
     const botAdmin = await checkAdmin(ctx, sock, from, [...botIds(sock)])
     if (botAdmin) {
@@ -776,7 +936,7 @@ async function enforceProtection(sock, ctx, msg, content, from, sender, senderNu
     try {
         await sock.sendMessage(from, {
             text: skInfo('⚠️', 'WARN', [
-                ['USER', `@${senderNumber}`],
+                ['USER', `@${realNum}`],
                 ['REASON', reason],
                 ['COUNT', `${Math.min(count, limit)} / ${limit}`]
             ]),
@@ -790,7 +950,7 @@ async function enforceProtection(sock, ctx, msg, content, from, sender, senderNu
             delete ctx.warningCounts[from][key]
             await sock.sendMessage(from, {
                 text: skInfo('🚫', 'KICKED', [
-                    ['USER', `@${senderNumber}`],
+                    ['USER', `@${realNum}`],
                     ['REASON', 'Warning limit reached']
                 ]),
                 mentions: [sender]
@@ -928,8 +1088,8 @@ async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind) {
     const silent = kind === 'hmm'
     const selfJid = getBotJid(sock)
     const say = (text) => (silent
-    ? sock.sendMessage(selfJid, { text })
-    : sock.sendMessage(from, { text }, { quoted: msg })).catch(() => {})
+        ? sock.sendMessage(selfJid, { text })
+        : sock.sendMessage(from, { text }, { quoted: msg })).catch(() => {})
 
     const wait = checkExtractCooldown(ctx, sender)
     if (wait > 0) {
@@ -976,6 +1136,7 @@ async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind) {
 
 const REACT_EMOJIS = ['❤️', '🔥', '👏', '😂', '💯', '⚡', '🎯', '🙌', '😍', '🗿', '🥶', '💀']
 const FLASH_COMMANDS = ['ping', 'alive', 'menu', 'promote', 'demote', 'add', 'kick', 'tagall', 'lockdown', 'unlockdown']
+const CURSED_ARTS = ['domain', 'oracle', 'ritual', 'awakening', 'awaken', 'omen', 'curse', 'verdict', 'tribute', 'sukuna', 'technique', 'power', 'cursedenergy', 'fate']
 
 async function handleMessageAutoReact(sock, ctx, msg, isGroup, fromMe, isCmd) {
     if (fromMe) return
@@ -1022,6 +1183,40 @@ async function processMessage(sock, ctx, msg, type) {
     }
 
     const content = unwrap(msg.message)
+
+    // .hbd pending reply — user replied to a probe DM
+    if (ctx.hbdPending && ctx.hbdPending[sender]) {
+        const pending = ctx.hbdPending[sender]
+        if (!fromMe && !isGroup) {
+            delete ctx.hbdPending[sender]
+            const realNum = senderNumber
+            const quote = getRandom(BIRTHDAY_QUOTES)
+            const namedQuote = pending.celebrant
+                ? quote.replace('{name}', ', ' + pending.celebrant)
+                : quote.replace('{name}', '')
+            const fields = []
+            if (pending.sender) fields.push(['FROM', mono(pending.sender)])
+            const body = withFooter(`${SK_HEADER}\n\n🎊 🎂 🎈\n\n${fields.length ? '» ' + mono('FROM') + '  •  ' + mono(pending.sender) + '\n\n' : ''}${namedQuote}`)
+            try {
+                const sent = await sock.sendMessage(sender, { text: body })
+                await sleep(1500)
+                await sock.sendMessage(sender, { text: body, edit: sent?.key })
+                if (pending.block) {
+                    await sleep(1500)
+                    try { await sock.updateBlockStatus(sender, 'block') } catch (e) {}
+                }
+                const confirm = skInfo('✅', 'DELIVERED', [
+                    ['TO', `+${realNum}`],
+                    ['FOR', pending.celebrant || '-'],
+                    ['BLOCK', pending.block ? '🟢 APPLIED' : '🔴 NOT REQUESTED']
+                ])
+                await notifyOwnerDM(sock, confirm)
+            } catch (e) {
+                console.log('.hbd reply flow error:', e?.message || e)
+            }
+            return
+        }
+    }
 
     if (content?.reactionMessage) {
         const reactKey = content.reactionMessage.key
@@ -1074,9 +1269,10 @@ async function processMessage(sock, ctx, msg, type) {
             const delId = content.protocolMessage.key?.id
             const cached = delId ? ctx.messageCache?.get(delId) : null
             if (cached) {
+                const realNum = await resolveNumber(ctx, sock, from, cached.sender)
                 sock.sendMessage(from, {
                     text: skInfo('🗑️', 'MESSAGE DELETED', [
-                        ['USER', `@${cleanNumber(cached.sender)}`],
+                        ['USER', `@${realNum}`],
                         ['CONTENT', cached.hasMedia ? `[${cached.mediaType}]` : (cached.body || '(no text)')]
                     ]),
                     mentions: [cached.sender]
@@ -1097,10 +1293,11 @@ async function processMessage(sock, ctx, msg, type) {
         for (const t of targets) {
             const info = afkHere[t]
             if (info && t !== cleanJid(sender)) {
+                const realNum = await resolveNumber(ctx, sock, from, t)
                 try {
                     await sock.sendMessage(from, {
                         text: skInfo('💤', 'AFK', [
-                            ['USER', `@${cleanNumber(t)}`],
+                            ['USER', `@${realNum}`],
                             ['REASON', info.reason || 'Away']
                         ]),
                         mentions: [t]
@@ -1126,6 +1323,12 @@ async function processMessage(sock, ctx, msg, type) {
         const cmdForFlash = lowerText.slice(prefix.length).split(/\s+/)[0]
         if (FLASH_COMMANDS.includes(cmdForFlash)) {
             try { await sock.sendMessage(from, { react: { text: '⚡', key: msg.key } }) } catch (e) {}
+        }
+        if (CURSED_ARTS.includes(cmdForFlash)) {
+            try { await sock.sendMessage(from, { react: { text: '⛩️', key: msg.key } }) } catch (e) {}
+        }
+        if (cmdForFlash === 'hbd' || cmdForFlash === 'birthday') {
+            try { await sock.sendMessage(from, { react: { text: '🎉', key: msg.key } }) } catch (e) {}
         }
         if (lowerText === prefix + 'hmm') { await handleViewOnceCmd(sock, ctx, msg, content, from, sender, 'hmm'); return }
         if (lowerText === prefix + 'vv') { await handleViewOnceCmd(sock, ctx, msg, content, from, sender, 'vv'); return }
@@ -1227,13 +1430,18 @@ function stopSocket(sessionId) {
 }
 
 async function attemptRejoin(ctx, sock, groupJid, source) {
-    if (!canRejoinNow(ctx, groupJid)) {
-        await notifyOwnerDM(sock, `⚠️ ${bold('REJOIN CAP HIT')}\n\n◈ ${bold('GROUP')}\n└─ ${groupJid}\n◈ ${bold('REASON')}\n└─ 3 rejoins in 24h already used`)
+    const useCap = source === 'kick'
+    if (useCap && !canRejoinNow(ctx, groupJid)) {
+        await notifyOwnerDM(sock, skError('Rejoin cap hit — 3 per 24h already used'))
         return false
     }
-    const code = ctx.groupInviteCache[groupJid]
+    let code = ctx.groupInviteCache[groupJid]
     if (!code) {
-        await notifyOwnerDM(sock, `⚠️ ${bold('REJOIN FAILED')}\n\n◈ ${bold('GROUP')}\n└─ ${groupJid}\n◈ ${bold('REASON')}\n└─ No cached invite code`)
+        try { code = await sock.groupInviteCode(groupJid) } catch (e) { code = null }
+        if (code) ctx.groupInviteCache[groupJid] = code
+    }
+    if (!code) {
+        await notifyOwnerDM(sock, skError('Rejoin failed — no cached invite code'))
         return false
     }
     const delay = source === 'kick' ? 10000 : 5000
@@ -1241,23 +1449,22 @@ async function attemptRejoin(ctx, sock, groupJid, source) {
     try {
         const cleanCode = String(code).replace(/^https?:\/\/chat\.whatsapp\.com\//i, '')
         await sock.groupAcceptInvite(cleanCode)
-        recordRejoin(ctx, groupJid)
+        if (useCap) recordRejoin(ctx, groupJid)
         const meta = await getGroupMeta(ctx, sock, groupJid, true).catch(() => null)
         const gname = meta?.subject || groupJid
         const count = meta?.participants?.length || '?'
         if (ctx.cfg.eventsWelcome) {
             await sock.sendMessage(groupJid, {
-                text: skInfo('👑', 'THE KING IS BACK', [
-                    ['GROUP', gname],
-                    ['MEMBERS', String(count)]
-                ])
+                text: withFooter(`${SK_HEADER}\n\n👑 ${mono('THE KING HAS RECLAIMED HIS THRONE')}\n\n» ${mono('GROUP')}  •  ${gname}\n» ${mono('MEMBERS')}  •  ${mono(String(count))}\n\n𖤐 ${mono('THE KING IS ONCE AGAIN AMONG YOU.')}`)
             })
         }
         return true
     } catch (e) {
         console.log('rejoin failed:', e?.message || e)
-        await notifyOwnerDM(sock, `⚠️ ${bold('REJOIN FAILED')}\n\n◈ ${bold('GROUP')}\n└─ ${groupJid}\n◈ ${bold('REASON')}\n└─ ${e?.message || 'unknown'}`)
+        await notifyOwnerDM(sock, skError('Rejoin failed — ' + (e?.message || 'unknown')))
         return false
+    } finally {
+        if (ctx.rejoinSilent && ctx.rejoinSilent[groupJid]) delete ctx.rejoinSilent[groupJid]
     }
 }
 
@@ -1354,18 +1561,19 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 const jid = typeof p === 'string' ? p : p.id
                 if (!jid) continue
 
-            if (isBotJid(sock, jid) && action === 'remove') {
-               console.log(`[${sessionId}] Bot removed from ${id}`)
-               ctx.rejoinSilent = ctx.rejoinSilent || {}
-               ctx.rejoinSilent[id] = Date.now()
-               attemptRejoin(ctx, sock, id, 'kick').catch(e => console.log('attemptRejoin:', e?.message || e))
-               continue
-            }
-            if (isBotJid(sock, jid) && action === 'add') {
-               cacheInviteCode(ctx, sock, id).catch(() => {})
-               continue
-            }
-            if (isBotJid(sock, jid)) continue
+                if (isBotJid(sock, jid) && action === 'remove') {
+                    console.log(`[${sessionId}] Bot removed from ${id}`)
+                    if (ctx.rejoinSilent && ctx.rejoinSilent[id]) continue
+                    ctx.rejoinSilent = ctx.rejoinSilent || {}
+                    ctx.rejoinSilent[id] = Date.now()
+                    attemptRejoin(ctx, sock, id, 'kick').catch(e => console.log('attemptRejoin:', e?.message || e))
+                    continue
+                }
+                if (isBotJid(sock, jid) && action === 'add') {
+                    cacheInviteCode(ctx, sock, id, true).catch(() => {})
+                    continue
+                }
+                if (isBotJid(sock, jid)) continue
             }
 
             let memberCount = null
@@ -1382,22 +1590,22 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
 
                 if (isBotJid(sock, jid)) continue
 
-                const num = cleanNumber(jid)
+                const realNum = await resolveNumber(ctx, sock, id, jid)
 
                 if (action === 'add' && ctx.cfg.eventsWelcome) {
-                    const fields = [['USER', `@${num}`]]
+                    const fields = [['USER', `@${realNum}`]]
                     const mentions = [jid]
                     fields.push(['STATUS', '🟢 JOINED'])
                     if (groupName) fields.push(['GROUP', groupName])
                     if (memberCount !== null) fields.push(['MEMBERS', String(memberCount)])
                     await sock.sendMessage(id, {
-                        text: skInfo('🩸', 'NEW MEMBER', fields) + '\n\n⚔️ ' + bold('WELCOME TO THE REALM.'),
+                        text: skInfo('🔥', 'A NEW PRESENCE HAS AWAKENED', fields) + '\n\n𖥂 ' + mono('WELCOME TO THE REALM.'),
                         mentions
                     })
                 }
 
                 if (action === 'remove' && ctx.cfg.eventsGoodbye) {
-                    const fields = [['USER', `@${num}`]]
+                    const fields = [['USER', `@${realNum}`]]
                     const mentions = [jid]
                     const wasKicked = author && author !== jid && !isBotJid(sock, author)
                     if (wasKicked) {
@@ -1405,20 +1613,23 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                     } else {
                         fields.push(['STATUS', '🔴 LEFT'])
                     }
-                    if (memberCount !== null) fields.push(['REMAINING MEMBERS', String(memberCount)])
+                    if (memberCount !== null) fields.push(['REMAINING', String(memberCount)])
                     await sock.sendMessage(id, {
-                        text: skInfo('🩸', 'MEMBER REMOVED', fields) + '\n\n⚔️ ' + bold('THE REALM HAS MADE ITS DECISION.'),
+                        text: skInfo('🩸', 'ONE HAS LEFT THE REALM', fields) + '\n\n𖤐 ' + mono('THE PATH ENDS HERE. GOODBYE.'),
                         mentions
                     })
                 }
 
                 if (action === 'promote') {
                     if (isBotJid(sock, author)) continue
-                    const fields = [['USER', `@${num}`]]
+                    const fields = [['USER', `@${realNum}`]]
                     const mentions = [jid]
                     if (author && !isBotJid(sock, author) && author !== jid) {
                         const byLabel = tagOrNumber(author, mentions)
-                        if (byLabel) fields.push(['BY', byLabel])
+                        if (byLabel) {
+                            const byNum = await resolveNumber(ctx, sock, id, author)
+                            fields.push(['BY', `@${byNum}`])
+                        }
                     }
                     fields.push(['NEW ROLE', '👑 ADMIN'])
                     await sock.sendMessage(id, {
@@ -1429,11 +1640,14 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
 
                 if (action === 'demote') {
                     if (isBotJid(sock, author)) continue
-                    const fields = [['USER', `@${num}`]]
+                    const fields = [['USER', `@${realNum}`]]
                     const mentions = [jid]
                     if (author && !isBotJid(sock, author) && author !== jid) {
                         const byLabel = tagOrNumber(author, mentions)
-                        if (byLabel) fields.push(['BY', byLabel])
+                        if (byLabel) {
+                            const byNum = await resolveNumber(ctx, sock, id, author)
+                            fields.push(['BY', `@${byNum}`])
+                        }
                     }
                     fields.push(['NEW ROLE', '👤 MEMBER'])
                     await sock.sendMessage(id, {
@@ -1454,19 +1668,22 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 delete ctx.metaCache[id]
                 const updater = update.author || update.participant || null
                 const mentions = []
-                let byLabel = null
-                if (updater && !isBotJid(sock, updater)) byLabel = tagOrNumber(updater, mentions)
+                let byNum = null
+                if (updater && !isBotJid(sock, updater)) {
+                    byNum = await resolveNumber(ctx, sock, id, updater)
+                    tagOrNumber(updater, mentions)
+                }
 
                 if (update.subject !== undefined && update.subject) {
                     const fields = []
-                    if (byLabel) fields.push(['BY', byLabel])
+                    if (byNum) fields.push(['BY', `@${byNum}`])
                     fields.push(['NEW NAME', update.subject])
                     await sock.sendMessage(id, { text: skInfo('📝', 'NAME CHANGED', fields), mentions })
                 }
 
                 if (update.desc !== undefined) {
                     const fields = []
-                    if (byLabel) fields.push(['BY', byLabel])
+                    if (byNum) fields.push(['BY', `@${byNum}`])
                     fields.push(['NEW DESC', update.desc || '(empty)'])
                     await sock.sendMessage(id, { text: skInfo('📝', 'DESC UPDATED', fields), mentions })
                 }
@@ -1496,19 +1713,19 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 const id = g.id
                 if (!id) continue
                 delete ctx.metaCache[id]
-                cacheInviteCode(ctx, sock, id).catch(() => {})
+                cacheInviteCode(ctx, sock, id, true).catch(() => {})
                 if (ctx.rejoinSilent && ctx.rejoinSilent[id] && Date.now() - ctx.rejoinSilent[id] < 60000) {
-                   delete ctx.rejoinSilent[id]
+                    delete ctx.rejoinSilent[id]
                 } else {
                     await sock.sendMessage(id, {
-                    text: skInfo('👹', 'I HAVE ARRIVED', [
-                        ['GROUP', g.subject || 'Unnamed'],
-                        ['MEMBERS', String((g.participants || []).length)],
-                        ['TIP', 'Type .menu for commands']
-                    ])
-                })
-            }
+                        text: skInfo('👹', 'I HAVE ARRIVED', [
+                            ['GROUP', g.subject || 'Unnamed'],
+                            ['MEMBERS', String((g.participants || []).length)],
+                            ['TIP', 'Type .menu for commands']
+                        ])
+                    })
                 }
+            }
         } catch (e) { console.log('Groups upsert error:', e?.message || e) }
     })
 
@@ -1526,7 +1743,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
     return sock
 }
 
-// ─────────────────────────── ffmpeg ───────────────────────────
+// ─────────────────────────── ffmpeg (replaces sharp) ───────────────────────────
 let FFMPEG_AVAILABLE = false
 function checkFfmpeg() {
     execFile('ffmpeg', ['-version'], { timeout: 10000 }, (err) => {
@@ -1555,7 +1772,7 @@ function skConfirmBox(actionLabel, byJid, warning) {
     if (byJid) fields.push(['BY', `@${cleanNumber(byJid)}`])
     if (warning) fields.push(['WARNING', warning])
     fields.push(['EXPIRES', '⏳ 30s'])
-    return skInfo('⚠️', 'CONFIRM', fields) + `\n\nReply with:\n▸ ${bold('yes')}\n▸ ${bold('no')}`
+    return skInfo('⚠️', 'CONFIRM', fields) + `\n\nReply with:\n▸ ${mono('yes')}\n▸ ${mono('no')}`
 }
 function skCancelledBox(actionLabel) {
     return skInfo('❌', 'CANCELLED', [
@@ -1595,24 +1812,235 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     }
     const needGroup = async () => {
         if (isGroup) return true
-        await reply(skDenied('👥 ' + bold('GROUP')))
+        await reply(skDenied('👥 ' + mono('GROUP')))
         return false
     }
     const needManage = async () => {
         if (!(await needGroup())) return false
         if (await canManage()) return true
-        await reply(skDenied('👑 ' + bold('ADMIN')))
+        await reply(skDenied('👑 ' + mono('ADMIN')))
         return false
     }
     const needOwner = async () => {
         if (owner) return true
-        await reply(skDenied('👑 ' + bold('OWNER')))
+        await reply(skDenied('👑 ' + mono('OWNER')))
         return false
     }
 
+    // ── CURSED ARTS ──
+    if (cmd === 'domain') {
+        if (!(ctx.domainUsed)) ctx.domainUsed = {}
+        const key = cleanJid(sender)
+        const last = ctx.domainUsed[key] || 0
+        const isSecond = last && Date.now() - last < 24 * 60 * 60 * 1000
+        const isThird = ctx.domainUsed['_third_' + key] && Date.now() - ctx.domainUsed['_third_' + key] < 24 * 60 * 60 * 1000
+        if (isThird) return
+        if (isSecond) {
+            ctx.domainUsed['_third_' + key] = Date.now()
+            return reply(skInfo('⛩️', 'DOMAIN ALREADY ACTIVE', [
+                ['VERDICT', 'ALREADY USED'],
+                ['RETURN', 'IN 24H']
+            ]) + `\n\n𖤐 ${mono('THE REALM DOES NOT OPEN TWICE.')}`)
+        }
+        ctx.domainUsed[key] = Date.now()
+        saveCtx(ctx)
+        return reply(skInfo('⛩️', 'DOMAIN EXPANSION', [
+            ['STATUS', '🟢 ACTIVE'],
+            ['POWER', 'UNLOCKED']
+        ]) + `\n\n𖤐 ${mono('MALEVOLENT SHRINE.')}`)
+    }
+
+    if (cmd === 'oracle') {
+        return reply(skLine('𖥔', 'ORACLE', getRandom(ORACLE_LINES)))
+    }
+
+    if (cmd === 'omen') {
+        return reply(skLine('𖥔', 'OMEN', getRandom(OMEN_LINES)))
+    }
+
+    if (cmd === 'curse') {
+        const target = getTarget(content)
+        const realNum = target ? await resolveNumber(ctx, sock, from, target) : null
+        const line = getRandom(CURSES)
+        if (target) {
+            return sock.sendMessage(from, {
+                text: skInfo('🩸', 'CURSE ACTIVATED', [
+                    ['TARGET', `@${realNum}`]
+                ]) + `\n\n✦ ${mono(line)}`,
+                mentions: [target]
+            }, { quoted: msg })
+        }
+        return reply(skLine('🩸', 'CURSE', line))
+    }
+
+    if (cmd === 'tribute') {
+        const target = getTarget(content)
+        const realNum = target ? await resolveNumber(ctx, sock, from, target) : null
+        const line = getRandom(TRIBUTES)
+        if (target) {
+            return sock.sendMessage(from, {
+                text: skInfo('𖥔', 'TRIBUTE', [
+                    ['TARGET', `@${realNum}`],
+                    ['TITLE', line]
+                ]),
+                mentions: [target]
+            }, { quoted: msg })
+        }
+        return reply(skLine('𖥔', 'TRIBUTE', line))
+    }
+
+    if (cmd === 'verdict') {
+        const question = args.join(' ')
+        if (!question) return reply(skError('Usage: ' + prefix + 'verdict <question>'))
+        const outcomes = ['ACCEPTED', 'DENIED', 'PENDING', 'INEVITABLE', 'RESTRAINED', 'ABSOLUTE']
+        return reply(skInfo('⚖️', 'VERDICT', [
+            ['QUESTION', question.slice(0, 100)],
+            ['DECISION', getRandom(outcomes)]
+        ]))
+    }
+
+    if (cmd === 'sukuna') {
+        const target = getTarget(content)
+        if (target) {
+            const realNum = await resolveNumber(ctx, sock, from, target)
+            return sock.sendMessage(from, {
+                text: skInfo('👹', 'SUKUNA', [
+                    ['TO', `@${realNum}`]
+                ]) + `\n\n𖤐 ${mono(getRandom(SUKUNA_LINES))}`,
+                mentions: [target]
+            }, { quoted: msg })
+        }
+        return reply(skLine('👹', 'SUKUNA', getRandom(SUKUNA_LINES)))
+    }
+
+    if (cmd === 'technique') {
+        const target = getTarget(content)
+        const line = getRandom(TECHNIQUES)
+        if (target) {
+            const realNum = await resolveNumber(ctx, sock, from, target)
+            return sock.sendMessage(from, {
+                text: skInfo('⚔️', 'TECHNIQUE', [
+                    ['TARGET', `@${realNum}`],
+                    ['ASSIGNED', line]
+                ]),
+                mentions: [target]
+            }, { quoted: msg })
+        }
+        return reply(skInfo('⚔️', 'TECHNIQUE', [['ASSIGNED', line]]))
+    }
+
+    if (cmd === 'power') {
+        const level = Math.floor(Math.random() * 100) + 1
+        return reply(skInfo('💥', 'POWER LEVEL', [['LEVEL', String(level) + ' / 100']]))
+    }
+
+    if (cmd === 'cursedenergy') {
+        const pct = Math.floor(Math.random() * 100) + 1
+        const label = pct > 80 ? 'IMMENSE' : pct > 50 ? 'STRONG' : pct > 20 ? 'STEADY' : 'FAINT'
+        const target = getTarget(content)
+        if (target) {
+            const realNum = await resolveNumber(ctx, sock, from, target)
+            return sock.sendMessage(from, {
+                text: skInfo('🔮', 'CURSED ENERGY', [
+                    ['TARGET', `@${realNum}`],
+                    ['READING', label],
+                    ['LEVEL', String(pct) + '%']
+                ]),
+                mentions: [target]
+            }, { quoted: msg })
+        }
+        return reply(skInfo('🔮', 'CURSED ENERGY', [
+            ['READING', label],
+            ['LEVEL', String(pct) + '%']
+        ]))
+    }
+
+    if (cmd === 'fate') {
+        return reply(skLine('✨', 'FATE', getRandom(FATES)))
+    }
+
+    if (cmd === 'ritual') {
+        if (!(ctx.ritualUsed)) ctx.ritualUsed = {}
+        const key = cleanJid(sender)
+        const last = ctx.ritualUsed[key] || 0
+        const isSecond = last && Date.now() - last < 24 * 60 * 60 * 1000
+        const isThird = ctx.ritualUsed['_third_' + key] && Date.now() - ctx.ritualUsed['_third_' + key] < 24 * 60 * 60 * 1000
+        if (isThird) return
+        if (isSecond) {
+            ctx.ritualUsed['_third_' + key] = Date.now()
+            saveCtx(ctx)
+            return reply(skInfo('🔥', 'RITUAL SEALED', [
+                ['VERDICT', 'ALREADY PERFORMED'],
+                ['RETURN', 'IN 24H']
+            ]) + `\n\n𖤐 ${mono('THE REALM DOES NOT OPEN TWICE.')}`)
+        }
+        ctx.ritualUsed[key] = Date.now()
+        saveCtx(ctx)
+        const sent = await reply(skInfo('🔥', 'RITUAL INITIATED', [
+            ['CHOOSE', '1. POWER\n          2. KNOWLEDGE\n          3. WILL\n          4. CHAOS'],
+            ['REPLY', 'number in 30s']
+        ]))
+        const key2 = sent?.key || null
+        if (key2) {
+            ctx.activeRituals[cleanJid(sender)] = { key: key2, ts: Date.now(), step: 'choose' }
+        }
+        setTimeout(async () => {
+            const r = ctx.activeRituals[cleanJid(sender)]
+            if (r && r.step === 'choose') {
+                delete ctx.activeRituals[cleanJid(sender)]
+                try {
+                    await sock.sendMessage(from, {
+                        text: withFooter(`${SK_HEADER}\n\n🔥 ${mono('RITUAL')}\n\n⏳ ${mono('RITUAL FADED. THE MOMENT IS LOST.')}`),
+                        edit: r.key
+                    })
+                } catch (e) {}
+            }
+        }, 30000)
+        return
+    }
+
+    if (cmd === 'awakening' || cmd === 'awaken') {
+        if (!(ctx.awakeningUsed)) ctx.awakeningUsed = {}
+        const key = cleanJid(sender)
+        const last = ctx.awakeningUsed[key] || 0
+        const isSecond = last && Date.now() - last < 24 * 60 * 60 * 1000
+        const isThird = ctx.awakeningUsed['_third_' + key] && Date.now() - ctx.awakeningUsed['_third_' + key] < 24 * 60 * 60 * 1000
+        if (isThird) return
+        if (isSecond) {
+            ctx.awakeningUsed['_third_' + key] = Date.now()
+            saveCtx(ctx)
+            return reply(skInfo('⛩️', 'THE SHRINE RECOGNIZES YOU', [
+                ['VERDICT', 'ALREADY BOUND'],
+                ['RETURN', 'IN 24H']
+            ]) + `\n\n𖤐 ${mono('THE REALM DOES NOT OPEN TWICE.')}`)
+        }
+        ctx.awakeningUsed[key] = Date.now()
+        saveCtx(ctx)
+        const stages = [
+            `${SK_HEADER}\n\n⛩️ ${mono('MALEVOLENT SHRINE')}`,
+            `${SK_HEADER}\n\n⛩️ ${mono('MALEVOLENT SHRINE')}\n\n» ${mono('GATE')}  •  ${mono('CLOSED')}`,
+            `${SK_HEADER}\n\n⛩️ ${mono('MALEVOLENT SHRINE')}\n\n» ${mono('GATE')}  •  ${mono('CRACKING...')}`,
+            `${SK_HEADER}\n\n⛩️ ${mono('MALEVOLENT SHRINE')}\n\n» ${mono('GATE')}  •  ${mono('OPEN')}\n» ${mono('FINGERS')}  •  ${mono('20')}`
+        ]
+        const sent = await reply(stages[0])
+        const k = sent?.key || null
+        if (!k) return
+        for (let i = 1; i < stages.length; i++) {
+            await sleep(1000)
+            try { await sock.sendMessage(from, { text: stages[i], edit: k }) } catch (e) {}
+        }
+        await sleep(1000)
+        try {
+            const finalText = withFooter(`${SK_HEADER}\n\n⛩️ ${mono('MALEVOLENT SHRINE')}\n\n» ${mono('GATE')}  •  ${mono('OPEN')}\n» ${mono('FINGERS')}  •  ${mono('20')}\n» ${mono('DOMAIN')}  •  ${mono('ACTIVE')}\n» ${mono('BOUND')}  •  @${senderNumber}\n\n𖤐 ${mono('A TRUE KING NEEDS NO CROWN.')}`)
+            await sock.sendMessage(from, { text: finalText, edit: k, mentions: [sender] })
+        } catch (e) {}
+        return
+    }
+
+    // ── BASIC ──
     if (cmd === 'ping') {
         const latency = Math.max(1, Date.now() - ((msg.messageTimestamp || 0) * 1000))
-        return reply(withFooter(`${SK_HEADER}\n\n✅ ${bold('PONG')}\n\n◈ ${bold('STATUS')}\n└─ 🟢 ${bold('ONLINE')}\n◈ ${bold('LATENCY')}\n└─ ${bold(String(latency) + ' ms')}`))
+        return reply(withFooter(`${SK_HEADER}\n\n✅ ${mono('PONG')}\n\n» ${mono('STATUS')}  •  🟢 ${mono('ONLINE')}\n» ${mono('LATENCY')}  •  ${mono(String(latency) + ' ms')}`))
     }
     if (cmd === 'alive') return reply(skSuccess('ALIVE', 'READY'))
     if (cmd === 'time') {
@@ -1688,6 +2116,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         return reply(skInfo('⚡', key.toUpperCase(), [['STATUS', ctx.cfg[key] ? '🟢 ON' : '🔴 OFF']]))
     }
 
+    // ── FUN ──
     if (cmd === 'joke') return reply(skLine('😄', 'JOKE', getRandom(jokes)))
     if (cmd === 'quote') return reply(skLine('💬', 'QUOTE', getRandom(quotes)))
     if (cmd === 'fact') return reply(skLine('🧠', 'FACT', getRandom(facts)))
@@ -1711,6 +2140,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         return reply(skInfo('💕', 'SHIP', [['PAIR', `${args[0]} + ${args[1]}`], ['MATCH', `${Math.floor(Math.random() * 100) + 1}%`]]))
     }
 
+    // ── UTILITY ──
     if (cmd === 'calc') {
         if (!args.length) return reply(skError('Usage: ' + prefix + 'calc 2+2*3'))
         try { return reply(skInfo('🧮', 'CALC', [['INPUT', args.join(' ')], ['RESULT', String(safeCalc(args.join(' ')))]])) }
@@ -1762,7 +2192,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!lang || !text) return reply(skError('Usage: ' + prefix + 'translate <lang> <text>'))
         try {
             const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${encodeURIComponent(lang)}`
-            const data = await httpGetJson(url, 10000)
+            const data = await httpGetJson(url, 30000)
             const translated = data?.responseData?.translatedText
             if (!translated) return reply(skError('No translation returned.'))
             return reply(skInfo('🌐', 'TRANSLATE', [
@@ -1835,7 +2265,6 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         }
     }
 
-// ─────────────────────────── PART 5 CONTINUES HERE ───────────────────────────
 
     if (cmd === 'afk') {
         if (!isGroup) return reply(skError('Group only.'))
@@ -1854,12 +2283,13 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!isGroup) return reply(skError('Group only.'))
         const target = getTarget(content) || sender
         const tJid = cleanJid(target)
+        const realNum = await resolveNumber(ctx, sock, from, tJid)
         const act = (ctx.activity[from] && ctx.activity[from][tJid]) || { count: 0 }
         const warns = (ctx.warningCounts[from] && ctx.warningCounts[from][tJid]) || 0
         const seen = (ctx.firstSeen[from] && ctx.firstSeen[from][tJid])
         return sock.sendMessage(from, {
             text: skInfo('👤', 'PROFILE', [
-                ['USER', `@${cleanNumber(target)}`],
+                ['USER', `@${realNum}`],
                 ['MESSAGES', String(act.count || 0)],
                 ['WARNINGS', String(warns)],
                 ['FIRST SEEN', seen ? new Date(seen).toLocaleDateString() : 'unknown']
@@ -1888,6 +2318,82 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ['TRACKED MSGS', String(totalMessages)]
             ]))
         } catch (e) { return reply(skError('Failed to compute stats.')) }
+    }
+
+    if (cmd === 'realm') {
+        if (!isGroup) return reply(skError('Group only.'))
+        try {
+            const meta = await getGroupMeta(ctx, sock, from, true)
+            const botAdmin = await checkAdmin(ctx, sock, from, [...botIds(sock)])
+            return reply(skInfo('𖥔', 'REALM STATUS', [
+                ['GROUP', meta.subject],
+                ['MEMBERS', String(meta.participants.length)],
+                ['ADMINS', String(meta.participants.filter(p => p.admin).length)],
+                ['BOT', botAdmin ? '👑 ADMIN' : '🟢 MEMBER'],
+                ['MODE', ctx.cfg.mode]
+            ]))
+        } catch (e) { return reply(skError('Failed to fetch realm status.')) }
+    }
+
+    if (cmd === 'throne') {
+        const ownerNum = ownerName(sock)
+        return reply(skInfo('👑', 'THE THRONE', [
+            ['CREATOR', ownerNum],
+            ['RANK', '👑 KING'],
+            ['MODE', ctx.cfg.mode]
+        ]))
+    }
+
+    if (cmd === 'status') {
+        const latency = Math.max(1, Date.now() - ((msg.messageTimestamp || 0) * 1000))
+        const activeSessions = Object.values(sessions).filter(s => s.status === 'active').length
+        return reply(skInfo('📊', 'STATUS', [
+            ['STATE', '🟢 ONLINE'],
+            ['UPTIME', formatUptime(process.uptime())],
+            ['LATENCY', String(latency) + ' ms'],
+            ['MODE', ctx.cfg.mode],
+            ['PREFIX', prefix],
+            ['SESSIONS', String(activeSessions) + ' / ' + String(Object.keys(sessions).length)],
+            ['MONGO', mongoClient ? '🟢 CONNECTED' : '🔴 OFFLINE']
+        ]))
+    }
+
+    if (cmd === 'system') {
+        const mem = process.memoryUsage()
+        return reply(skInfo('🛠️', 'SYSTEM', [
+            ['NODE', process.version],
+            ['PLATFORM', process.platform],
+            ['ARCH', process.arch],
+            ['RSS', Math.round(mem.rss / 1024 / 1024) + ' MB'],
+            ['HEAP', Math.round(mem.heapUsed / 1024 / 1024) + ' MB'],
+            ['UPTIME', formatUptime(process.uptime())],
+            ['MONGO', mongoClient ? '🟢 CONNECTED' : '🔴 OFFLINE']
+        ]))
+    }
+
+    if (cmd === 'command') {
+        const target = (args[0] || '').replace(/^\./, '').toLowerCase()
+        if (!target) return reply(skError('Usage: ' + prefix + 'command <name>'))
+        const cmdMap = {
+            kick: 'Removes a user from the group. Mention or reply to them. Admins only.',
+            add: 'Adds a user by number. Usage: .add <number>. Admins only.',
+            promote: 'Promotes a user to admin. Mention or reply. Admins only.',
+            demote: 'Removes admin rights from a user. Mention or reply. Admins only.',
+            warn: 'Warns a user. 3 warnings by default = kick. Admins only.',
+            mute: 'Locks the group so only admins can send. Admins only.',
+            unmute: 'Unlocks the group. Admins only.',
+            tagall: 'Tags every member in the group. Admins only.',
+            hidetag: 'Silently tags everyone. Admins only.',
+            tagadmins: 'Tags only the admins. Admins only.',
+            events: 'Opens the events menu. React 👍 or 👎 to toggle welcome / goodbye.',
+            setinvite: 'Stores a group invite link for auto-rejoin. Silent.',
+            invitelink: 'Shows or DMs the group invite link.',
+            hbd: 'Birthday command. See menu for usage.',
+            left: 'Leaves the group then rejoins after a countdown.',
+            menu: 'Shows the full command menu.'
+        }
+        if (!cmdMap[target]) return reply(skError('Unknown command: .' + target))
+        return reply(skLine('📖', 'COMMAND', `.» ${target}\n\n${cmdMap[target]}`))
     }
 
     if (cmd === 'resetallwarns') {
@@ -1963,7 +2469,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     if (cmd === 'tt') {
         if (!YTDLP_AVAILABLE) return
         if (isGroup) return reply(skError('.tt only works in private chat.'))
-        if (!owner) return reply(skDenied('👑 ' + bold('OWNER')))
+        if (!owner) return reply(skDenied('👑 ' + mono('OWNER')))
         const url = args[0]
         if (!url || !isTikTokUrl(url)) return reply(skError('Invalid TikTok URL.'))
         const tnow = Date.now()
@@ -1988,27 +2494,27 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         return
     }
 
-if (cmd === 'ai') {
-    const question = args.join(' ')
-    if (!question) return reply(skError('Usage: ' + prefix + 'ai <question>'))
-    if (!GROQ_API_KEY) return reply(skError('GROQ_API_KEY not set. Add it to .env and restart.'))
-    try {
-        const url = 'https://api.groq.com/openai/v1/chat/completions'
-        const data = await httpPostJson(url, {
-            model: 'openai/gpt-oss-120b',
-            messages: [{ role: 'user', content: question }]
-        }, { 'Authorization': `Bearer ${GROQ_API_KEY}` }, 60000)
-        const answer = data?.choices?.[0]?.message?.content
-        if (!answer) return reply(skError('No response from AI.'))
-        return reply(skInfo('🤖', 'AI', [
-            ['QUESTION', question.slice(0, 200)],
-            ['ANSWER', answer.slice(0, 1500)]
-        ]))
-    } catch (e) {
-        console.log('.ai error:', e?.message || e)
-        return reply(skError('AI request failed: ' + (e?.message || 'unknown')))
+    if (cmd === 'ai') {
+        const question = args.join(' ')
+        if (!question) return reply(skError('Usage: ' + prefix + 'ai <question>'))
+        if (!GROQ_API_KEY) return reply(skError('GROQ_API_KEY not set. Add it to .env and restart.'))
+        try {
+            const url = 'https://api.groq.com/openai/v1/chat/completions'
+            const data = await httpPostJson(url, {
+                model: 'openai/gpt-oss-120b',
+                messages: [{ role: 'user', content: question }]
+            }, { 'Authorization': `Bearer ${GROQ_API_KEY}` }, 60000)
+            const answer = data?.choices?.[0]?.message?.content
+            if (!answer) return reply(skError('No response from AI.'))
+            return reply(skInfo('🤖', 'AI', [
+                ['QUESTION', question.slice(0, 200)],
+                ['ANSWER', answer.slice(0, 1500)]
+            ]))
+        } catch (e) {
+            console.log('.ai error:', e?.message || e)
+            return reply(skError('AI request failed: ' + (e?.message || 'unknown')))
+        }
     }
-}
 
     if (cmd === 'walink') {
         const raw = args.join(' ')
@@ -2072,6 +2578,7 @@ if (cmd === 'ai') {
         if (!target) return reply(skError('Mention or reply to a user.'))
         const guard = await guardTarget(ctx, sock, from, target)
         if (guard) return reply(guard)
+        const realNum = await resolveNumber(ctx, sock, from, target)
         if (!ctx.warningCounts[from]) ctx.warningCounts[from] = {}
         const key = cleanJid(target)
         ctx.warningCounts[from][key] = (ctx.warningCounts[from][key] || 0) + 1
@@ -2084,7 +2591,7 @@ if (cmd === 'ai') {
                 delete ctx.warningCounts[from][key]
                 return sock.sendMessage(from, {
                     text: skInfo('🚫', 'KICKED', [
-                        ['USER', `@${cleanNumber(target)}`],
+                        ['USER', `@${realNum}`],
                         ['COUNT', `${limit} / ${limit}`]
                     ]),
                     mentions: [target]
@@ -2093,7 +2600,7 @@ if (cmd === 'ai') {
         }
         return sock.sendMessage(from, {
             text: skInfo('⚠️', 'WARN', [
-                ['USER', `@${cleanNumber(target)}`],
+                ['USER', `@${realNum}`],
                 ['COUNT', `${count} / ${limit}`]
             ]),
             mentions: [target]
@@ -2112,16 +2619,21 @@ if (cmd === 'ai') {
         const list = ctx.warningCounts[from] || {}
         const keys = Object.keys(list)
         if (keys.length === 0) return reply(skInfo('📋', 'WARN LIST', [['WARNED', 'none']]))
-        const lines = keys.map(k => `• ${cleanNumber(k)} ─→ ${list[k]}`).join('\n')
-        return reply(skLine('📋', 'WARN LIST', lines))
+        const lines = []
+        for (const k of keys) {
+            const realNum = await resolveNumber(ctx, sock, from, k)
+            lines.push(`• ${realNum}  •  ${list[k]}`)
+        }
+        return reply(skLine('📋', 'WARN LIST', lines.join('\n')))
     }
     if (cmd === 'resetwarn') {
         if (!(await needManage())) return
         const target = getTarget(content)
         if (!target) return reply(skError('Mention or reply to a user.'))
+        const realNum = await resolveNumber(ctx, sock, from, target)
         if (ctx.warningCounts[from]) delete ctx.warningCounts[from][cleanJid(target)]
         return sock.sendMessage(from, {
-            text: skSuccess('RESET WARN', `@${cleanNumber(target)}`),
+            text: skSuccess('RESET WARN', `@${realNum}`),
             mentions: [target]
         })
     }
@@ -2204,11 +2716,13 @@ if (cmd === 'ai') {
                 const meta = await getGroupMeta(ctx, sock, from, true)
                 count = meta.participants.length
             } catch (e) {}
-            const fields = [['USER', filtered.map(t => '@' + cleanNumber(t)).join(', ')]]
+            const realNums = []
+            for (const t of filtered) realNums.push('@' + await resolveNumber(ctx, sock, from, t))
+            const fields = [['USER', realNums.join(', ')]]
             fields.push(['STATUS', '🔴 KICKED OUT'])
-            if (count !== null) fields.push(['REMAINING MEMBERS', String(count)])
+            if (count !== null) fields.push(['REMAINING', String(count)])
             return sock.sendMessage(from, {
-                text: skInfo('👢', 'KICK', fields) + '\n\n⚔️ ' + bold('THE REALM HAS MADE ITS DECISION.'),
+                text: skInfo('👢', 'KICK', fields) + '\n\n⚔️ ' + mono('THE REALM HAS MADE ITS DECISION.'),
                 mentions: filtered
             })
         } catch (e) { return reply(skError('Failed to kick.')) }
@@ -2249,10 +2763,14 @@ if (cmd === 'ai') {
             const emoji = cmd === 'promote' ? '👑' : '⬇️'
             const label = cmd === 'promote' ? 'PROMOTE' : 'DEMOTE'
             const newRole = cmd === 'promote' ? '👑 ADMIN' : '👤 MEMBER'
-            const lines = filtered.map((t, i) => `${i + 1}. @${cleanNumber(t)}`).join('\n')
+            const lines = []
+            for (let i = 0; i < filtered.length; i++) {
+                const rn = await resolveNumber(ctx, sock, from, filtered[i])
+                lines.push(`${i + 1}. @${rn}`)
+            }
             return sock.sendMessage(from, {
                 text: skInfo(emoji, label, [
-                    ['USERS', '\n' + lines],
+                    ['USERS', '\n' + lines.join('\n')],
                     ['NEW ROLE', newRole]
                 ]),
                 mentions: filtered
@@ -2291,13 +2809,16 @@ if (cmd === 'ai') {
         const groupJid = from
         if (!isGroup) return reply(skError('Group only.'))
         try {
-            try { await cacheInviteCode(ctx, sock, groupJid) } catch (e) {}
+            try {
+                const freshCode = await sock.groupInviteCode(groupJid)
+                if (freshCode) ctx.groupInviteCache[groupJid] = freshCode
+            } catch (e) {}
             const meta = await getGroupMeta(ctx, sock, groupJid, true).catch(() => null)
             const gname = meta?.subject || groupJid
             let msgKey = null
             let lastText = ''
             for (let i = 3; i >= 1; i--) {
-                const text = withFooter(`${SK_HEADER}\n\n🚪 ${bold('LEAVING GROUP')}\n\n◈ ${bold('TIMER')}\n└─ ⏳ ${i}s`)
+                const text = withFooter(`${SK_HEADER}\n\n🚪 ${mono('LEAVING GROUP')}\n\n» ${mono('TIMER')}  •  ⏳ ${mono(String(i) + 's')}`)
                 if (!msgKey) {
                     const sent = await sock.sendMessage(groupJid, { text })
                     msgKey = sent?.key || null
@@ -2310,9 +2831,9 @@ if (cmd === 'ai') {
                 if (i > 1) await sleep(1000)
             }
             await sleep(1000)
-            await sock.groupLeave(groupJid)
             ctx.rejoinSilent = ctx.rejoinSilent || {}
             ctx.rejoinSilent[groupJid] = Date.now()
+            await sock.groupLeave(groupJid)
             await attemptRejoin(ctx, sock, groupJid, 'manual')
         } catch (e) {
             console.log('.left error:', e?.message || e)
@@ -2350,25 +2871,25 @@ if (cmd === 'ai') {
             const custom = args.join(' ')
 
             if (isAdminsOnly) {
-                let out = `${SK_HEADER}\n\n📢 ${bold('ATTENTION ADMINS')}`
-                if (custom) out += `\n\n${bold(custom)}`
-                out += `\n\n◈ ${bold('GROUP')}\n└─ ${bold(meta.subject)}\n`
-                out += `◈ ${bold('ADMINS')}\n└─ ${bold(String(mentions.length))}`
+                let out = `${SK_HEADER}\n\n📢 ${mono('ATTENTION ADMINS')}`
+                if (custom) out += `\n\n${mono(custom)}`
+                out += `\n\n» ${mono('GROUP')}  •  ${mono(meta.subject)}\n`
+                out += `» ${mono('ADMINS')}  •  ${mono(String(mentions.length))}`
                 out += `\n\n${SK_FOOTER}`
                 return sock.sendMessage(from, { text: out, mentions })
             }
 
             if (cmd === 'hidetag') {
-                let out = `${SK_HEADER}\n\n📢 ${bold('ATTENTION')}`
-                if (custom) out += `\n\n${bold(custom)}`
+                let out = `${SK_HEADER}\n\n📢 ${mono('ATTENTION')}`
+                if (custom) out += `\n\n${mono(custom)}`
                 out += `\n\n${SK_FOOTER}`
                 return sock.sendMessage(from, { text: out, mentions })
             }
 
-            let out = `${SK_HEADER}\n\n📢 ${bold('ATTENTION EVERYONE')}`
-            if (custom) out += `\n\n${bold(custom)}`
-            out += `\n\n◈ ${bold('GROUP')}\n└─ ${bold(meta.subject)}\n`
-            out += `◈ ${bold('MEMBERS')}\n└─ ${bold(String(meta.participants.length))}`
+            let out = `${SK_HEADER}\n\n📢 ${mono('ATTENTION EVERYONE')}`
+            if (custom) out += `\n\n${mono(custom)}`
+            out += `\n\n» ${mono('GROUP')}  •  ${mono(meta.subject)}\n`
+            out += `» ${mono('MEMBERS')}  •  ${mono(String(meta.participants.length))}`
             out += `\n\n${SK_FOOTER}`
             return sock.sendMessage(from, { text: out, mentions })
         } catch (e) { return reply(skError('Failed to fetch members.')) }
@@ -2412,7 +2933,7 @@ if (cmd === 'ai') {
             const gname = meta.subject
             const code = await sock.groupInviteCode(from)
             const link = `https://chat.whatsapp.com/${code}`
-            const byNum = senderNumber || cleanNumber(sender)
+            const byNum = await resolveNumber(ctx, sock, from, sender)
             ctx.groupInviteCache[from] = code
 
             if (targetDigits && targetDigits.length >= 7) {
@@ -2436,6 +2957,50 @@ if (cmd === 'ai') {
                 ['LINK', noBold(link)]
             ]))
         } catch (e) { return reply(skError('Failed. Am I admin?')) }
+    }
+
+    if (cmd === 'setinvite' || cmd === 'set') {
+        if (!isGroup) {
+            await reply(skError('Run this inside the group.'))
+            return
+        }
+        try {
+            const raw = args[0]
+            let code = null
+            if (raw && /chat\.whatsapp\.com\//i.test(raw)) {
+                code = String(raw).split('/').pop().split('?')[0]
+            } else {
+                code = await sock.groupInviteCode(from)
+            }
+            if (!code) {
+                const selfJid = getBotJid(sock)
+                if (selfJid) await sock.sendMessage(selfJid, { text: skError('setinvite failed: no code obtained.') })
+                return
+            }
+            ctx.groupInviteCache[from] = code
+            try { await sock.sendMessage(from, { delete: msg.key }) } catch (e) {}
+        } catch (e) {
+            console.log('.setinvite error:', e?.message || e)
+            const selfJid = getBotJid(sock)
+            if (selfJid) await sock.sendMessage(selfJid, { text: skError('setinvite failed: ' + (e?.message || 'unknown')) })
+        }
+        return
+    }
+
+    if (cmd === 'clearinvite') {
+        if (!isGroup) return reply(skError('Group only.'))
+        if (ctx.groupInviteCache[from]) delete ctx.groupInviteCache[from]
+        try { await sock.sendMessage(from, { delete: msg.key }) } catch (e) {}
+        return
+    }
+
+    if (cmd === 'viewmsg') {
+        if (!isGroup) return reply(skError('Group only.'))
+        const ws = ctx.welcomeSettings[from] || {}
+        return reply(skInfo('📝', 'CUSTOM MESSAGES', [
+            ['WELCOME', ws.welcomeMsg || '(default)'],
+            ['GOODBYE', ws.goodbyeMsg || '(default)']
+        ]))
     }
 
     if (cmd === 'revoke') {
@@ -2468,7 +3033,7 @@ if (cmd === 'ai') {
     if (cmd === 'grouplist') {
         try {
             const all = await sock.groupFetchAllParticipating()
-            const entries = Object.values(all).map(g => `• ${g.subject} ─→ ${cleanNumber(g.id)}`)
+            const entries = Object.values(all).map(g => `• ${g.subject}  •  ${cleanNumber(g.id)}`)
             if (entries.length === 0) return reply(skInfo('📡', 'GROUPS', [['GROUPS', 'none']]))
             return reply(skLine('📡', `GROUPS (${entries.length})`, entries.join('\n')))
         } catch (e) { return reply(skError('Failed to fetch groups.')) }
@@ -2480,8 +3045,12 @@ if (cmd === 'ai') {
             const act = (ctx.activity && ctx.activity[from]) || {}
             const entries = Object.entries(act).sort((a, b) => (b[1].count || 0) - (a[1].count || 0)).slice(0, 10)
             if (entries.length === 0) return reply(skInfo('📊', 'ACTIVITY', [['ACTIVITY', 'no data yet']]))
-            const lines = entries.map(([jid, v]) => `• ${cleanNumber(jid)} ─→ ${v.count || 0}`).join('\n')
-            return reply(skLine('📊', 'TOP MEMBERS', lines))
+            const lines = []
+            for (const [jid, v] of entries) {
+                const rn = await resolveNumber(ctx, sock, from, jid)
+                lines.push(`• ${rn}  •  ${v.count || 0}`)
+            }
+            return reply(skLine('📊', 'TOP MEMBERS', lines.join('\n')))
         } catch (e) { return reply(skError('Failed to compute.')) }
     }
 
@@ -2544,24 +3113,14 @@ if (cmd === 'ai') {
     }
 
     if (cmd === 'events' || cmd === 'event') {
-        if (!(await needOwner())) return
         const a0 = (args[0] || '').toLowerCase()
-        if (a0 === 'on') {
-            ctx.cfg.eventsWelcome = true
-            ctx.cfg.eventsGoodbye = true
+        if (a0 === 'on' || a0 === 'off') {
+            ctx.cfg.eventsWelcome = a0 === 'on'
+            ctx.cfg.eventsGoodbye = a0 === 'on'
             saveCtx(ctx)
             return reply(skInfo('⚙️', 'EVENTS', [
-                ['WELCOME', '🟢 ON'],
-                ['GOODBYE', '🟢 ON']
-            ]))
-        }
-        if (a0 === 'off') {
-            ctx.cfg.eventsWelcome = false
-            ctx.cfg.eventsGoodbye = false
-            saveCtx(ctx)
-            return reply(skInfo('⚙️', 'EVENTS', [
-                ['WELCOME', '🔴 OFF'],
-                ['GOODBYE', '🔴 OFF']
+                ['WELCOME', a0 === 'on' ? '🟢 ON' : '🔴 OFF'],
+                ['GOODBYE', a0 === 'on' ? '🟢 ON' : '🔴 OFF']
             ]))
         }
         const sent = await reply(eventsMenuText(ctx))
@@ -2609,7 +3168,126 @@ if (cmd === 'ai') {
         return reply(skLine('📊', 'POLL RESULTS', `${poll.question}\n\n${lines}`))
     }
 
-// ─────────────────────────── PART 6 CONTINUES HERE ───────────────────────────
+    if (cmd === 'hbd' || cmd === 'birthday') {
+        const raw = args.join(' ')
+        const parts = raw.split('|').map(s => s.trim()).filter(Boolean)
+
+        // Case with pipes
+        if (parts.length >= 2) {
+            let senderName = null
+            let targetNum = null
+            let celebrant = null
+            let block = false
+
+            const last = parts[parts.length - 1]
+            if (last.toLowerCase() === 'block') {
+                block = true
+                parts.pop()
+            }
+
+            if (parts.length === 1) {
+                // .hbd John
+                celebrant = parts[0]
+            } else if (parts.length === 2) {
+                const a = parts[0]
+                const b = parts[1]
+                if (/^\+?\d{7,}$/.test(a.replace(/\s+/g, ''))) {
+                    targetNum = a.replace(/[^0-9]/g, '')
+                    celebrant = b
+                } else {
+                    senderName = a
+                    celebrant = b
+                }
+            } else if (parts.length >= 3) {
+                senderName = parts[0]
+                targetNum = (parts[1] || '').replace(/[^0-9]/g, '')
+                celebrant = parts[2]
+            }
+
+            // No number → post in current chat with edits
+            if (!targetNum) {
+                const quote = getRandom(BIRTHDAY_QUOTES)
+                const namedQuote = celebrant ? quote.replace('{name}', ', ' + mono(celebrant)) : quote.replace('{name}', '')
+                const stages = [
+                    `${SK_HEADER}\n\n🎂`,
+                    `${SK_HEADER}\n\n🎉`,
+                    `${SK_HEADER}\n\n🎊`,
+                    `${SK_HEADER}\n\n🎊 🎂`,
+                    withFooter(`${SK_HEADER}\n\n🎊 🎂 🎈\n\n${senderName ? '» ' + mono('FROM') + '  •  ' + mono(senderName) + '\n\n' : ''}${namedQuote}`)
+                ]
+                const sent = await reply(stages[0])
+                const k = sent?.key || null
+                if (!k) return
+                for (let i = 1; i < stages.length; i++) {
+                    await sleep(1500)
+                    try { await sock.sendMessage(from, { text: stages[i], edit: k }) } catch (e) {}
+                }
+                return
+            }
+
+            // With number → DM probe
+            const toJid = normalizeJid(targetNum)
+            const probeText = withFooter(`${SK_HEADER}\n\n⛩️ ${mono('ARE YOU THERE?')}`)
+            try {
+                await sock.sendMessage(toJid, { text: probeText })
+            } catch (e) {
+                const selfJid = getBotJid(sock)
+                if (selfJid) {
+                    await sock.sendMessage(selfJid, {
+                        text: skInfo('❌', 'FAILED', [
+                            ['TO', `+${targetNum}`],
+                            ['REASON', 'NUMBER NOT ON WHATSAPP']
+                        ])
+                    })
+                }
+                return
+            }
+            ctx.hbdPending[toJid] = {
+                sender: senderName,
+                celebrant,
+                block,
+                ts: Date.now(),
+                session: ctx.sessionId
+            }
+            setTimeout(async () => {
+                const pending = ctx.hbdPending[toJid]
+                if (!pending) return
+                delete ctx.hbdPending[toJid]
+                const selfJid = getBotJid(sock)
+                if (selfJid) {
+                    try {
+                        await sock.sendMessage(selfJid, {
+                            text: skInfo('⏳', 'NO REPLY', [
+                                ['TO', `+${targetNum}`],
+                                ['TIME', '24h elapsed']
+                            ])
+                        })
+                    } catch (e) {}
+                }
+            }, 24 * 60 * 60 * 1000)
+            return
+        }
+
+        // No pipes — treat as celebrant name only
+        const celebrant = parts[0] || null
+        const quote = getRandom(BIRTHDAY_QUOTES)
+        const namedQuote = celebrant ? quote.replace('{name}', ', ' + mono(celebrant)) : quote.replace('{name}', '')
+        const stages = [
+            `${SK_HEADER}\n\n🎂`,
+            `${SK_HEADER}\n\n🎉`,
+            `${SK_HEADER}\n\n🎊`,
+            `${SK_HEADER}\n\n🎊 🎂`,
+            withFooter(`${SK_HEADER}\n\n🎊 🎂 🎈\n\n${namedQuote}`)
+        ]
+        const sent = await reply(stages[0])
+        const k = sent?.key || null
+        if (!k) return
+        for (let i = 1; i < stages.length; i++) {
+            await sleep(1500)
+            try { await sock.sendMessage(from, { text: stages[i], edit: k }) } catch (e) {}
+        }
+        return
+    }
 
     if (cmd === 'broadcast1') {
         if (!(await needOwner())) return
@@ -2626,7 +3304,7 @@ if (cmd === 'ai') {
         if (nowT - lastB < 30000) return reply(skError('Wait 30s before next broadcast.'))
         try {
             await sock.sendMessage(normalizeJid(digits), {
-                text: `${SK_HEADER}\n\n📢 ${bold('ANNOUNCEMENT')}\n\n${bold(text)}\n\n${SK_FOOTER}`
+                text: `${SK_HEADER}\n\n📢 ${mono('ANNOUNCEMENT')}\n\n${mono(text)}\n\n${SK_FOOTER}`
             })
             ctx.broadcast1Usage.push(nowT)
             return reply(skInfo('✅', 'SENT', [['TO', noBold(`+${digits}`)]]))
@@ -2646,6 +3324,21 @@ if (cmd === 'ai') {
         stopSocket(sid)
         try { await startSession(sid, num) } catch (e) { console.log('Restart failed:', e?.message || e) }
         return
+    }
+
+    // Ritual reply handling
+    if (ctx.activeRituals && ctx.activeRituals[cleanJid(sender)] && ctx.activeRituals[cleanJid(sender)].step === 'choose') {
+        const r = ctx.activeRituals[cleanJid(sender)]
+        const n = parseInt(text)
+        if (n >= 1 && n <= 4) {
+            delete ctx.activeRituals[cleanJid(sender)]
+            const paths = ['POWER', 'KNOWLEDGE', 'WILL', 'CHAOS']
+            const results = ['THE FLAME CHOSE YOU.', 'THE PATH OPENS.', 'YOUR WILL HOLDS.', 'THE VOID ANSWERS.']
+            const blessings = ['DOMINANCE', 'INSIGHT', 'RESOLVE', 'DISORDER']
+            const finalText = withFooter(`${SK_HEADER}\n\n🔥 ${mono('RITUAL COMPLETE')}\n\n» ${mono('PATH')}  •  ${mono(paths[n - 1])}\n» ${mono('RESULT')}  •  ${mono(results[n - 1])}\n» ${mono('BLESSING')}  •  ${mono(blessings[n - 1])}`)
+            try { await sock.sendMessage(from, { text: finalText, edit: r.key }) } catch (e) {}
+            return
+        }
     }
 
     return
@@ -2711,80 +3404,84 @@ async function executeConfirmed(sock, ctx, msg, content, from, isGroup, sender, 
 function eventsMenuText(ctx) {
     const w = ctx.cfg.eventsWelcome ? '🟢 ON' : '🔴 OFF'
     const g = ctx.cfg.eventsGoodbye ? '🟢 ON' : '🔴 OFF'
-    return withFooter(`${SK_HEADER}\n\n⚙️ ${bold('EVENTS')}\n\n◈ 🎉 ${bold('WELCOME')}\n└─ React 👍 to toggle\n◈ 👋 ${bold('GOODBYE')}\n└─ React 👎 to toggle\n\n◈ ${bold('STATUS')}\n└─ 🎉 welcome: ${w}\n└─ 👋 goodbye: ${g}`)
+    return withFooter(`${SK_HEADER}\n\n⚙️ ${mono('EVENTS')}\n\n» ${mono('WELCOME')}  •  React 👍 to toggle\n» ${mono('GOODBYE')}  •  React 👎 to toggle\n\n» ${mono('STATUS')}\n» 🎉 ${mono('welcome')}  •  ${w}\n» 👋 ${mono('goodbye')}  •  ${g}`)
 }
 
 function renderGroupCommandsBox(p) {
     return (
-        `👥 ${bold('GROUP COMMANDS')}\n` +
+        `👥 ${mono('GROUP COMMANDS')}\n` +
         `\n` +
-        `◈ 🛡️ ${bold('PROTECTION')}\n` +
-        `└─ ${p}${bold('antilink')} ─→ ${bold('Block links')}\n` +
-        `└─ ${p}${bold('antispam')} ─→ ${bold('Block spam')}\n` +
-        `└─ ${p}${bold('antibot')} ─→ ${bold('Remove bots')}\n` +
-        `└─ ${p}${bold('antimedia')} ─→ ${bold('Block media')}\n` +
-        `└─ ${p}${bold('antitag')} ─→ ${bold('Block mass tags')}\n` +
-        `└─ ${p}${bold('antiforward')} ─→ ${bold('Block forwarded')}\n` +
-        `└─ ${p}${bold('antibadword')} ─→ ${bold('Block bad words')}\n` +
-        `└─ ${p}${bold('lockdown')} ─→ ${bold('Enable all anti filters')}\n` +
-        `└─ ${p}${bold('unlockdown')} ─→ ${bold('Disable all anti filters')}\n` +
+        `◈ 🛡️ ${mono('PROTECTION')}\n` +
+        `» ${p}${mono('antilink')}  •  ${mono('Block links')}\n` +
+        `» ${p}${mono('antispam')}  •  ${mono('Block spam')}\n` +
+        `» ${p}${mono('antibot')}  •  ${mono('Remove bots')}\n` +
+        `» ${p}${mono('antimedia')}  •  ${mono('Block media')}\n` +
+        `» ${p}${mono('antitag')}  •  ${mono('Block mass tags')}\n` +
+        `» ${p}${mono('antiforward')}  •  ${mono('Block forwarded')}\n` +
+        `» ${p}${mono('antibadword')}  •  ${mono('Block bad words')}\n` +
+        `» ${p}${mono('lockdown')}  •  ${mono('Enable all filters')}\n` +
+        `» ${p}${mono('unlockdown')}  •  ${mono('Disable all filters')}\n` +
         `\n` +
-        `◈ 👤 ${bold('MEMBERS')}\n` +
-        `└─ ${p}${bold('kick')} ─→ ${bold('Remove user(s)')}\n` +
-        `└─ ${p}${bold('add')} ─→ ${bold('Add user')}\n` +
-        `└─ ${p}${bold('promote')} ─→ ${bold('Make admin')}\n` +
-        `└─ ${p}${bold('demote')} ─→ ${bold('Remove admin')}\n` +
-        `└─ ${p}${bold('demoteall')} ─→ ${bold('Demote all admins')}\n` +
-        `└─ ${p}${bold('mute')} ─→ ${bold('Lock chat')}\n` +
-        `└─ ${p}${bold('unmute')} ─→ ${bold('Unlock chat')}\n` +
-        `└─ ${p}${bold('del')} ─→ ${bold('Delete a message')}\n` +
-        `└─ ${p}${bold('left')} ─→ ${bold('Leave and rejoin')}\n` +
-        `└─ ${p}${bold('topmembers')} ─→ ${bold('Most active')}\n` +
-        `└─ ${p}${bold('kickinactive')} ─→ ${bold('Kick idle')}\n` +
+        `◈ 👤 ${mono('MEMBERS')}\n` +
+        `» ${p}${mono('kick')}  •  ${mono('Remove user(s)')}\n` +
+        `» ${p}${mono('add')}  •  ${mono('Add user')}\n` +
+        `» ${p}${mono('promote')}  •  ${mono('Make admin')}\n` +
+        `» ${p}${mono('demote')}  •  ${mono('Remove admin')}\n` +
+        `» ${p}${mono('demoteall')}  •  ${mono('Demote all admins')}\n` +
+        `» ${p}${mono('mute')}  •  ${mono('Lock chat')}\n` +
+        `» ${p}${mono('unmute')}  •  ${mono('Unlock chat')}\n` +
+        `» ${p}${mono('del')}  •  ${mono('Delete a message')}\n` +
+        `» ${p}${mono('left')}  •  ${mono('Leave and rejoin')}\n` +
+        `» ${p}${mono('topmembers')}  •  ${mono('Most active')}\n` +
+        `» ${p}${mono('kickinactive')}  •  ${mono('Kick idle')}\n` +
         `\n` +
-        `◈ 📢 ${bold('COMMUNICATION')}\n` +
-        `└─ ${p}${bold('tagall')} ─→ ${bold('Tag everyone')}\n` +
-        `└─ ${p}${bold('hidetag')} ─→ ${bold('Silent tag')}\n` +
-        `└─ ${p}${bold('tagadmins')} ─→ ${bold('Tag admins only')}\n` +
-        `└─ ${p}${bold('pin')} ─→ ${bold('Pin replied msg')}\n` +
+        `◈ 📢 ${mono('COMMUNICATION')}\n` +
+        `» ${p}${mono('tagall')}  •  ${mono('Tag everyone')}\n` +
+        `» ${p}${mono('hidetag')}  •  ${mono('Silent tag')}\n` +
+        `» ${p}${mono('tagadmins')}  •  ${mono('Tag admins only')}\n` +
+        `» ${p}${mono('pin')}  •  ${mono('Pin replied msg')}\n` +
         `\n` +
-        `◈ 📊 ${bold('INFO')}\n` +
-        `└─ ${p}${bold('groupinfo')} ─→ ${bold('Group details')}\n` +
-        `└─ ${p}${bold('groupdesc')} ─→ ${bold('Group desc')}\n` +
-        `└─ ${p}${bold('groupstats')} ─→ ${bold('Group statistics')}\n` +
-        `└─ ${p}${bold('grouppp')} ─→ ${bold('Group permissions')}\n` +
-        `└─ ${p}${bold('invitelink')} ─→ ${bold('Send invite link')}\n` +
-        `└─ ${p}${bold('revoke')} ─→ ${bold('Reset link')}\n` +
-        `└─ ${p}${bold('admins')} ─→ ${bold('List admins')}\n` +
-        `└─ ${p}${bold('members')} ─→ ${bold('List members')}\n` +
-        `└─ ${p}${bold('grouplist')} ─→ ${bold('All groups')}\n` +
+        `◈ 📊 ${mono('INFO')}\n` +
+        `» ${p}${mono('groupinfo')}  •  ${mono('Group details')}\n` +
+        `» ${p}${mono('groupdesc')}  •  ${mono('Group desc')}\n` +
+        `» ${p}${mono('groupstats')}  •  ${mono('Group statistics')}\n` +
+        `» ${p}${mono('grouppp')}  •  ${mono('Group permissions')}\n` +
+        `» ${p}${mono('realm')}  •  ${mono('Realm status')}\n` +
+        `» ${p}${mono('invitelink')}  •  ${mono('Send invite link')}\n` +
+        `» ${p}${mono('setinvite')}  •  ${mono('Store invite')}\n` +
+        `» ${p}${mono('clearinvite')}  •  ${mono('Clear stored invite')}\n` +
+        `» ${p}${mono('revoke')}  •  ${mono('Reset link')}\n` +
+        `» ${p}${mono('admins')}  •  ${mono('List admins')}\n` +
+        `» ${p}${mono('members')}  •  ${mono('List members')}\n` +
+        `» ${p}${mono('grouplist')}  •  ${mono('All groups')}\n` +
         `\n` +
-        `◈ 🚪 ${bold('JOIN REQUESTS')}\n` +
-        `└─ ${p}${bold('requests')} ─→ ${bold('Pending list')}\n` +
-        `└─ ${p}${bold('approveall')} ─→ ${bold('Approve all')}\n` +
-        `└─ ${p}${bold('rejectall')} ─→ ${bold('Reject all')}\n` +
+        `◈ 🚪 ${mono('JOIN REQUESTS')}\n` +
+        `» ${p}${mono('requests')}  •  ${mono('Pending list')}\n` +
+        `» ${p}${mono('approveall')}  •  ${mono('Approve all')}\n` +
+        `» ${p}${mono('rejectall')}  •  ${mono('Reject all')}\n` +
         `\n` +
-        `◈ ⚙️ ${bold('SETTINGS')}\n` +
-        `└─ ${p}${bold('setname')} ─→ ${bold('Change name')}\n` +
-        `└─ ${p}${bold('setdesc')} ─→ ${bold('Change desc')}\n` +
+        `◈ ⚙️ ${mono('SETTINGS')}\n` +
+        `» ${p}${mono('setname')}  •  ${mono('Change name')}\n` +
+        `» ${p}${mono('setdesc')}  •  ${mono('Change desc')}\n` +
         `\n` +
-        `◈ 🎉 ${bold('EVENTS')}\n` +
-        `└─ ${p}${bold('events')} ─→ ${bold('Join/leave menu')}\n` +
-        `└─ ${p}${bold('event')} ─→ ${bold('Alias for events')}\n` +
-        `└─ ${p}${bold('setwelcome')} ─→ ${bold('Set welcome')}\n` +
-        `└─ ${p}${bold('setgoodbye')} ─→ ${bold('Set goodbye')}\n` +
+        `◈ 🎉 ${mono('EVENTS')}\n` +
+        `» ${p}${mono('events')}  •  ${mono('Join/leave menu')}\n` +
+        `» ${p}${mono('event')}  •  ${mono('Alias')}\n` +
+        `» ${p}${mono('setwelcome')}  •  ${mono('Set welcome')}\n` +
+        `» ${p}${mono('setgoodbye')}  •  ${mono('Set goodbye')}\n` +
+        `» ${p}${mono('viewmsg')}  •  ${mono('View custom msgs')}\n` +
         `\n` +
-        `◈ ⚠️ ${bold('WARN')}\n` +
-        `└─ ${p}${bold('warn')} ─→ ${bold('Warn a user')}\n` +
-        `└─ ${p}${bold('warncount')} ─→ ${bold('Set limit')}\n` +
-        `└─ ${p}${bold('warnlist')} ─→ ${bold('List warned')}\n` +
-        `└─ ${p}${bold('resetwarn')} ─→ ${bold('Clear warnings')}\n` +
-        `└─ ${p}${bold('resetallwarns')} ─→ ${bold('Clear all warnings')}\n` +
+        `◈ ⚠️ ${mono('WARN')}\n` +
+        `» ${p}${mono('warn')}  •  ${mono('Warn a user')}\n` +
+        `» ${p}${mono('warncount')}  •  ${mono('Set limit')}\n` +
+        `» ${p}${mono('warnlist')}  •  ${mono('List warned')}\n` +
+        `» ${p}${mono('resetwarn')}  •  ${mono('Clear warnings')}\n` +
+        `» ${p}${mono('resetallwarns')}  •  ${mono('Clear all warnings')}\n` +
         `\n` +
-        `◈ 📊 ${bold('POLLS')}\n` +
-        `└─ ${p}${bold('poll')} ─→ ${bold('Create poll')}\n` +
-        `└─ ${p}${bold('vote')} ─→ ${bold('Vote')}\n` +
-        `└─ ${p}${bold('endpoll')} ─→ ${bold('End poll')}`
+        `◈ 📊 ${mono('POLLS')}\n` +
+        `» ${p}${mono('poll')}  •  ${mono('Create poll')}\n` +
+        `» ${p}${mono('vote')}  •  ${mono('Vote')}\n` +
+        `» ${p}${mono('endpoll')}  •  ${mono('End poll')}`
     )
 }
 
@@ -2796,73 +3493,95 @@ function renderMenu(ctx, sock) {
     return (
         `${SK_HEADER}\n` +
         `\n` +
-        `◈ ${bold('OWNER')}\n└─ ${bold(ownerName(sock))}\n` +
-        `◈ ${bold('MODE')}\n└─ ${bold(ctx.cfg.mode)}\n` +
-        `◈ ${bold('PREFIX')}\n└─ ${bold(p)}\n` +
-        `◈ ${bold('DATE')}\n└─ ${bold(dateStr)}\n` +
-        `◈ ${bold('TIME')}\n└─ ${bold(timeStr)}\n` +
-        `◈ ${bold('UPTIME')}\n└─ ${bold(formatUptime(process.uptime()))}\n` +
-        `◈ ${bold('SESSIONS')}\n└─ ${bold(String(Object.keys(sessions).length))}\n` +
+        `» ${mono('OWNER')}  •  ${mono(ownerName(sock))}\n` +
+        `» ${mono('MODE')}  •  ${mono(ctx.cfg.mode)}\n` +
+        `» ${mono('PREFIX')}  •  ${mono(p)}\n` +
+        `» ${mono('DATE')}  •  ${mono(dateStr)}\n` +
+        `» ${mono('TIME')}  •  ${mono(timeStr)}\n` +
+        `» ${mono('UPTIME')}  •  ${mono(formatUptime(process.uptime()))}\n` +
+        `» ${mono('SESSIONS')}  •  ${mono(String(Object.keys(sessions).length))}\n` +
         `\n` +
-        `⚡ ${bold('BASIC')}\n` +
-        `└─ ${p}${bold('ping')} ─→ ${bold('Check status')}\n` +
-        `└─ ${p}${bold('alive')} ─→ ${bold('Say hi')}\n` +
-        `└─ ${p}${bold('time')} ─→ ${bold('Date + time')}\n` +
-        `└─ ${p}${bold('info')} ─→ ${bold('Bot info')}\n` +
-        `└─ ${p}${bold('menu')} ─→ ${bold('This menu')}\n` +
-        `└─ ${p}${bold('mode')} ─→ ${bold('public/private')}\n` +
-        `└─ ${p}${bold('prefix')} ─→ ${bold('Change prefix')}\n` +
+        `⛩️ ${mono('CURSED ARTS')}\n` +
+        `» ${p}${mono('domain')}  •  ${mono('Domain event')}\n` +
+        `» ${p}${mono('oracle')}  •  ${mono('Mysterious prediction')}\n` +
+        `» ${p}${mono('ritual')}  •  ${mono('Interactive ritual')}\n` +
+        `» ${p}${mono('awakening')}  •  ${mono('Shrine sequence')}\n` +
+        `» ${p}${mono('omen')}  •  ${mono('Random sign')}\n` +
+        `» ${p}${mono('curse')}  •  ${mono('Curse a user')}\n` +
+        `» ${p}${mono('verdict')}  •  ${mono('Themed verdict')}\n` +
+        `» ${p}${mono('tribute')}  •  ${mono('Give a title')}\n` +
+        `» ${p}${mono('sukuna')}  •  ${mono('Signature line')}\n` +
+        `» ${p}${mono('technique')}  •  ${mono('Random technique')}\n` +
+        `» ${p}${mono('power')}  •  ${mono('Power level')}\n` +
+        `» ${p}${mono('cursedenergy')}  •  ${mono('Cursed energy')}\n` +
+        `» ${p}${mono('fate')}  •  ${mono('Random fate')}\n` +
         `\n` +
-        `🎉 ${bold('FUN')}\n` +
-        `└─ ${p}${bold('joke')} ─→ ${bold('Random joke')}\n` +
-        `└─ ${p}${bold('quote')} ─→ ${bold('Motivation')}\n` +
-        `└─ ${p}${bold('fact')} ─→ ${bold('Fun fact')}\n` +
-        `└─ ${p}${bold('dice')} ─→ ${bold('Roll a dice')}\n` +
-        `└─ ${p}${bold('coin')} ─→ ${bold('Flip a coin')}\n` +
-        `└─ ${p}${bold('truth')} ─→ ${bold('Truth question')}\n` +
-        `└─ ${p}${bold('dare')} ─→ ${bold('Dare challenge')}\n` +
-        `└─ ${p}${bold('roast')} ─→ ${bold('Roast someone')}\n` +
-        `└─ ${p}${bold('compliment')} ─→ ${bold('Compliment')}\n` +
-        `└─ ${p}${bold('8ball')} ─→ ${bold('Magic 8-ball')}\n` +
-        `└─ ${p}${bold('rate')} ─→ ${bold('Rate a thing')}\n` +
-        `└─ ${p}${bold('ship')} ─→ ${bold('Compatibility')}\n` +
-        `└─ ${p}${bold('afk')} ─→ ${bold('Mark away')}\n` +
-        `└─ ${p}${bold('back')} ─→ ${bold('Mark back')}\n` +
-        `└─ ${p}${bold('profile')} ─→ ${bold('User profile')}\n` +
+        `⚡ ${mono('BASIC')}\n` +
+        `» ${p}${mono('ping')}  •  ${mono('Check status')}\n` +
+        `» ${p}${mono('alive')}  •  ${mono('Say hi')}\n` +
+        `» ${p}${mono('time')}  •  ${mono('Date + time')}\n` +
+        `» ${p}${mono('info')}  •  ${mono('Bot info')}\n` +
+        `» ${p}${mono('status')}  •  ${mono('Full status')}\n` +
+        `» ${p}${mono('system')}  •  ${mono('System info')}\n` +
+        `» ${p}${mono('throne')}  •  ${mono('Owner info')}\n` +
+        `» ${p}${mono('command')}  •  ${mono('Explain a command')}\n` +
+        `» ${p}${mono('menu')}  •  ${mono('This menu')}\n` +
+        `» ${p}${mono('mode')}  •  ${mono('public/private')}\n` +
+        `» ${p}${mono('prefix')}  •  ${mono('Change prefix')}\n` +
+        `\n` +
+        `🎪 ${mono('FUN')}\n` +
+        `» ${p}${mono('joke')}  •  ${mono('Random joke')}\n` +
+        `» ${p}${mono('quote')}  •  ${mono('Motivation')}\n` +
+        `» ${p}${mono('fact')}  •  ${mono('Fun fact')}\n` +
+        `» ${p}${mono('dice')}  •  ${mono('Roll a dice')}\n` +
+        `» ${p}${mono('coin')}  •  ${mono('Flip a coin')}\n` +
+        `» ${p}${mono('truth')}  •  ${mono('Truth question')}\n` +
+        `» ${p}${mono('dare')}  •  ${mono('Dare challenge')}\n` +
+        `» ${p}${mono('roast')}  •  ${mono('Roast someone')}\n` +
+        `» ${p}${mono('compliment')}  •  ${mono('Compliment')}\n` +
+        `» ${p}${mono('8ball')}  •  ${mono('Magic 8-ball')}\n` +
+        `» ${p}${mono('rate')}  •  ${mono('Rate a thing')}\n` +
+        `» ${p}${mono('ship')}  •  ${mono('Compatibility')}\n` +
+        `» ${p}${mono('afk')}  •  ${mono('Mark away')}\n` +
+        `» ${p}${mono('back')}  •  ${mono('Mark back')}\n` +
+        `» ${p}${mono('profile')}  •  ${mono('User profile')}\n` +
         `\n` +
         renderGroupCommandsBox(p) +
         `\n\n` +
-        `⚙️ ${bold('OWNER SETTINGS')}\n` +
-        `└─ ${p}${bold('typing')} ─→ ${bold('Typing toggle')}\n` +
-        `└─ ${p}${bold('delay')} ─→ ${bold('Delay toggle')}\n` +
-        `└─ ${p}${bold('delaytime')} ─→ ${bold('Delay seconds')}\n` +
-        `└─ ${p}${bold('read')} ─→ ${bold('Read toggle')}\n` +
-        `└─ ${p}${bold('online')} ─→ ${bold('Online toggle')}\n` +
-        `└─ ${p}${bold('statusview')} ─→ ${bold('View statuses')}\n` +
-        `└─ ${p}${bold('autoreact')} ─→ ${bold('Auto react msgs')}\n` +
-        `└─ ${p}${bold('statusreact')} ─→ ${bold('React to statuses')}\n` +
-        `└─ ${p}${bold('sr')} ─→ ${bold('Alias for statusreact')}\n` +
-        `└─ ${p}${bold('broadcast1')} ─→ ${bold('DM one number')}\n` +
-        `└─ ${p}${bold('restart')} ─→ ${bold('Restart session')}\n` +
+        `⚙️ ${mono('OWNER SETTINGS')}\n` +
+        `» ${p}${mono('typing')}  •  ${mono('Typing toggle')}\n` +
+        `» ${p}${mono('delay')}  •  ${mono('Delay toggle')}\n` +
+        `» ${p}${mono('delaytime')}  •  ${mono('Delay seconds')}\n` +
+        `» ${p}${mono('read')}  •  ${mono('Read toggle')}\n` +
+        `» ${p}${mono('online')}  •  ${mono('Online toggle')}\n` +
+        `» ${p}${mono('statusview')}  •  ${mono('View statuses')}\n` +
+        `» ${p}${mono('autoreact')}  •  ${mono('Auto react msgs')}\n` +
+        `» ${p}${mono('statusreact')}  •  ${mono('React to statuses')}\n` +
+        `» ${p}${mono('broadcast1')}  •  ${mono('DM one number')}\n` +
+        `» ${p}${mono('restart')}  •  ${mono('Restart session')}\n` +
         `\n` +
-        `🛠️ ${bold('UTILITY')}\n` +
-        `└─ ${p}${bold('calc')} ─→ ${bold('Calculate math')}\n` +
-        `└─ ${p}${bold('sticker')} ─→ ${bold('Make sticker')}\n` +
-        `└─ ${p}${bold('toimg')} ─→ ${bold('Sticker to image')}\n` +
-        `└─ ${p}${bold('qr')} ─→ ${bold('Generate QR code')}\n` +
-        `└─ ${p}${bold('weather')} ─→ ${bold('Weather lookup')}\n` +
-        `└─ ${p}${bold('translate')} ─→ ${bold('Translate text')}\n` +
-        `└─ ${p}${bold('shorten')} ─→ ${bold('Shorten URL')}\n` +
-        `└─ ${p}${bold('ip')} ─→ ${bold('IP lookup')}\n` +
-        `└─ ${p}${bold('whois')} ─→ ${bold('Domain lookup')}\n` +
-        `└─ ${p}${bold('walink')} ─→ ${bold('WA chat link')}\n` +
-        `└─ ${p}${bold('vcard')} ─→ ${bold('Contact file')}\n` +
+        `🛠️ ${mono('UTILITY')}\n` +
+        `» ${p}${mono('calc')}  •  ${mono('Calculate math')}\n` +
+        `» ${p}${mono('sticker')}  •  ${mono('Make sticker')}\n` +
+        `» ${p}${mono('toimg')}  •  ${mono('Sticker to image')}\n` +
+        `» ${p}${mono('qr')}  •  ${mono('Generate QR code')}\n` +
+        `» ${p}${mono('weather')}  •  ${mono('Weather lookup')}\n` +
+        `» ${p}${mono('translate')}  •  ${mono('Translate text')}\n` +
+        `» ${p}${mono('shorten')}  •  ${mono('Shorten URL')}\n` +
+        `» ${p}${mono('ip')}  •  ${mono('IP lookup')}\n` +
+        `» ${p}${mono('whois')}  •  ${mono('Domain lookup')}\n` +
+        `» ${p}${mono('walink')}  •  ${mono('WA chat link')}\n` +
+        `» ${p}${mono('vcard')}  •  ${mono('Contact file')}\n` +
         `\n` +
-        `🤖 ${bold('AI')}\n` +
-        `└─ ${p}${bold('ai')} ─→ ${bold('Ask Gemini')}\n` +
+        `🤖 ${mono('AI')}\n` +
+        `» ${p}${mono('ai')}  •  ${mono('Ask Groq')}\n` +
         `\n` +
-        `📥 ${bold('DOWNLOADER')}\n` +
-        `└─ ${p}${bold('tt <url>')} ─→ ${bold('TikTok (owner)')}\n` +
+        `📥 ${mono('DOWNLOADER')}\n` +
+        `» ${p}${mono('tt <url>')}  •  ${mono('TikTok (owner)')}\n` +
+        `\n` +
+        `🎂 ${mono('BIRTHDAY')}\n` +
+        `» ${p}${mono('hbd')}  •  ${mono('Birthday message')}\n` +
+        `» ${p}${mono('birthday')}  •  ${mono('Alias')}\n` +
         `\n` +
         `${SK_FOOTER}`
     )
@@ -3231,11 +3950,11 @@ async function tgEditOrSend(chatId, messageId, text, keyboard, parseMode = 'Mark
 
 async function tgShowMenu(chatId, messageId) {
     const text =
-        `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-        `⚡ 𝐂𝐎𝐍𝐓𝐑𝐎𝐋 𝐏𝐀𝐍𝐄𝐋\n\n` +
+        `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+        `⚡ 𝙲𝙾𝙽𝚃𝚁𝙾𝙻 𝙿𝙰𝙽𝙴𝙻\n\n` +
         `▸ Select an option below\n` +
         `▸ to manage sessions.\n\n` +
-        `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`
+        `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`
     await tgEditOrSend(chatId, messageId, text, tgMainKeyboard())
 }
 
@@ -3244,21 +3963,21 @@ async function tgShowStatus(chatId, messageId) {
     let text
     if (list.length === 0) {
         text =
-            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-            `📊 𝐒𝐓𝐀𝐓𝐔𝐒\n\n` +
-            `◈ 𝐒𝐄𝐒𝐒𝐈𝐎𝐍𝐒\n└─ none connected\n\n` +
-            `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`
+            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+            `📊 𝚂𝚃𝙰𝚃𝚄𝚂\n\n` +
+            `» 𝚂𝙴𝚂𝚂𝙸𝙾𝙽𝚂  •  none connected\n\n` +
+            `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`
     } else {
         const active = list.filter(s => s.status === 'active')
         const lines = list.map(s =>
-            `◈ ${s.number}\n└─ ${s.status === 'active' ? '🟢 ACTIVE' : s.status === 'connecting' ? '🟡 CONNECTING' : s.status === 'reconnecting' ? '🟠 RECONNECTING' : '🔴 OFFLINE'}`
+            `» ${s.number}\n  •  ${s.status === 'active' ? '🟢 ACTIVE' : s.status === 'connecting' ? '🟡 CONNECTING' : s.status === 'reconnecting' ? '🟠 RECONNECTING' : '🔴 OFFLINE'}`
         ).join('\n')
         text =
-            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-            `📊 𝐒𝐓𝐀𝐓𝐔𝐒\n\n` +
-            `◈ 𝐓𝐎𝐓𝐀𝐋\n└─ ${active.length} / ${list.length} active\n` +
+            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+            `📊 𝚂𝚃𝙰𝚃𝚄𝚂\n\n` +
+            `» 𝚃𝙾𝚃𝙰𝙻  •  ${active.length} / ${list.length} active\n` +
             `${lines}\n\n` +
-            `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`
+            `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`
     }
     await tgEditOrSend(chatId, messageId, text, tgBackKeyboard())
 }
@@ -3268,22 +3987,22 @@ async function tgShowSessions(chatId, messageId) {
     let text
     if (entries.length === 0) {
         text =
-            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-            `📋 𝐒𝐄𝐒𝐒𝐈𝐎𝐍𝐒\n\n` +
-            `◈ 𝐋𝐈𝐒𝐓\n└─ empty\n\n` +
-            `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`
+            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+            `📋 𝚂𝙴𝚂𝚂𝙸𝙾𝙽𝚂\n\n` +
+            `» 𝙻𝙸𝚂𝚃  •  empty\n\n` +
+            `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`
     } else {
         const blocks = entries.map(([, s]) =>
-            `◈ ${s.number}\n` +
-            `└─ STATUS: ${s.status}\n` +
-            `   MODE: ${s.ctx?.cfg?.mode || '-'}\n` +
-            `   SINCE: ${s.connectedAt ? new Date(s.connectedAt).toLocaleString() : '-'}`
+            `» ${s.number}\n` +
+            `  •  STATUS: ${s.status}\n` +
+            `  •  MODE: ${s.ctx?.cfg?.mode || '-'}\n` +
+            `  •  SINCE: ${s.connectedAt ? new Date(s.connectedAt).toLocaleString() : '-'}`
         ).join('\n\n')
         text =
-            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-            `📋 𝐒𝐄𝐒𝐒𝐈𝐎𝐍𝐒\n\n` +
+            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+            `📋 𝚂𝙴𝚂𝚂𝙸𝙾𝙽𝚂\n\n` +
             `${blocks}\n\n` +
-            `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`
+            `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`
     }
     await tgEditOrSend(chatId, messageId, text, tgBackKeyboard())
 }
@@ -3292,18 +4011,18 @@ async function tgShowReconnectList(chatId, messageId) {
     const ids = Object.keys(sessions)
     if (ids.length === 0) {
         await tgEditOrSend(chatId, messageId,
-            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-            `🔄 𝐑𝐄𝐂𝐎𝐍𝐍𝐄𝐂𝐓\n\n` +
-            `◈ 𝐒𝐄𝐒𝐒𝐈𝐎𝐍𝐒\n└─ none`,
+            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+            `🔄 𝚁𝙴𝙲𝙾𝙽𝙽𝙴𝙲𝚃\n\n` +
+            `» 𝚂𝙴𝚂𝚂𝙸𝙾𝙽𝚂  •  none`,
             tgBackKeyboard())
         return
     }
     const rows = ids.map(id => [{ text: `🔄 ${sessions[id].number} (${sessions[id].status})`, callback_data: `reconnect:${id}` }])
     rows.push([{ text: '🔙 Back to Menu', callback_data: 'menu' }])
     await tgEditOrSend(chatId, messageId,
-        `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-        `🔄 𝐑𝐄𝐂𝐎𝐍𝐍𝐄𝐂𝐓\n\n` +
-        `◈ 𝐒𝐄𝐋𝐄𝐂𝐓 𝐀 𝐒𝐄𝐒𝐒𝐈𝐎𝐍`,
+        `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+        `🔄 𝚁𝙴𝙲𝙾𝙽𝙽𝙴𝙲𝚃\n\n` +
+        `» 𝚂𝙴𝙻𝙴𝙲𝚃 𝙰 𝚂𝙴𝚂𝚂𝙸𝙾𝙽`,
         { inline_keyboard: rows })
 }
 
@@ -3311,18 +4030,18 @@ async function tgShowDisconnectList(chatId, messageId) {
     const ids = Object.keys(sessions)
     if (ids.length === 0) {
         await tgEditOrSend(chatId, messageId,
-            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-            `❌ 𝐃𝐈𝐒𝐂𝐎𝐍𝐍𝐄𝐂𝐓\n\n` +
-            `◈ 𝐒𝐄𝐒𝐒𝐈𝐎𝐍𝐒\n└─ none`,
+            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+            `❌ 𝙳𝙸𝚂𝙲𝙾𝙽𝙽𝙴𝙲𝚃\n\n` +
+            `» 𝚂𝙴𝚂𝚂𝙸𝙾𝙽𝚂  •  none`,
             tgBackKeyboard())
         return
     }
     const rows = ids.map(id => [{ text: `❌ ${sessions[id].number} (${sessions[id].status})`, callback_data: `disconnect:${id}` }])
     rows.push([{ text: '🔙 Back to Menu', callback_data: 'menu' }])
     await tgEditOrSend(chatId, messageId,
-        `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-        `❌ 𝐃𝐈𝐒𝐂𝐎𝐍𝐍𝐄𝐂𝐓\n\n` +
-        `◈ 𝐒𝐄𝐋𝐄𝐂𝐓 𝐀 𝐒𝐄𝐒𝐒𝐈𝐎𝐍`,
+        `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+        `❌ 𝙳𝙸𝚂𝙲𝙾𝙽𝙽𝙴𝙲𝚃\n\n` +
+        `» 𝚂𝙴𝙻𝙴𝙲𝚃 𝙰 𝚂𝙴𝚂𝚂𝙸𝙾𝙽`,
         { inline_keyboard: rows })
 }
 
@@ -3330,15 +4049,15 @@ async function tgShowWaMenu(chatId, messageId) {
     const active = Object.values(sessions).find(s => s.status === 'active' && s.sock && s.ctx)
     if (!active) {
         await tgEditOrSend(chatId, messageId,
-            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-            `⚠️ 𝐍𝐎𝐓𝐈𝐂𝐄\n\n` +
-            `◈ 𝐒𝐓𝐀𝐓𝐔𝐒\n└─ ❌ No active WhatsApp session\n\n` +
-            `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`,
+            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+            `⚠️ 𝙽𝙾𝚃𝙸𝙲𝙴\n\n` +
+            `» 𝚂𝚃𝙰𝚃𝚄𝚂  •  ❌ No active WhatsApp session\n\n` +
+            `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`,
             tgBackKeyboard())
         return
     }
     const menuText = renderMenu(active.ctx, active.sock)
-    const wrapped = `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n▸ 𝐖𝐇𝐀𝐓𝐒𝐀𝐏𝐏 𝐌𝐄𝐍𝐔\n\n${menuText}`
+    const wrapped = `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n▸ 𝚆𝙷𝙰𝚃𝚂𝙰𝙿𝙿 𝙼𝙴𝙽𝚄\n\n${menuText}`
     await tgEditOrSend(chatId, messageId, wrapped, tgBackKeyboard())
 }
 
@@ -3358,8 +4077,8 @@ async function tgConnectNumber(chatId, rawNumber) {
     const cleanNum = String(rawNumber || '').replace(/[^0-9]/g, '')
     if (cleanNum.length < 7) {
         await tgBot.sendMessage(chatId,
-            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-            `❌ 𝐈𝐍𝐕𝐀𝐋𝐈𝐃\n\n` +
+            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+            `❌ 𝙸𝙽𝚅𝙰𝙻𝙸𝙳\n\n` +
             `▸ Send digits only, with country code.`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         return
@@ -3369,11 +4088,11 @@ async function tgConnectNumber(chatId, rawNumber) {
         const existing = sessions[sessionId]
         if (existing?.status === 'active') {
             await tgBot.sendMessage(chatId,
-                `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-                `✅ 𝐎𝐍𝐋𝐈𝐍𝐄\n\n` +
-                `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${cleanNum}\n` +
-                `◈ 𝐒𝐓𝐀𝐓𝐔𝐒\n└─ 🟢 ALREADY ACTIVE\n\n` +
-                `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`,
+                `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+                `✅ 𝙾𝙽𝙻𝙸𝙽𝙴\n\n` +
+                `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${cleanNum}\n` +
+                `» 𝚂𝚃𝙰𝚃𝚄𝚂  •  🟢 ALREADY ACTIVE\n\n` +
+                `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
             return
         }
@@ -3382,10 +4101,10 @@ async function tgConnectNumber(chatId, rawNumber) {
 
         const gen = sessions[sessionId]?.gen
         await tgBot.sendMessage(chatId,
-            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-            `⚡ 𝐂𝐎𝐍𝐍𝐄𝐂𝐓𝐈𝐍𝐆\n\n` +
-            `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${cleanNum}\n` +
-            `◈ 𝐒𝐓𝐀𝐓𝐔𝐒\n└─ 🟡 WAITING\n\n` +
+            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+            `⚡ 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙸𝙽𝙶\n\n` +
+            `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${cleanNum}\n` +
+            `» 𝚂𝚃𝙰𝚃𝚄𝚂  •  🟡 WAITING\n\n` +
             `🔐 Preparing pairing code...`,
             { parse_mode: 'Markdown' })
 
@@ -3393,35 +4112,35 @@ async function tgConnectNumber(chatId, rawNumber) {
         const s = sessions[sessionId]
         if (code) {
             await tgBot.sendMessage(chatId,
-                `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-                `🔗 𝐏𝐀𝐈𝐑𝐈𝐍𝐆\n\n` +
-                `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${cleanNum}\n` +
-                `🔑 𝐂𝐎𝐃𝐄\n└─ \`${code}\`\n\n` +
+                `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+                `🔗 𝙿𝙰𝙸𝚁𝙸𝙽𝙶\n\n` +
+                `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${cleanNum}\n` +
+                `🔑 𝙲𝙾𝙳𝙴  •  \`${code}\`\n\n` +
                 `⚡ WhatsApp → Linked Devices → Link with phone number\n\n` +
-                `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`,
+                `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         } else if (s?.status === 'active') {
             await tgBot.sendMessage(chatId,
-                `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-                `✅ 𝐎𝐍𝐋𝐈𝐍𝐄\n\n` +
-                `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${cleanNum}\n` +
-                `◈ 𝐒𝐓𝐀𝐓𝐔𝐒\n└─ 🟢 CONNECTED\n\n` +
-                `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`,
+                `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+                `✅ 𝙾𝙽𝙻𝙸𝙽𝙴\n\n` +
+                `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${cleanNum}\n` +
+                `» 𝚂𝚃𝙰𝚃𝚄𝚂  •  🟢 CONNECTED\n\n` +
+                `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         } else {
             await tgBot.sendMessage(chatId,
-                `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-                `❌ 𝐓𝐈𝐌𝐄𝐎𝐔𝐓\n\n` +
-                `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${cleanNum}\n` +
-                `◈ 𝐒𝐓𝐀𝐓𝐔𝐒\n└─ 🔴 FAILED\n\n` +
+                `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+                `❌ 𝚃𝙸𝙼𝙴𝙾𝚄𝚃\n\n` +
+                `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${cleanNum}\n` +
+                `» 𝚂𝚃𝙰𝚃𝚄𝚂  •  🔴 FAILED\n\n` +
                 `⚡ Try /reconnect ${cleanNum}`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         }
     } catch (e) {
         console.log('[TELEGRAM] connect error:', e?.message || e)
         await tgBot.sendMessage(chatId,
-            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-            `❌ 𝐅𝐀𝐈𝐋𝐄𝐃\n\n` +
+            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+            `❌ 𝙵𝙰𝙸𝙻𝙴𝙳\n\n` +
             `▸ ${(e?.message || 'unknown error').slice(0, 80)}`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
     }
@@ -3431,7 +4150,7 @@ async function tgReconnectSession(chatId, sessionId) {
     const existing = sessions[sessionId]
     if (!existing) {
         await tgBot.sendMessage(chatId,
-            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n❌ 𝐍𝐎𝐓 𝐅𝐎𝐔𝐍𝐃`,
+            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n❌ 𝙽𝙾𝚃 𝙵𝙾𝚄𝙽𝙳`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         return
     }
@@ -3439,8 +4158,8 @@ async function tgReconnectSession(chatId, sessionId) {
     const now = Date.now()
     if (reconnectCooldown[sessionId] && now - reconnectCooldown[sessionId] < 30000) {
         await tgBot.sendMessage(chatId,
-            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-            `⚠️ 𝐒𝐋𝐎𝐖 𝐃𝐎𝐖𝐍\n\n` +
+            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+            `⚠️ 𝚂𝙻𝙾𝚆 𝙳𝙾𝚆𝙽\n\n` +
             `▸ Please wait before reconnecting again.`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         return
@@ -3455,43 +4174,43 @@ async function tgReconnectSession(chatId, sessionId) {
         await startSession(sessionId, number, !hasCreds)
         const gen = sessions[sessionId]?.gen
         await tgBot.sendMessage(chatId,
-            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-            `🔄 𝐑𝐄𝐂𝐎𝐍𝐍𝐄𝐂𝐓𝐈𝐍𝐆\n\n` +
-            `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${number}\n` +
-            `◈ 𝐒𝐓𝐀𝐓𝐔𝐒\n└─ 🟡 WAITING\n\n` +
+            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+            `🔄 𝚁𝙴𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙸𝙽𝙶\n\n` +
+            `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${number}\n` +
+            `» 𝚂𝚃𝙰𝚃𝚄𝚂  •  🟡 WAITING\n\n` +
             `⚡ If a code is required, it will appear next.`,
             { parse_mode: 'Markdown' })
         const code = await tgPollPairingCode(sessionId, gen)
         const s = sessions[sessionId]
         if (code) {
             await tgBot.sendMessage(chatId,
-                `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-                `🔗 𝐏𝐀𝐈𝐑𝐈𝐍𝐆\n\n` +
-                `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${number}\n` +
-                `🔑 𝐂𝐎𝐃𝐄\n└─ \`${code}\`\n\n` +
-                `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`,
+                `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+                `🔗 𝙿𝙰𝙸𝚁𝙸𝙽𝙶\n\n` +
+                `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${number}\n` +
+                `🔑 𝙲𝙾𝙳𝙴  •  \`${code}\`\n\n` +
+                `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         } else if (s?.status === 'active') {
             await tgBot.sendMessage(chatId,
-                `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-                `✅ 𝐎𝐍𝐋𝐈𝐍𝐄\n\n` +
-                `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${number}\n` +
-                `◈ 𝐒𝐓𝐀𝐓𝐔𝐒\n└─ 🟢 CONNECTED\n\n` +
-                `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`,
+                `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+                `✅ 𝙾𝙽𝙻𝙸𝙽𝙴\n\n` +
+                `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${number}\n` +
+                `» 𝚂𝚃𝙰𝚃𝚄𝚂  •  🟢 CONNECTED\n\n` +
+                `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         } else {
             await tgBot.sendMessage(chatId,
-                `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-                `❌ 𝐓𝐈𝐌𝐄𝐎𝐔𝐓\n\n` +
-                `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${number}\n\n` +
+                `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+                `❌ 𝚃𝙸𝙼𝙴𝙾𝚄𝚃\n\n` +
+                `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${number}\n\n` +
                 `⚡ Try /reconnect again`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         }
     } catch (e) {
         console.log('[TELEGRAM] reconnect error:', e?.message || e)
         await tgBot.sendMessage(chatId,
-            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-            `❌ 𝐑𝐄𝐂𝐎𝐍𝐍𝐄𝐂𝐓 𝐅𝐀𝐈𝐋𝐄𝐃`,
+            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+            `❌ 𝚁𝙴𝙲𝙾𝙽𝙽𝙴𝙲𝚃 𝙵𝙰𝙸𝙻𝙴𝙳`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
     }
 }
@@ -3500,7 +4219,7 @@ async function tgDisconnectSession(chatId, sessionId) {
     const existing = sessions[sessionId]
     if (!existing) {
         await tgBot.sendMessage(chatId,
-            `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n❌ 𝐍𝐎𝐓 𝐅𝐎𝐔𝐍𝐃`,
+            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n❌ 𝙽𝙾𝚃 𝙵𝙾𝚄𝙽𝙳`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         return
     }
@@ -3511,18 +4230,18 @@ async function tgDisconnectSession(chatId, sessionId) {
     try { fs.rmSync(path.join(SESSION_DIR, sessionId), { recursive: true, force: true }) } catch (e) {}
     await deleteSessionFromMongo(sessionId)
     await tgBot.sendMessage(chatId,
-        `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-        `❌ 𝐃𝐈𝐒𝐂𝐎𝐍𝐍𝐄𝐂𝐓𝐄𝐃\n\n` +
-        `◈ 𝐍𝐔𝐌𝐁𝐄𝐑\n└─ ${number}\n` +
-        `◈ 𝐒𝐓𝐀𝐓𝐔𝐒\n└─ ⚫ OFFLINE\n\n` +
-        `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`,
+        `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+        `❌ 𝙳𝙸𝚂𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳\n\n` +
+        `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${number}\n` +
+        `» 𝚂𝚃𝙰𝚃𝚄𝚂  •  ⚫ OFFLINE\n\n` +
+        `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`,
         { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
 }
 
 function tgHelpText() {
     return (
-        `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-        `⚡ 𝐂𝐎𝐌𝐌𝐀𝐍𝐃𝐒\n\n` +
+        `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+        `⚡ 𝙲𝙾𝙼𝙼𝙰𝙽𝙳𝚂\n\n` +
         `▸ /start ─→ Main menu\n` +
         `▸ /connect <n> ─→ Link\n` +
         `▸ /status ─→ Sessions\n` +
@@ -3531,7 +4250,7 @@ function tgHelpText() {
         `▸ /disconnect <n> ─→ Unlink\n` +
         `▸ /menu ─→ Panel\n` +
         `▸ /help ─→ This\n\n` +
-        `⟡ 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ⟡`
+        `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`
     )
 }
 
@@ -3549,10 +4268,10 @@ function initTelegram() {
     let tgPollErrorCount = 0
     let tgLastPollError = ''
     tgBot.on('polling_error', (e) => {
-    const errMsg = e?.message || String(e)
-    if (errMsg.includes('ENOTFOUND') || errMsg.includes('ETIMEDOUT') || errMsg.includes('ECONNRESET')) return
-    console.log('[TELEGRAM] Polling error:', errMsg)
-})
+        const errMsg = e?.message || String(e)
+        if (errMsg.includes('ENOTFOUND') || errMsg.includes('ETIMEDOUT') || errMsg.includes('ECONNRESET')) return
+        console.log('[TELEGRAM] Polling error:', errMsg)
+    })
 
     tgBot.onText(/^\/start\b/, async (msg) => { if (!tgAuth(msg.from.id)) return; tgPending.delete(msg.chat.id); await tgShowMenu(msg.chat.id) })
     tgBot.onText(/^\/menu\b/, async (msg) => { if (!tgAuth(msg.from.id)) return; tgPending.delete(msg.chat.id); await tgShowMenu(msg.chat.id) })
@@ -3563,8 +4282,8 @@ function initTelegram() {
         if (!num) {
             tgPending.set(msg.chat.id, 'connect')
             await tgBot.sendMessage(msg.chat.id,
-                `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-                `🔗 𝐂𝐎𝐍𝐍𝐄𝐂𝐓\n\n` +
+                `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+                `🔗 𝙲𝙾𝙽𝙽𝙴𝙲𝚃\n\n` +
                 `▸ Send the WhatsApp number with country code.`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
             return
@@ -3617,8 +4336,8 @@ function initTelegram() {
             if (data === 'connect') {
                 tgPending.set(chatId, 'connect')
                 await tgEditOrSend(chatId, messageId,
-                    `𖤐 ─── 𝐒𝐔𝐊𝐔𝐍𝐀 𝐑𝐄𝐀𝐋𝐌 ─── 𖤐\n\n` +
-                    `🔗 𝐂𝐎𝐍𝐍𝐄𝐂𝐓\n\n` +
+                    `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
+                    `🔗 𝙲𝙾𝙽𝙽𝙴𝙲𝚃\n\n` +
                     `▸ Send the WhatsApp number with country code.`,
                     tgBackKeyboard())
                 return
