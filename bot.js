@@ -437,19 +437,17 @@ const BAD_WORDS = [
     'cunt', 'whore', 'slut', 'faggot', 'retard'
 ]
 
-const SK_HEADER = '𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔'
-const SK_FOOTER = '𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔'
+const SK_HEADER = '𖥔 ── ' + mono('SUKUNA REALM') + ' ── 𖥔'
+const SK_FOOTER = '𖥔 ' + mono('A TRUE KING NEEDS NO CROWN.') + ' 𖥔'
 
-const MONO_UPPER = '𝙰𝙱𝙲𝙳𝙴𝙵𝙶𝙷𝙸𝙹𝙺𝙻𝙼𝙽𝙾𝙿𝚀𝚁𝚂𝚃𝚄𝚅𝚆𝚇𝚈𝚉'
-const MONO_LOWER = '𝚊𝚋𝚌𝚍𝚎𝚏𝚐𝚑𝚒𝚓𝚔𝚕𝚖𝚗𝚘𝚙𝚚𝚛𝚜𝚝𝚞𝚟𝚠𝚡𝚢𝚣'
-const MONO_DIGIT = '𝟶𝟷𝟸𝟹𝟺𝟻𝟼𝟽𝟾𝟿'
+const MONO_OFFSET = 0x1D670
 
 function mono(text) {
     return String(text).replace(/[A-Za-z0-9]/g, (ch) => {
         const u = ch.charCodeAt(0)
-        if (u >= 65 && u <= 90) return MONO_UPPER[u - 65]
-        if (u >= 97 && u <= 122) return MONO_LOWER[u - 97]
-        if (u >= 48 && u <= 57) return MONO_DIGIT[u - 48]
+        if (u >= 65 && u <= 90) return String.fromCodePoint(MONO_OFFSET + (u - 65))
+        if (u >= 97 && u <= 122) return String.fromCodePoint(MONO_OFFSET + 26 + (u - 97))
+        if (u >= 48 && u <= 57) return String.fromCodePoint(MONO_OFFSET + 52 + (u - 48))
         return ch
     })
 }
@@ -1468,6 +1466,16 @@ async function attemptRejoin(ctx, sock, groupJid, source) {
     }
 }
 
+function eventIsFresh(ts) {
+    if (!ts) return true
+    let ms
+    if (typeof ts === 'number') ms = ts < 1e12 ? ts * 1000 : ts
+    else if (ts instanceof Date) ms = ts.getTime()
+    else if (typeof ts === 'object' && typeof ts.toNumber === 'function') ms = ts.toNumber() * 1000
+    else return true
+    return Date.now() - ms < 5 * 60 * 1000
+}
+
 async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
     const sessionPath = path.join(SESSION_DIR, sessionId)
 
@@ -1555,6 +1563,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
         if (!isCurrent()) return
         try {
             const { id, participants, action, author } = update
+            if (!eventIsFresh(update.date || update.timestamp || update.messageTimestamp)) return
             delete ctx.metaCache[id]
 
             for (const p of participants) {
@@ -1665,6 +1674,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
             for (const update of updates || []) {
                 const id = update.id
                 if (!id) continue
+                if (!eventIsFresh(update.date || update.timestamp || update.messageTimestamp)) continue
                 delete ctx.metaCache[id]
                 const updater = update.author || update.participant || null
                 const mentions = []
@@ -3950,11 +3960,11 @@ async function tgEditOrSend(chatId, messageId, text, keyboard, parseMode = 'Mark
 
 async function tgShowMenu(chatId, messageId) {
     const text =
-        `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-        `⚡ 𝙲𝙾𝙽𝚃𝚁𝙾𝙻 𝙿𝙰𝙽𝙴𝙻\n\n` +
+        `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+        `⚡ ${mono('CONTROL')} ${mono('PANEL')}\n\n` +
         `▸ Select an option below\n` +
         `▸ to manage sessions.\n\n` +
-        `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`
+        `𖥔 ${mono('A')} ${mono('TRUE')} ${mono('KING')} ${mono('NEEDS')} ${mono('NO')} ${mono('CROWN')}. 𖥔`
     await tgEditOrSend(chatId, messageId, text, tgMainKeyboard())
 }
 
@@ -3963,21 +3973,21 @@ async function tgShowStatus(chatId, messageId) {
     let text
     if (list.length === 0) {
         text =
-            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-            `📊 𝚂𝚃𝙰𝚃𝚄𝚂\n\n` +
-            `» 𝚂𝙴𝚂𝚂𝙸𝙾𝙽𝚂  •  none connected\n\n` +
-            `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`
+            `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+            `📊 ${mono('STATUS')}\n\n` +
+            `» ${mono('SESSIONS')}  •  none connected\n\n` +
+            `𖥔 ${mono('A')} ${mono('TRUE')} ${mono('KING')} ${mono('NEEDS')} ${mono('NO')} ${mono('CROWN')}. 𖥔`
     } else {
         const active = list.filter(s => s.status === 'active')
         const lines = list.map(s =>
             `» ${s.number}\n  •  ${s.status === 'active' ? '🟢 ACTIVE' : s.status === 'connecting' ? '🟡 CONNECTING' : s.status === 'reconnecting' ? '🟠 RECONNECTING' : '🔴 OFFLINE'}`
         ).join('\n')
         text =
-            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-            `📊 𝚂𝚃𝙰𝚃𝚄𝚂\n\n` +
-            `» 𝚃𝙾𝚃𝙰𝙻  •  ${active.length} / ${list.length} active\n` +
+            `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+            `📊 ${mono('STATUS')}\n\n` +
+            `» ${mono('TOTAL')}  •  ${active.length} / ${list.length} active\n` +
             `${lines}\n\n` +
-            `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`
+            `𖥔 ${mono('A')} ${mono('TRUE')} ${mono('KING')} ${mono('NEEDS')} ${mono('NO')} ${mono('CROWN')}. 𖥔`
     }
     await tgEditOrSend(chatId, messageId, text, tgBackKeyboard())
 }
@@ -3987,10 +3997,10 @@ async function tgShowSessions(chatId, messageId) {
     let text
     if (entries.length === 0) {
         text =
-            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-            `📋 𝚂𝙴𝚂𝚂𝙸𝙾𝙽𝚂\n\n` +
-            `» 𝙻𝙸𝚂𝚃  •  empty\n\n` +
-            `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`
+            `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+            `📋 ${mono('SESSIONS')}\n\n` +
+            `» ${mono('LIST')}  •  empty\n\n` +
+            `𖥔 ${mono('A')} ${mono('TRUE')} ${mono('KING')} ${mono('NEEDS')} ${mono('NO')} ${mono('CROWN')}. 𖥔`
     } else {
         const blocks = entries.map(([, s]) =>
             `» ${s.number}\n` +
@@ -3999,10 +4009,10 @@ async function tgShowSessions(chatId, messageId) {
             `  •  SINCE: ${s.connectedAt ? new Date(s.connectedAt).toLocaleString() : '-'}`
         ).join('\n\n')
         text =
-            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-            `📋 𝚂𝙴𝚂𝚂𝙸𝙾𝙽𝚂\n\n` +
+            `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+            `📋 ${mono('SESSIONS')}\n\n` +
             `${blocks}\n\n` +
-            `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`
+            `𖥔 ${mono('A')} ${mono('TRUE')} ${mono('KING')} ${mono('NEEDS')} ${mono('NO')} ${mono('CROWN')}. 𖥔`
     }
     await tgEditOrSend(chatId, messageId, text, tgBackKeyboard())
 }
@@ -4011,18 +4021,18 @@ async function tgShowReconnectList(chatId, messageId) {
     const ids = Object.keys(sessions)
     if (ids.length === 0) {
         await tgEditOrSend(chatId, messageId,
-            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-            `🔄 𝚁𝙴𝙲𝙾𝙽𝙽𝙴𝙲𝚃\n\n` +
-            `» 𝚂𝙴𝚂𝚂𝙸𝙾𝙽𝚂  •  none`,
+            `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+            `🔄 ${mono('RECONNECT')}\n\n` +
+            `» ${mono('SESSIONS')}  •  none`,
             tgBackKeyboard())
         return
     }
     const rows = ids.map(id => [{ text: `🔄 ${sessions[id].number} (${sessions[id].status})`, callback_data: `reconnect:${id}` }])
     rows.push([{ text: '🔙 Back to Menu', callback_data: 'menu' }])
     await tgEditOrSend(chatId, messageId,
-        `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-        `🔄 𝚁𝙴𝙲𝙾𝙽𝙽𝙴𝙲𝚃\n\n` +
-        `» 𝚂𝙴𝙻𝙴𝙲𝚃 𝙰 𝚂𝙴𝚂𝚂𝙸𝙾𝙽`,
+        `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+        `🔄 ${mono('RECONNECT')}\n\n` +
+        `» ${mono('SELECT')} ${mono('A')} ${mono('SESSION')}`,
         { inline_keyboard: rows })
 }
 
@@ -4030,18 +4040,18 @@ async function tgShowDisconnectList(chatId, messageId) {
     const ids = Object.keys(sessions)
     if (ids.length === 0) {
         await tgEditOrSend(chatId, messageId,
-            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-            `❌ 𝙳𝙸𝚂𝙲𝙾𝙽𝙽𝙴𝙲𝚃\n\n` +
-            `» 𝚂𝙴𝚂𝚂𝙸𝙾𝙽𝚂  •  none`,
+            `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+            `❌ ${mono('DISCONNECT')}\n\n` +
+            `» ${mono('SESSIONS')}  •  none`,
             tgBackKeyboard())
         return
     }
     const rows = ids.map(id => [{ text: `❌ ${sessions[id].number} (${sessions[id].status})`, callback_data: `disconnect:${id}` }])
     rows.push([{ text: '🔙 Back to Menu', callback_data: 'menu' }])
     await tgEditOrSend(chatId, messageId,
-        `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-        `❌ 𝙳𝙸𝚂𝙲𝙾𝙽𝙽𝙴𝙲𝚃\n\n` +
-        `» 𝚂𝙴𝙻𝙴𝙲𝚃 𝙰 𝚂𝙴𝚂𝚂𝙸𝙾𝙽`,
+        `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+        `❌ ${mono('DISCONNECT')}\n\n` +
+        `» ${mono('SELECT')} ${mono('A')} ${mono('SESSION')}`,
         { inline_keyboard: rows })
 }
 
@@ -4049,15 +4059,15 @@ async function tgShowWaMenu(chatId, messageId) {
     const active = Object.values(sessions).find(s => s.status === 'active' && s.sock && s.ctx)
     if (!active) {
         await tgEditOrSend(chatId, messageId,
-            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-            `⚠️ 𝙽𝙾𝚃𝙸𝙲𝙴\n\n` +
-            `» 𝚂𝚃𝙰𝚃𝚄𝚂  •  ❌ No active WhatsApp session\n\n` +
-            `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`,
+            `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+            `⚠️ ${mono('NOTICE')}\n\n` +
+            `» ${mono('STATUS')}  •  ❌ No active WhatsApp session\n\n` +
+            `𖥔 ${mono('A')} ${mono('TRUE')} ${mono('KING')} ${mono('NEEDS')} ${mono('NO')} ${mono('CROWN')}. 𖥔`,
             tgBackKeyboard())
         return
     }
     const menuText = renderMenu(active.ctx, active.sock)
-    const wrapped = `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n▸ 𝚆𝙷𝙰𝚃𝚂𝙰𝙿𝙿 𝙼𝙴𝙽𝚄\n\n${menuText}`
+    const wrapped = `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n▸ ${mono('WHATSAPP')} ${mono('MENU')}\n\n${menuText}`
     await tgEditOrSend(chatId, messageId, wrapped, tgBackKeyboard())
 }
 
@@ -4077,8 +4087,8 @@ async function tgConnectNumber(chatId, rawNumber) {
     const cleanNum = String(rawNumber || '').replace(/[^0-9]/g, '')
     if (cleanNum.length < 7) {
         await tgBot.sendMessage(chatId,
-            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-            `❌ 𝙸𝙽𝚅𝙰𝙻𝙸𝙳\n\n` +
+            `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+            `❌ ${mono('INVALID')}\n\n` +
             `▸ Send digits only, with country code.`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         return
@@ -4088,11 +4098,11 @@ async function tgConnectNumber(chatId, rawNumber) {
         const existing = sessions[sessionId]
         if (existing?.status === 'active') {
             await tgBot.sendMessage(chatId,
-                `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-                `✅ 𝙾𝙽𝙻𝙸𝙽𝙴\n\n` +
-                `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${cleanNum}\n` +
-                `» 𝚂𝚃𝙰𝚃𝚄𝚂  •  🟢 ALREADY ACTIVE\n\n` +
-                `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`,
+                `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+                `✅ ${mono('ONLINE')}\n\n` +
+                `» ${mono('NUMBER')}  •  ${cleanNum}\n` +
+                `» ${mono('STATUS')}  •  🟢 ALREADY ACTIVE\n\n` +
+                `𖥔 ${mono('A')} ${mono('TRUE')} ${mono('KING')} ${mono('NEEDS')} ${mono('NO')} ${mono('CROWN')}. 𖥔`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
             return
         }
@@ -4101,10 +4111,10 @@ async function tgConnectNumber(chatId, rawNumber) {
 
         const gen = sessions[sessionId]?.gen
         await tgBot.sendMessage(chatId,
-            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-            `⚡ 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙸𝙽𝙶\n\n` +
-            `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${cleanNum}\n` +
-            `» 𝚂𝚃𝙰𝚃𝚄𝚂  •  🟡 WAITING\n\n` +
+            `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+            `⚡ ${mono('CONNECTING')}\n\n` +
+            `» ${mono('NUMBER')}  •  ${cleanNum}\n` +
+            `» ${mono('STATUS')}  •  🟡 WAITING\n\n` +
             `🔐 Preparing pairing code...`,
             { parse_mode: 'Markdown' })
 
@@ -4112,35 +4122,35 @@ async function tgConnectNumber(chatId, rawNumber) {
         const s = sessions[sessionId]
         if (code) {
             await tgBot.sendMessage(chatId,
-                `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-                `🔗 𝙿𝙰𝙸𝚁𝙸𝙽𝙶\n\n` +
-                `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${cleanNum}\n` +
-                `🔑 𝙲𝙾𝙳𝙴  •  \`${code}\`\n\n` +
+                `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+                `🔗 ${mono('PAIRING')}\n\n` +
+                `» ${mono('NUMBER')}  •  ${cleanNum}\n` +
+                `🔑 ${mono('CODE')}  •  \`${code}\`\n\n` +
                 `⚡ WhatsApp → Linked Devices → Link with phone number\n\n` +
-                `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`,
+                `𖥔 ${mono('A')} ${mono('TRUE')} ${mono('KING')} ${mono('NEEDS')} ${mono('NO')} ${mono('CROWN')}. 𖥔`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         } else if (s?.status === 'active') {
             await tgBot.sendMessage(chatId,
-                `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-                `✅ 𝙾𝙽𝙻𝙸𝙽𝙴\n\n` +
-                `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${cleanNum}\n` +
-                `» 𝚂𝚃𝙰𝚃𝚄𝚂  •  🟢 CONNECTED\n\n` +
-                `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`,
+                `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+                `✅ ${mono('ONLINE')}\n\n` +
+                `» ${mono('NUMBER')}  •  ${cleanNum}\n` +
+                `» ${mono('STATUS')}  •  🟢 CONNECTED\n\n` +
+                `𖥔 ${mono('A')} ${mono('TRUE')} ${mono('KING')} ${mono('NEEDS')} ${mono('NO')} ${mono('CROWN')}. 𖥔`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         } else {
             await tgBot.sendMessage(chatId,
-                `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-                `❌ 𝚃𝙸𝙼𝙴𝙾𝚄𝚃\n\n` +
-                `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${cleanNum}\n` +
-                `» 𝚂𝚃𝙰𝚃𝚄𝚂  •  🔴 FAILED\n\n` +
+                `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+                `❌ ${mono('TIMEOUT')}\n\n` +
+                `» ${mono('NUMBER')}  •  ${cleanNum}\n` +
+                `» ${mono('STATUS')}  •  🔴 FAILED\n\n` +
                 `⚡ Try /reconnect ${cleanNum}`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         }
     } catch (e) {
         console.log('[TELEGRAM] connect error:', e?.message || e)
         await tgBot.sendMessage(chatId,
-            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-            `❌ 𝙵𝙰𝙸𝙻𝙴𝙳\n\n` +
+            `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+            `❌ ${mono('FAILED')}\n\n` +
             `▸ ${(e?.message || 'unknown error').slice(0, 80)}`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
     }
@@ -4150,7 +4160,7 @@ async function tgReconnectSession(chatId, sessionId) {
     const existing = sessions[sessionId]
     if (!existing) {
         await tgBot.sendMessage(chatId,
-            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n❌ 𝙽𝙾𝚃 𝙵𝙾𝚄𝙽𝙳`,
+            `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n❌ ${mono('NOT')} ${mono('FOUND')}`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         return
     }
@@ -4158,8 +4168,8 @@ async function tgReconnectSession(chatId, sessionId) {
     const now = Date.now()
     if (reconnectCooldown[sessionId] && now - reconnectCooldown[sessionId] < 30000) {
         await tgBot.sendMessage(chatId,
-            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-            `⚠️ 𝚂𝙻𝙾𝚆 𝙳𝙾𝚆𝙽\n\n` +
+            `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+            `⚠️ ${mono('SLOW')} ${mono('DOWN')}\n\n` +
             `▸ Please wait before reconnecting again.`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         return
@@ -4174,43 +4184,43 @@ async function tgReconnectSession(chatId, sessionId) {
         await startSession(sessionId, number, !hasCreds)
         const gen = sessions[sessionId]?.gen
         await tgBot.sendMessage(chatId,
-            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-            `🔄 𝚁𝙴𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙸𝙽𝙶\n\n` +
-            `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${number}\n` +
-            `» 𝚂𝚃𝙰𝚃𝚄𝚂  •  🟡 WAITING\n\n` +
+            `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+            `🔄 ${mono('RECONNECTING')}\n\n` +
+            `» ${mono('NUMBER')}  •  ${number}\n` +
+            `» ${mono('STATUS')}  •  🟡 WAITING\n\n` +
             `⚡ If a code is required, it will appear next.`,
             { parse_mode: 'Markdown' })
         const code = await tgPollPairingCode(sessionId, gen)
         const s = sessions[sessionId]
         if (code) {
             await tgBot.sendMessage(chatId,
-                `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-                `🔗 𝙿𝙰𝙸𝚁𝙸𝙽𝙶\n\n` +
-                `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${number}\n` +
-                `🔑 𝙲𝙾𝙳𝙴  •  \`${code}\`\n\n` +
-                `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`,
+                `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+                `🔗 ${mono('PAIRING')}\n\n` +
+                `» ${mono('NUMBER')}  •  ${number}\n` +
+                `🔑 ${mono('CODE')}  •  \`${code}\`\n\n` +
+                `𖥔 ${mono('A')} ${mono('TRUE')} ${mono('KING')} ${mono('NEEDS')} ${mono('NO')} ${mono('CROWN')}. 𖥔`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         } else if (s?.status === 'active') {
             await tgBot.sendMessage(chatId,
-                `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-                `✅ 𝙾𝙽𝙻𝙸𝙽𝙴\n\n` +
-                `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${number}\n` +
-                `» 𝚂𝚃𝙰𝚃𝚄𝚂  •  🟢 CONNECTED\n\n` +
-                `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`,
+                `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+                `✅ ${mono('ONLINE')}\n\n` +
+                `» ${mono('NUMBER')}  •  ${number}\n` +
+                `» ${mono('STATUS')}  •  🟢 CONNECTED\n\n` +
+                `𖥔 ${mono('A')} ${mono('TRUE')} ${mono('KING')} ${mono('NEEDS')} ${mono('NO')} ${mono('CROWN')}. 𖥔`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         } else {
             await tgBot.sendMessage(chatId,
-                `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-                `❌ 𝚃𝙸𝙼𝙴𝙾𝚄𝚃\n\n` +
-                `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${number}\n\n` +
+                `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+                `❌ ${mono('TIMEOUT')}\n\n` +
+                `» ${mono('NUMBER')}  •  ${number}\n\n` +
                 `⚡ Try /reconnect again`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         }
     } catch (e) {
         console.log('[TELEGRAM] reconnect error:', e?.message || e)
         await tgBot.sendMessage(chatId,
-            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-            `❌ 𝚁𝙴𝙲𝙾𝙽𝙽𝙴𝙲𝚃 𝙵𝙰𝙸𝙻𝙴𝙳`,
+            `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+            `❌ ${mono('RECONNECT')} ${mono('FAILED')}`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
     }
 }
@@ -4219,7 +4229,7 @@ async function tgDisconnectSession(chatId, sessionId) {
     const existing = sessions[sessionId]
     if (!existing) {
         await tgBot.sendMessage(chatId,
-            `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n❌ 𝙽𝙾𝚃 𝙵𝙾𝚄𝙽𝙳`,
+            `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n❌ ${mono('NOT')} ${mono('FOUND')}`,
             { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
         return
     }
@@ -4230,18 +4240,18 @@ async function tgDisconnectSession(chatId, sessionId) {
     try { fs.rmSync(path.join(SESSION_DIR, sessionId), { recursive: true, force: true }) } catch (e) {}
     await deleteSessionFromMongo(sessionId)
     await tgBot.sendMessage(chatId,
-        `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-        `❌ 𝙳𝙸𝚂𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳\n\n` +
-        `» 𝙽𝚄𝙼𝙱𝙴𝚁  •  ${number}\n` +
-        `» 𝚂𝚃𝙰𝚃𝚄𝚂  •  ⚫ OFFLINE\n\n` +
-        `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`,
+        `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+        `❌ ${mono('DISCONNECTED')}\n\n` +
+        `» ${mono('NUMBER')}  •  ${number}\n` +
+        `» ${mono('STATUS')}  •  ⚫ OFFLINE\n\n` +
+        `𖥔 ${mono('A')} ${mono('TRUE')} ${mono('KING')} ${mono('NEEDS')} ${mono('NO')} ${mono('CROWN')}. 𖥔`,
         { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
 }
 
 function tgHelpText() {
     return (
-        `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-        `⚡ 𝙲𝙾𝙼𝙼𝙰𝙽𝙳𝚂\n\n` +
+        `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+        `⚡ ${mono('COMMANDS')}\n\n` +
         `▸ /start ─→ Main menu\n` +
         `▸ /connect <n> ─→ Link\n` +
         `▸ /status ─→ Sessions\n` +
@@ -4250,7 +4260,7 @@ function tgHelpText() {
         `▸ /disconnect <n> ─→ Unlink\n` +
         `▸ /menu ─→ Panel\n` +
         `▸ /help ─→ This\n\n` +
-        `𖥔 𝙰 𝚃𝚁𝚄𝙴 𝙺𝙸𝙽𝙶 𝙽𝙴𝙴𝙳𝚂 𝙽𝙾 𝙲𝚁𝙾𝚆𝙽. 𖥔`
+        `𖥔 ${mono('A')} ${mono('TRUE')} ${mono('KING')} ${mono('NEEDS')} ${mono('NO')} ${mono('CROWN')}. 𖥔`
     )
 }
 
@@ -4282,8 +4292,8 @@ function initTelegram() {
         if (!num) {
             tgPending.set(msg.chat.id, 'connect')
             await tgBot.sendMessage(msg.chat.id,
-                `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-                `🔗 𝙲𝙾𝙽𝙽𝙴𝙲𝚃\n\n` +
+                `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+                `🔗 ${mono('CONNECT')}\n\n` +
                 `▸ Send the WhatsApp number with country code.`,
                 { parse_mode: 'Markdown', reply_markup: tgBackKeyboard() })
             return
@@ -4336,8 +4346,8 @@ function initTelegram() {
             if (data === 'connect') {
                 tgPending.set(chatId, 'connect')
                 await tgEditOrSend(chatId, messageId,
-                    `𖥔 ── 𝚂𝚄𝙺𝚄𝙽𝙰 𝚁𝙴𝙰𝙻𝙼 ── 𖥔\n\n` +
-                    `🔗 𝙲𝙾𝙽𝙽𝙴𝙲𝚃\n\n` +
+                    `𖥔 ── ${mono('SUKUNA')} ${mono('REALM')} ── 𖥔\n\n` +
+                    `🔗 ${mono('CONNECT')}\n\n` +
                     `▸ Send the WhatsApp number with country code.`,
                     tgBackKeyboard())
                 return
