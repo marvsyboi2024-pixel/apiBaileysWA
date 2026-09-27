@@ -2510,6 +2510,62 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         return reply(skLine('📖', 'COMMAND', `.» ${target}\n\n${cmdMap[target]}`))
     }
 
+    if (cmd === 'games') {
+        const text =
+            `${SK_HEADER}\n\n` +
+            `🎮 ${mono('GAMES')}\n\n` +
+            `» ${prefix}${mono('snake')}       •  ${mono('Snake')}\n` +
+            `» ${prefix}${mono('dino')}        •  ${mono('Dino Runner')}\n` +
+            `» ${prefix}${mono('flappy')}      •  ${mono('Flappy Bird')}\n` +
+            `» ${prefix}${mono('fishing')}     •  ${mono('Fishing Master')}\n` +
+            `» ${prefix}${mono('blockblast')}  •  ${mono('Block Blast')}\n` +
+            `» ${prefix}${mono('ttt')}         •  ${mono('Tic-Tac-Toe')}\n` +
+            `» ${prefix}${mono('minesweeper')} •  ${mono('Minesweeper')}\n` +
+            `» ${prefix}${mono('slots')}       •  ${mono('Slots')}\n` +
+            `» ${prefix}${mono('piano')}       •  ${mono('Piano')}\n` +
+            `» ${prefix}${mono('drum')}        •  ${mono('Drum Hero')}\n` +
+            `» ${prefix}${mono('guitar')}      •  ${mono('Guitar')}\n` +
+            `» ${prefix}${mono('noxguitar')}   •  ${mono('NOX Guitar')}\n\n` +
+            `${SK_FOOTER}`
+        return reply(text)
+    }
+
+    const GAME_FILES = {
+        snake: { file: 'snake.html', label: 'Snake', emoji: '🐍' },
+        dino: { file: 'dino.html', label: 'Dino Runner', emoji: '🦖' },
+        flappy: { file: 'flappy.html', label: 'Flappy Bird', emoji: '🐦' },
+        fishing: { file: 'fishing.html', label: 'Fishing Master', emoji: '🎣' },
+        blockblast: { file: 'blockblast.html', label: 'Block Blast', emoji: '🧩' },
+        ttt: { file: 'ttt.html', label: 'Tic-Tac-Toe', emoji: '❌' },
+        minesweeper: { file: 'minesweeper.html', label: 'Minesweeper', emoji: '💣' },
+        slots: { file: 'slots.html', label: 'Slots', emoji: '🎰' },
+        piano: { file: 'piano.html', label: 'Piano', emoji: '🎹' },
+        drum: { file: 'drum.html', label: 'Drum Hero', emoji: '🥁' },
+        guitar: { file: 'guitar.html', label: 'Guitar', emoji: '🎸' },
+        noxguitar: { file: 'noxguitar.html', label: 'NOX Guitar', emoji: '🌑' }
+    }
+
+    if (GAME_FILES[cmd]) {
+        const g = GAME_FILES[cmd]
+        const gamePath = path.join('.', 'games', g.file)
+        if (!fs.existsSync(gamePath)) {
+            return reply(skError('Game file not found: ' + g.file))
+        }
+        try {
+            const buf = fs.readFileSync(gamePath)
+            await sock.sendMessage(from, {
+                document: buf,
+                mimetype: 'text/html',
+                fileName: g.file,
+                caption: withFooter(`${SK_HEADER}\n\n${g.emoji} ${mono(g.label.toUpperCase())}\n\n» ${mono('SAVE')}  •  ${mono('Download the file')}\n» ${mono('PLAY')}  •  ${mono('Open in browser')}`)
+            }, { quoted: msg })
+        } catch (e) {
+            console.log('.' + cmd + ' error:', e?.message || e)
+            return reply(skError('Failed to send game file.'))
+        }
+        return
+    }
+
     if (cmd === 'resetallwarns') {
         if (!(await needManage())) return
         ctx.warningCounts[from] = {}
@@ -3747,6 +3803,21 @@ function renderMenu(ctx, sock) {
         `\n` +
         `🤖 ${mono('AI')}\n` +
         `» ${p}${mono('ai')}  •  ${mono('Ask Groq')}\n` +
+        `\n` +
+        `🎮 ${mono('GAMES')}\n` +
+        `» ${p}${mono('games')}         •  ${mono('Game menu')}\n` +
+        `» ${p}${mono('snake')}         •  ${mono('Snake')}\n` +
+        `» ${p}${mono('dino')}          •  ${mono('Dino Runner')}\n` +
+        `» ${p}${mono('flappy')}        •  ${mono('Flappy Bird')}\n` +
+        `» ${p}${mono('fishing')}       •  ${mono('Fishing Master')}\n` +
+        `» ${p}${mono('blockblast')}    •  ${mono('Block Blast')}\n` +
+        `» ${p}${mono('ttt')}           •  ${mono('Tic-Tac-Toe')}\n` +
+        `» ${p}${mono('minesweeper')}   •  ${mono('Minesweeper')}\n` +
+        `» ${p}${mono('slots')}         •  ${mono('Slots')}\n` +
+        `» ${p}${mono('piano')}         •  ${mono('Piano')}\n` +
+        `» ${p}${mono('drum')}          •  ${mono('Drum Hero')}\n` +
+        `» ${p}${mono('guitar')}        •  ${mono('Guitar')}\n` +
+        `» ${p}${mono('noxguitar')}     •  ${mono('NOX Guitar')}\n` +
         `\n` +
         `📥 ${mono('DOWNLOADER')}\n` +
         `» ${p}${mono('tt <url>')}  •  ${mono('TikTok (owner)')}\n` +
