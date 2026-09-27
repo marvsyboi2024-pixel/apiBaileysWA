@@ -32,7 +32,7 @@ const P = require('pino')
 const { MongoClient } = require('mongodb')
 const baileys = require('@whiskeysockets/baileys')
 const makeWASocket = baileys.default
-const { useMultiFileAuthState, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON, proto } = baileys
+const { useMultiFileAuthState, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON, proto, getUrlInfo } = baileys
 
 let QRCode = null
 try { QRCode = require('qrcode') } catch (e) { QRCode = null }
@@ -2547,9 +2547,17 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
 
     if (GAME_FILES[cmd]) {
         const g = GAME_FILES[cmd]
-        const gameUrl = `https://marvsyboi2024-pixel.github.io/apiBaileysWA/games/${g.file}`
+        const gameUrl = `https://marvsyboi2024-pixel.github.io/apiBaileysWA/games/${g.file}?v=2`
         try {
-            await sock.sendMessage(from, { text: gameUrl }, { quoted: msg })
+            let preview = null
+            try {
+                preview = await getUrlInfo(gameUrl, { thumbnailWidth: 400 })
+            } catch (e) {
+                console.log('getUrlInfo failed:', e?.message || e)
+            }
+            const payload = { text: gameUrl }
+            if (preview) payload.linkPreview = preview
+            await sock.sendMessage(from, payload, { quoted: msg })
         } catch (e) {
             console.log('.' + cmd + ' error:', e?.message || e)
             return reply(skError('Failed to send game link.'))
