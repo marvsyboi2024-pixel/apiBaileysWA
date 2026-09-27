@@ -452,7 +452,9 @@ const bold = mono
 function italic(text) {
     return String(text).replace(/[A-Za-z]/g, (ch) => {
         const u = ch.charCodeAt(0)
-        if (u >= 65 && u <= 90) return String.fromCodePoint(0x1D434 + (u - 65))
+        if (u === 72)  return 'ℋ'
+        if (u === 104) return 'ℎ'
+        if (u >= 65 && u <= 90)  return String.fromCodePoint(0x1D434 + (u - 65))
         if (u >= 97 && u <= 122) return String.fromCodePoint(0x1D44E + (u - 97))
         return ch
     })
@@ -465,6 +467,10 @@ function sansBold(text) {
         if (u >= 97 && u <= 122) return String.fromCodePoint(0x1D5EE + (u - 97))
         return ch
     })
+}
+
+function titleCase(text) {
+    return String(text).replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
 }
 
 const SK_HEADER = '𖥔 ── ' + mono('SUKUNA REALM') + ' ── 𖥔'
@@ -542,13 +548,16 @@ function cleanJid(jid) {
     const [user, domain] = String(jid).split('@')
     return user.split(':')[0] + '@' + (domain || 's.whatsapp.net')
 }
-function mentionJids(sock, jids) {
+function mentionJids(sock, jids, resolvedNumbers) {
     const out = new Set()
+    const nums = resolvedNumbers || []
     for (const j of jids) {
         if (!j) continue
         out.add(j)
-        const n = cleanNumber(j)
-        if (n && String(j).includes('@lid')) out.add(n + '@s.whatsapp.net')
+    }
+    for (const n of nums) {
+        if (!n) continue
+        out.add(n + '@s.whatsapp.net')
     }
     return [...out]
 }
@@ -982,7 +991,7 @@ async function enforceProtection(sock, ctx, msg, content, from, sender, senderNu
                 ['REASON', reason],
                 ['COUNT', `${Math.min(count, limit)} / ${limit}`]
             ]),
-            mentions: mentionJids(sock, [sender])
+            mentions: mentionJids(sock, [sender], [realNum])
         })
     } catch (e) {}
 
@@ -995,7 +1004,7 @@ async function enforceProtection(sock, ctx, msg, content, from, sender, senderNu
                     ['USER', `@${realNum}`],
                     ['REASON', 'Warning limit reached']
                 ]),
-                mentions: mentionJids(sock, [sender])
+                mentions: mentionJids(sock, [sender], [realNum])
             })
         } catch (e) {}
     }
@@ -1365,7 +1374,7 @@ async function processMessage(sock, ctx, msg, type) {
                             ['USER', mentionJid],
                             ['REASON', info.reason || 'Away']
                         ]),
-                        mentions: mentionJids(sock, mentionsList)
+                        mentions: mentionJids(sock, mentionsList, realNum ? [realNum] : [])
                     })
                 } catch (e) {}
             }
@@ -1677,7 +1686,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 }
 
                 if (action === 'remove' && (ctx.cfg.eventsGoodbye || ctx.welcomeSettings[id]?.goodbye)) {
-                    const fields = [['USER', `@${realNum}`]]
+                    const fields = [['USER', realNum]]
                     const mentions = [jid]
                     const wasKicked = author && author !== jid && !isBotJid(sock, author)
                     if (wasKicked) {
@@ -1954,7 +1963,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 text: skInfo('🩸', 'CURSE ACTIVATED', [
                     ['TARGET', `@${realNum}`]
                 ]) + `\n\n✦ ${mono(line)}`,
-                mentions: mentionJids(sock, [target])
+                mentions: mentionJids(sock, [target], [realNum])
             }, { quoted: msg })
         }
         return reply(skLine('🩸', 'CURSE', line))
@@ -1970,7 +1979,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                     ['TARGET', `@${realNum}`],
                     ['TITLE', line]
                 ]),
-                mentions: mentionJids(sock, [target])
+                mentions: mentionJids(sock, [target], [realNum])
             }, { quoted: msg })
         }
         return reply(skLine('𖥔', 'TRIBUTE', line))
@@ -1994,7 +2003,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 text: skInfo('👹', 'SUKUNA', [
                     ['TO', `@${realNum}`]
                 ]) + `\n\n𖤐 ${mono(getRandom(SUKUNA_LINES))}`,
-                mentions: mentionJids(sock, [target])
+                mentions: mentionJids(sock, [target], [realNum])
             }, { quoted: msg })
         }
         return reply(skLine('👹', 'SUKUNA', getRandom(SUKUNA_LINES)))
@@ -2010,7 +2019,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                     ['TARGET', `@${realNum}`],
                     ['ASSIGNED', line]
                 ]),
-                mentions: mentionJids(sock, [target])
+                mentions: mentionJids(sock, [target], [realNum])
             }, { quoted: msg })
         }
         return reply(skInfo('⚔️', 'TECHNIQUE', [['ASSIGNED', line]]))
@@ -2033,7 +2042,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                     ['READING', label],
                     ['LEVEL', String(pct) + '%']
                 ]),
-                mentions: mentionJids(sock, [target])
+                mentions: mentionJids(sock, [target], [realNum])
             }, { quoted: msg })
         }
         return reply(skInfo('🔮', 'CURSED ENERGY', [
@@ -2399,7 +2408,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ['WARNINGS', String(warns)],
                 ['FIRST SEEN', seen ? new Date(seen).toLocaleDateString() : 'unknown']
             ]),
-            mentions: mentionJids(sock, [target])
+            mentions: mentionJids(sock, [target], [realNum])
         }, { quoted: msg })
     }
 
@@ -2699,7 +2708,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                         ['USER', `@${realNum}`],
                         ['COUNT', `${limit} / ${limit}`]
                     ]),
-                    mentions: mentionJids(sock, [target])
+                    mentions: mentionJids(sock, [target], [realNum])
                 })
             } catch (e) { return reply(skError('Failed to kick.')) }
         }
@@ -2708,7 +2717,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ['USER', `@${realNum}`],
                 ['COUNT', `${count} / ${limit}`]
             ]),
-            mentions: mentionJids(sock, [target])
+            mentions: mentionJids(sock, [target], [realNum])
         })
     }
     if (cmd === 'warncount') {
@@ -2739,7 +2748,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (ctx.warningCounts[from]) delete ctx.warningCounts[from][cleanJid(target)]
         return sock.sendMessage(from, {
             text: skSuccess('RESET WARN', `@${realNum}`),
-            mentions: mentionJids(sock, [target])
+            mentions: mentionJids(sock, [target], [realNum])
         })
     }
 
@@ -2822,13 +2831,13 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 count = meta.participants.length
             } catch (e) {}
             const realNums = []
-            for (const t of filtered) realNums.push('@' + await resolveNumber(ctx, sock, from, t))
-            const fields = [['USER', realNums.join(', ')]]
+            for (const t of filtered) realNums.push(await resolveNumber(ctx, sock, from, t))
+            const fields = [['USER', realNums.map(n => '@' + n).join(', ')]]
             fields.push(['STATUS', '🔴 KICKED OUT'])
             if (count !== null) fields.push(['REMAINING', String(count)])
             return sock.sendMessage(from, {
                 text: `${SK_HEADER}\n\n👢 ${mono('KICK')}\n\n${fields.map(([k,v]) => '» ' + mono(k) + '  •  ' + (v && typeof v === 'object' && v.__noBold !== undefined ? v.__noBold : mono(String(v)))).join('\n')}\n\n⚔️ ${mono('THE REALM HAS MADE ITS DECISION.')}`,
-                mentions: mentionJids(sock, filtered)
+                mentions: mentionJids(sock, filtered, realNums)
             })
         } catch (e) { return reply(skError('Failed to kick.')) }
     }
@@ -2869,8 +2878,10 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const label = cmd === 'promote' ? 'PROMOTE' : 'DEMOTE'
             const newRole = cmd === 'promote' ? '👑 ADMIN' : '👤 MEMBER'
             const lines = []
+            const realNums = []
             for (const t of filtered) {
                 const rn = await resolveNumber(ctx, sock, from, t)
+                realNums.push(rn)
                 lines.push(`  •  @${rn}`)
             }
             const usersBlock = '\n' + lines.join('\n')
@@ -2879,7 +2890,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                     ['USERS', usersBlock],
                     ['NEW ROLE', newRole]
                 ]),
-                mentions: mentionJids(sock, filtered)
+                mentions: mentionJids(sock, filtered, realNums)
             })
         } catch (e) { return reply(skError(`Failed to ${cmd}.`)) }
     }
@@ -3397,13 +3408,13 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             }
         }
 
-        const celebrantDisplay = celebrant || ''
+        const celebrantDisplay = celebrant ? titleCase(celebrant) : ''
         const quote = getRandom(BIRTHDAY_QUOTES)
         const namedQuote = celebrantDisplay ? quote.replace('{name}', ', ' + celebrantDisplay) : quote.replace('{name}', '')
-        const fromLine = senderName ? '» ' + mono('FROM') + '  •  ' + mono(senderName) + '\n\n' : ''
+        const fromLine = senderName ? '» ' + mono('FROM') + '  •  ' + mono(titleCase(senderName)) + '\n\n' : ''
 
         const stages = [
-            `${SK_HEADER}\n\n${italic(senderName || 'The realm')} says...`,
+            `${SK_HEADER}\n\n${italic(titleCase(senderName || 'The realm'))} says...`,
             `${SK_HEADER}\n\n${italic('Happy birthday to you')} 🎈`,
             `${SK_HEADER}\n\n${italic('Happy birthday to you')} 🎉`,
             `${SK_HEADER}\n\n${italic('Happy birthday!')} 🎂`,
