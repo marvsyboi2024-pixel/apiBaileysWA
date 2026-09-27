@@ -449,6 +449,24 @@ function mono(text) {
 }
 const bold = mono
 
+function italic(text) {
+    return String(text).replace(/[A-Za-z]/g, (ch) => {
+        const u = ch.charCodeAt(0)
+        if (u >= 65 && u <= 90) return String.fromCodePoint(0x1D434 + (u - 65))
+        if (u >= 97 && u <= 122) return String.fromCodePoint(0x1D44E + (u - 97))
+        return ch
+    })
+}
+
+function sansBold(text) {
+    return String(text).replace(/[A-Za-z]/g, (ch) => {
+        const u = ch.charCodeAt(0)
+        if (u >= 65 && u <= 90) return String.fromCodePoint(0x1D5D4 + (u - 65))
+        if (u >= 97 && u <= 122) return String.fromCodePoint(0x1D5EE + (u - 97))
+        return ch
+    })
+}
+
 const SK_HEADER = '𖥔 ── ' + mono('SUKUNA REALM') + ' ── 𖥔'
 const SK_FOOTER = '𖥔 ' + mono('A TRUE KING NEEDS NO CROWN.') + ' 𖥔'
 
@@ -523,6 +541,16 @@ function cleanJid(jid) {
     if (!jid) return ''
     const [user, domain] = String(jid).split('@')
     return user.split(':')[0] + '@' + (domain || 's.whatsapp.net')
+}
+function mentionJids(sock, jids) {
+    const out = new Set()
+    for (const j of jids) {
+        if (!j) continue
+        out.add(j)
+        const n = cleanNumber(j)
+        if (n && String(j).includes('@lid')) out.add(n + '@s.whatsapp.net')
+    }
+    return [...out]
 }
 function getBotJid(sock) { return cleanJid(sock.user?.id || sock.authState?.creds?.me?.id || '') }
 function botIds(sock) {
@@ -954,7 +982,7 @@ async function enforceProtection(sock, ctx, msg, content, from, sender, senderNu
                 ['REASON', reason],
                 ['COUNT', `${Math.min(count, limit)} / ${limit}`]
             ]),
-            mentions: [sender]
+            mentions: mentionJids(sock, [sender])
         })
     } catch (e) {}
 
@@ -967,7 +995,7 @@ async function enforceProtection(sock, ctx, msg, content, from, sender, senderNu
                     ['USER', `@${realNum}`],
                     ['REASON', 'Warning limit reached']
                 ]),
-                mentions: [sender]
+                mentions: mentionJids(sock, [sender])
             })
         } catch (e) {}
     }
@@ -1209,7 +1237,7 @@ async function processMessage(sock, ctx, msg, type) {
         ].filter(Boolean)
         for (const c of candidates) {
             for (const k of Object.keys(ctx.hbdPending)) {
-                if (jidsMatch(k, c) || k === c) { hbdKey = k; break }
+                if (jidsMatch(k, c)) { hbdKey = k; break }
             }
             if (hbdKey) break
         }
@@ -1218,26 +1246,23 @@ async function processMessage(sock, ctx, msg, type) {
         const pending = ctx.hbdPending[hbdKey]
         if (!fromMe && !isGroup) {
             delete ctx.hbdPending[hbdKey]
-            const realNum = senderNumber
-            const quote = getRandom(BIRTHDAY_QUOTES)
-            const namedQuote = pending.celebrant
-                ? quote.replace('{name}', ', ' + pending.celebrant)
-                : quote.replace('{name}', '')
-            const fields = []
-            if (pending.sender) fields.push(['FROM', mono(pending.sender)])
-            const body = withFooter(`${SK_HEADER}\n\n🎊 🎂 🎈\n\n${fields.length ? '» ' + mono('FROM') + '  •  ' + mono(pending.sender) + '\n\n' : ''}${namedQuote}`)
+            const stages = pending.stages
+            const delays = pending.delays
             try {
-                const sent = await sock.sendMessage(sender, { text: body })
-                await sleep(1500)
-                await sock.sendMessage(sender, { text: body, edit: sent?.key })
+                const sent = await sock.sendMessage(sender, { text: stages[0] })
+                const editKey = sent?.key
+                for (let i = 1; i < stages.length; i++) {
+                    await sleep(delays[i - 1])
+                    try { await sock.sendMessage(sender, { text: stages[i], edit: editKey }) } catch (e) {}
+                }
                 if (pending.block) {
                     await sleep(1500)
                     try { await sock.updateBlockStatus(sender, 'block') } catch (e) {}
                 }
                 const confirm = skInfo('✅', 'DELIVERED', [
-                    ['TO', `+${realNum}`],
+                    ['TO', `+${cleanNumber(hbdKey)}`],
                     ['FOR', pending.celebrant || '-'],
-                    ['BLOCK', pending.block ? '🟢 APPLIED' : '🔴 NOT REQUESTED']
+                    ['BLOCK', pending.block ? '🔒 APPLIED' : '🔓 NOT REQUESTED']
                 ])
                 await notifyOwnerDM(sock, confirm)
             } catch (e) {
@@ -1340,7 +1365,7 @@ async function processMessage(sock, ctx, msg, type) {
                             ['USER', mentionJid],
                             ['REASON', info.reason || 'Away']
                         ]),
-                        mentions: mentionsList
+                        mentions: mentionJids(sock, mentionsList)
                     })
                 } catch (e) {}
             }
@@ -1495,7 +1520,7 @@ async function attemptRejoin(ctx, sock, groupJid, source) {
         const count = meta?.participants?.length || '?'
         if (ctx.cfg.eventsWelcome) {
             await sock.sendMessage(groupJid, {
-                text: withFooter(`${SK_HEADER}\n\n👑 ${mono('THE KING HAS RECLAIMED HIS THRONE')}\n\n» ${mono('GROUP')}  •  ${gname}\n» ${mono('MEMBERS')}  •  ${mono(String(count))}\n\n𖤐 ${mono('THE KING IS ONCE AGAIN AMONG YOU.')}`)
+                text: `${SK_HEADER}\n\n👑 ${mono('THE KING HAS RECLAIMED HIS THRONE')}\n\n» ${mono('GROUP')}  •  ${gname}\n» ${mono('MEMBERS')}  •  ${mono(String(count))}\n\n𖤐 ${mono('THE KING IS ONCE AGAIN AMONG YOU.')}`
             })
         }
         return true
@@ -1614,10 +1639,6 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
 
                 if (isBotJid(sock, jid) && action === 'remove') {
                     console.log(`[${sessionId}] Bot removed from ${id}`)
-                    if (ctx.rejoinSilent && ctx.rejoinSilent[id]) continue
-                    ctx.rejoinSilent = ctx.rejoinSilent || {}
-                    ctx.rejoinSilent[id] = Date.now()
-                    attemptRejoin(ctx, sock, id, 'kick').catch(e => console.log('attemptRejoin:', e?.message || e))
                     continue
                 }
                 if (isBotJid(sock, jid) && action === 'add') {
@@ -1643,19 +1664,19 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
 
                 const realNum = await resolveNumber(ctx, sock, id, jid)
 
-                if (action === 'add' && ctx.cfg.eventsWelcome) {
+                if (action === 'add' && (ctx.cfg.eventsWelcome || ctx.welcomeSettings[id]?.welcome)) {
                     const fields = [['USER', `@${realNum}`]]
                     const mentions = [jid]
                     fields.push(['STATUS', '🟢 JOINED'])
                     if (groupName) fields.push(['GROUP', groupName])
                     if (memberCount !== null) fields.push(['MEMBERS', String(memberCount)])
                     await sock.sendMessage(id, {
-                        text: skInfo('🔥', 'A NEW PRESENCE HAS AWAKENED', fields) + '\n\n𖥂 ' + mono('WELCOME TO THE REALM.'),
-                        mentions
+                        text: `${SK_HEADER}\n\n🔥 ${mono('A NEW PRESENCE HAS AWAKENED')}\n\n${fields.map(([k,v]) => '» ' + mono(k) + '  •  ' + (v && typeof v === 'object' && v.__noBold !== undefined ? v.__noBold : mono(String(v)))).join('\n')}\n\n𖥂 ${mono('WELCOME TO THE REALM.')}`,
+                        mentions: mentionJids(sock, mentions)
                     })
                 }
 
-                if (action === 'remove' && ctx.cfg.eventsGoodbye) {
+                if (action === 'remove' && (ctx.cfg.eventsGoodbye || ctx.welcomeSettings[id]?.goodbye)) {
                     const fields = [['USER', `@${realNum}`]]
                     const mentions = [jid]
                     const wasKicked = author && author !== jid && !isBotJid(sock, author)
@@ -1825,6 +1846,28 @@ function skCancelledBox(actionLabel) {
     ])
 }
 
+async function startConfirmCountdown(sock, ctx, from) {
+    const pending = ctx.pendingConfirm[from]
+    if (!pending || !pending.msgKey) return
+    const key = pending.msgKey
+    const steps = [25, 20, 15, 10, 5]
+    steps.forEach((sec, i) => {
+        setTimeout(async () => {
+            const p = ctx.pendingConfirm[from]
+            if (!p || p !== pending) return
+            const box = skConfirmBox(p.label, p.by, p.warning || null).replace(/⏳ 30s/, `⏳ ${sec}s`)
+            try { await sock.sendMessage(from, { text: box, edit: key }) } catch (e) {}
+        }, (i + 1) * 5000)
+    })
+    setTimeout(async () => {
+        const p = ctx.pendingConfirm[from]
+        if (!p || p !== pending) return
+        const box = skConfirmBox(p.label, p.by, p.warning || null).replace(/⏳ 30s/, '⏱ EXPIRED')
+        try { await sock.sendMessage(from, { text: box, edit: key }) } catch (e) {}
+        delete ctx.pendingConfirm[from]
+    }, 30000)
+}
+
 async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, senderNumber, owner, cmd, args) {
     const prefix = ctx.cfg.prefix
     const reply = (text, mentions) => sock.sendMessage(from, mentions ? { text, mentions } : { text }, { quoted: msg })
@@ -1911,7 +1954,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 text: skInfo('🩸', 'CURSE ACTIVATED', [
                     ['TARGET', `@${realNum}`]
                 ]) + `\n\n✦ ${mono(line)}`,
-                mentions: [target]
+                mentions: mentionJids(sock, [target])
             }, { quoted: msg })
         }
         return reply(skLine('🩸', 'CURSE', line))
@@ -1927,7 +1970,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                     ['TARGET', `@${realNum}`],
                     ['TITLE', line]
                 ]),
-                mentions: [target]
+                mentions: mentionJids(sock, [target])
             }, { quoted: msg })
         }
         return reply(skLine('𖥔', 'TRIBUTE', line))
@@ -1951,7 +1994,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 text: skInfo('👹', 'SUKUNA', [
                     ['TO', `@${realNum}`]
                 ]) + `\n\n𖤐 ${mono(getRandom(SUKUNA_LINES))}`,
-                mentions: [target]
+                mentions: mentionJids(sock, [target])
             }, { quoted: msg })
         }
         return reply(skLine('👹', 'SUKUNA', getRandom(SUKUNA_LINES)))
@@ -1967,7 +2010,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                     ['TARGET', `@${realNum}`],
                     ['ASSIGNED', line]
                 ]),
-                mentions: [target]
+                mentions: mentionJids(sock, [target])
             }, { quoted: msg })
         }
         return reply(skInfo('⚔️', 'TECHNIQUE', [['ASSIGNED', line]]))
@@ -1990,7 +2033,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                     ['READING', label],
                     ['LEVEL', String(pct) + '%']
                 ]),
-                mentions: [target]
+                mentions: mentionJids(sock, [target])
             }, { quoted: msg })
         }
         return reply(skInfo('🔮', 'CURSED ENERGY', [
@@ -2356,7 +2399,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ['WARNINGS', String(warns)],
                 ['FIRST SEEN', seen ? new Date(seen).toLocaleDateString() : 'unknown']
             ]),
-            mentions: [target]
+            mentions: mentionJids(sock, [target])
         }, { quoted: msg })
     }
 
@@ -2656,7 +2699,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                         ['USER', `@${realNum}`],
                         ['COUNT', `${limit} / ${limit}`]
                     ]),
-                    mentions: [target]
+                    mentions: mentionJids(sock, [target])
                 })
             } catch (e) { return reply(skError('Failed to kick.')) }
         }
@@ -2665,7 +2708,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ['USER', `@${realNum}`],
                 ['COUNT', `${count} / ${limit}`]
             ]),
-            mentions: [target]
+            mentions: mentionJids(sock, [target])
         })
     }
     if (cmd === 'warncount') {
@@ -2696,7 +2739,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (ctx.warningCounts[from]) delete ctx.warningCounts[from][cleanJid(target)]
         return sock.sendMessage(from, {
             text: skSuccess('RESET WARN', `@${realNum}`),
-            mentions: [target]
+            mentions: mentionJids(sock, [target])
         })
     }
 
@@ -2784,8 +2827,8 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             fields.push(['STATUS', '🔴 KICKED OUT'])
             if (count !== null) fields.push(['REMAINING', String(count)])
             return sock.sendMessage(from, {
-                text: skInfo('👢', 'KICK', fields) + '\n\n⚔️ ' + mono('THE REALM HAS MADE ITS DECISION.'),
-                mentions: filtered
+                text: `${SK_HEADER}\n\n👢 ${mono('KICK')}\n\n${fields.map(([k,v]) => '» ' + mono(k) + '  •  ' + (v && typeof v === 'object' && v.__noBold !== undefined ? v.__noBold : mono(String(v)))).join('\n')}\n\n⚔️ ${mono('THE REALM HAS MADE ITS DECISION.')}`,
+                mentions: mentionJids(sock, filtered)
             })
         } catch (e) { return reply(skError('Failed to kick.')) }
     }
@@ -2826,16 +2869,17 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const label = cmd === 'promote' ? 'PROMOTE' : 'DEMOTE'
             const newRole = cmd === 'promote' ? '👑 ADMIN' : '👤 MEMBER'
             const lines = []
-            for (let i = 0; i < filtered.length; i++) {
-                const rn = await resolveNumber(ctx, sock, from, filtered[i])
-                lines.push(`${i + 1}. @${rn}`)
+            for (const t of filtered) {
+                const rn = await resolveNumber(ctx, sock, from, t)
+                lines.push(`  •  @${rn}`)
             }
+            const usersBlock = '\n' + lines.join('\n')
             return sock.sendMessage(from, {
                 text: skInfo(emoji, label, [
-                    ['USERS', '\n' + lines.join('\n')],
+                    ['USERS', usersBlock],
                     ['NEW ROLE', newRole]
                 ]),
-                mentions: filtered
+                mentions: mentionJids(sock, filtered)
             })
         } catch (e) { return reply(skError(`Failed to ${cmd}.`)) }
     }
@@ -2846,8 +2890,35 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const creator = meta.owner || meta.creator || null
         const admins = meta.participants.filter(p => p.admin && p.id !== creator && !isBotJid(sock, p.id))
         if (admins.length === 0) return reply(skInfo('✅', 'DEMOTE ALL', [['ADMINS', 'none to demote']]))
-        ctx.pendingConfirm[from] = { action: 'demoteall', by: sender, ts: Date.now(), label: 'DEMOTE ALL', targets: admins.map(a => a.id) }
-        return reply(skConfirmBox('DEMOTE ALL ADMINS', sender, `Will demote ${admins.length} admin(s). Creator is exempt.`))
+        const warnMsg = `Will demote ${admins.length} admin(s). Creator is exempt.`
+        ctx.pendingConfirm[from] = { action: 'demoteall', by: sender, ts: Date.now(), label: 'DEMOTE ALL', targets: admins.map(a => a.id), warning: warnMsg }
+        const box = skConfirmBox('DEMOTE ALL ADMINS', sender, warnMsg)
+        const sent = await reply(box)
+        if (sent?.key) ctx.pendingConfirm[from].msgKey = sent.key
+        startConfirmCountdown(sock, ctx, from)
+        return
+    }
+
+    if (cmd === 'kickadmins') {
+        if (!(await needManage())) return
+        const meta = await getGroupMeta(ctx, sock, from, true)
+        const creator = meta.owner || meta.creator || null
+        const admins = meta.participants.filter(p => p.admin && p.id !== creator && !isBotJid(sock, p.id))
+        if (admins.length === 0) return reply(skInfo('✅', 'KICK ADMINS', [['ADMINS', 'none to kick']]))
+        const warnMsg = `Will kick ${admins.length} admin(s). Creator is exempt.`
+        ctx.pendingConfirm[from] = {
+            action: 'kickadmins',
+            by: sender,
+            ts: Date.now(),
+            label: 'KICK ADMINS',
+            targets: admins.map(a => a.id),
+            warning: warnMsg
+        }
+        const box = skConfirmBox('KICK ADMINS', sender, warnMsg)
+        const sent = await reply(box)
+        if (sent?.key) ctx.pendingConfirm[from].msgKey = sent.key
+        startConfirmCountdown(sock, ctx, from)
+        return
     }
 
     if (cmd === 'del') {
@@ -2899,6 +2970,35 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             await attemptRejoin(ctx, sock, groupJid, 'manual')
         } catch (e) {
             console.log('.left error:', e?.message || e)
+            return reply(skError('Failed to leave.'))
+        }
+        return
+    }
+
+    if (cmd === 'leave') {
+        if (!owner) return reply(skDenied('👑 ' + mono('OWNER')))
+        if (!isGroup) return reply(skError('Group only.'))
+        try {
+            const groupJid = from
+            let msgKey = null
+            let lastText = ''
+            for (let i = 3; i >= 1; i--) {
+                const text = withFooter(`${SK_HEADER}\n\n🚪 ${mono('LEAVING GROUP')}\n\n» ${mono('TIMER')}  •  ⏳ ${mono(String(i) + 's')}`)
+                if (!msgKey) {
+                    const sent = await sock.sendMessage(groupJid, { text })
+                    msgKey = sent?.key || null
+                } else if (text !== lastText) {
+                    try { await sock.sendMessage(groupJid, { text, edit: msgKey }) } catch (e) {}
+                }
+                lastText = text
+                if (i > 1) await sleep(1000)
+            }
+            await sleep(1000)
+            if (ctx.groupInviteCache[groupJid]) delete ctx.groupInviteCache[groupJid]
+            if (ctx.rejoinSilent && ctx.rejoinSilent[groupJid]) delete ctx.rejoinSilent[groupJid]
+            await sock.groupLeave(groupJid)
+        } catch (e) {
+            console.log('.leave error:', e?.message || e)
             return reply(skError('Failed to leave.'))
         }
         return
@@ -2993,7 +3093,10 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             const meta = await getGroupMeta(ctx, sock, from, true)
             const gname = meta.subject
-            const code = await sock.groupInviteCode(from)
+            let code = null
+            try { code = await sock.groupInviteCode(from) } catch (e) { code = null }
+            if (!code) code = ctx.groupInviteCache[from] || null
+            if (!code) return reply(skError('No cached invite code. Ask an admin to reset the link, or set one with .setinvite.'))
             const link = `https://chat.whatsapp.com/${code}`
             const byNum = await resolveNumber(ctx, sock, from, sender)
             ctx.groupInviteCache[from] = code
@@ -3121,8 +3224,13 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const days = parseInt(args[0]) || 30
         if (days < 1 || days > 365) return reply(skError('Days must be 1-365.'))
         ctx.pendingKickDays = days
-        ctx.pendingConfirm[from] = { action: 'kickinactive', by: sender, ts: Date.now(), label: 'KICK INACTIVE' }
-        return reply(skConfirmBox(`KICK INACTIVE (${days} days)`, sender, 'Will kick members idle for that period.'))
+        const warnMsg = 'Will kick members idle for that period.'
+        ctx.pendingConfirm[from] = { action: 'kickinactive', by: sender, ts: Date.now(), label: 'KICK INACTIVE', warning: warnMsg }
+        const box = skConfirmBox(`KICK INACTIVE (${days} days)`, sender, warnMsg)
+        const sent = await reply(box)
+        if (sent?.key) ctx.pendingConfirm[from].msgKey = sent.key
+        startConfirmCountdown(sock, ctx, from)
+        return
     }
 
     if (cmd === 'requests') {
@@ -3192,6 +3300,31 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         }
         return
     }
+
+    if (cmd === 'wel') {
+        if (!(await needManage())) return
+        if (!ctx.welcomeSettings[from]) ctx.welcomeSettings[from] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
+        if (args[0] === 'on' || args[0] === 'off') {
+            ctx.welcomeSettings[from].welcome = args[0] === 'on'
+            saveCtx(ctx)
+            return reply(`${SK_HEADER}\n\n🚪 ${mono('WELCOME')}\n\n» ${mono('STATUS')}  •  ${args[0] === 'on' ? '🟢 ON' : '🔴 OFF'}\n» ${mono('SCOPE')}  •  ${mono('THIS GROUP ONLY')}`)
+        }
+        const cur = ctx.welcomeSettings[from].welcome ? '🟢 ON' : '🔴 OFF'
+        return reply(`${SK_HEADER}\n\n🚪 ${mono('WELCOME')}\n\n» ${mono('STATUS')}  •  ${cur}\n» ${mono('SCOPE')}  •  ${mono('THIS GROUP ONLY')}`)
+    }
+
+    if (cmd === 'bye') {
+        if (!(await needManage())) return
+        if (!ctx.welcomeSettings[from]) ctx.welcomeSettings[from] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
+        if (args[0] === 'on' || args[0] === 'off') {
+            ctx.welcomeSettings[from].goodbye = args[0] === 'on'
+            saveCtx(ctx)
+            return reply(`${SK_HEADER}\n\n🚪 ${mono('GOODBYE')}\n\n» ${mono('STATUS')}  •  ${args[0] === 'on' ? '🟢 ON' : '🔴 OFF'}\n» ${mono('SCOPE')}  •  ${mono('THIS GROUP ONLY')}`)
+        }
+        const cur = ctx.welcomeSettings[from].goodbye ? '🟢 ON' : '🔴 OFF'
+        return reply(`${SK_HEADER}\n\n🚪 ${mono('GOODBYE')}\n\n» ${mono('STATUS')}  •  ${cur}\n» ${mono('SCOPE')}  •  ${mono('THIS GROUP ONLY')}`)
+    }
+
     if (cmd === 'setwelcome' || cmd === 'setgoodbye') {
         if (!(await needManage())) return
         const txt = args.join(' ')
@@ -3234,21 +3367,18 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const raw = args.join(' ')
         const parts = raw.split('|').map(s => s.trim()).filter(Boolean)
 
-        // Case with pipes
-        if (parts.length >= 2) {
-            let senderName = null
-            let targetNum = null
-            let celebrant = null
-            let block = false
+        let senderName = null
+        let targetNum = null
+        let celebrant = null
+        let block = false
 
+        if (parts.length >= 1) {
             const last = parts[parts.length - 1]
             if (last.toLowerCase() === 'block') {
                 block = true
                 parts.pop()
             }
-
             if (parts.length === 1) {
-                // .hbd John
                 celebrant = parts[0]
             } else if (parts.length === 2) {
                 const a = parts[0]
@@ -3265,126 +3395,77 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 targetNum = (parts[1] || '').replace(/[^0-9]/g, '')
                 celebrant = parts[2]
             }
+        }
 
-            // No number → post in current chat with edits
-            if (!targetNum) {
-                const quote = getRandom(BIRTHDAY_QUOTES)
-                const namedQuote = celebrant ? quote.replace('{name}', ', ' + mono(celebrant)) : quote.replace('{name}', '')
-                const stages = [
-                    `${SK_HEADER}\n\n🎂`,
-                    `${SK_HEADER}\n\n🎉`,
-                    `${SK_HEADER}\n\n🎊`,
-                    `${SK_HEADER}\n\n🎊 🎂`,
-                    withFooter(`${SK_HEADER}\n\n🎊 🎂 🎈\n\n${senderName ? '» ' + mono('FROM') + '  •  ' + mono(senderName) + '\n\n' : ''}${namedQuote}`)
-                ]
-                const sent = await reply(stages[0])
-                const k = sent?.key || null
-                if (!k) return
-                for (let i = 1; i < stages.length; i++) {
-                    await sleep(1500)
-                    try { await sock.sendMessage(from, { text: stages[i], edit: k }) } catch (e) {}
-                }
-                return
-            }
+        const celebrantDisplay = celebrant || ''
+        const quote = getRandom(BIRTHDAY_QUOTES)
+        const namedQuote = celebrantDisplay ? quote.replace('{name}', ', ' + celebrantDisplay) : quote.replace('{name}', '')
+        const fromLine = senderName ? '» ' + mono('FROM') + '  •  ' + mono(senderName) + '\n\n' : ''
 
-            // With number → DM probe
-            const toJid = normalizeJid(targetNum)
-            const probeText = withFooter(`${SK_HEADER}\n\n⛩️ ${mono('ARE YOU THERE?')}`)
-            try {
-                await sock.sendMessage(toJid, { text: probeText })
-            } catch (e) {
-                const selfJid = getBotJid(sock)
-                if (selfJid) {
-                    await sock.sendMessage(selfJid, {
-                        text: skInfo('❌', 'FAILED', [
-                            ['TO', `+${targetNum}`],
-                            ['REASON', 'NUMBER NOT ON WHATSAPP']
-                        ])
-                    })
-                }
-                return
+        const stages = [
+            `${SK_HEADER}\n\n${italic(senderName || 'The realm')} says...`,
+            `${SK_HEADER}\n\n${italic('Happy birthday to you')} 🎈`,
+            `${SK_HEADER}\n\n${italic('Happy birthday to you')} 🎉`,
+            `${SK_HEADER}\n\n${italic('Happy birthday!')} 🎂`,
+            `${SK_HEADER}\n\n${italic('Happy birthday!!')} 🎂🎂`,
+            `${SK_HEADER}\n\n${italic('Happy birthday to you!!!')} 🎂🎂🎂`,
+            withFooter(`${SK_HEADER}\n\n🎉🎂🎈\n\n${fromLine}${italic(namedQuote)}`)
+        ]
+        const delays = [3500, 1500, 1500, 1500, 1500, 3500]
+
+        if (!targetNum) {
+            const sent = await reply(stages[0])
+            const k = sent?.key || null
+            if (!k) return
+            for (let i = 1; i < stages.length; i++) {
+                await sleep(delays[i - 1])
+                try { await sock.sendMessage(from, { text: stages[i], edit: k }) } catch (e) {}
             }
-            ctx.hbdPending[toJid] = {
-                sender: senderName,
-                celebrant,
-                block,
-                ts: Date.now(),
-                session: ctx.sessionId
-            }
-            setTimeout(async () => {
-                const pending = ctx.hbdPending[toJid]
-                if (!pending) return
-                delete ctx.hbdPending[toJid]
-                const selfJid = getBotJid(sock)
-                if (selfJid) {
-                    try {
-                        await sock.sendMessage(selfJid, {
-                            text: skInfo('⏳', 'NO REPLY', [
-                                ['TO', `+${targetNum}`],
-                                ['TIME', '24h elapsed']
-                            ])
-                        })
-                    } catch (e) {}
-                }
-            }, 24 * 60 * 60 * 1000)
             return
         }
 
-        // No pipes — treat as celebrant name only
-        const celebrant = parts[0] || null
-        const quote = getRandom(BIRTHDAY_QUOTES)
-        const namedQuote = celebrant ? quote.replace('{name}', ', ' + mono(celebrant)) : quote.replace('{name}', '')
-        const stages = [
-            `${SK_HEADER}\n\n🎂`,
-            `${SK_HEADER}\n\n🎉`,
-            `${SK_HEADER}\n\n🎊`,
-            `${SK_HEADER}\n\n🎊 🎂`,
-            withFooter(`${SK_HEADER}\n\n🎊 🎂 🎈\n\n${namedQuote}`)
-        ]
-        const sent = await reply(stages[0])
-        const k = sent?.key || null
-        if (!k) return
-        for (let i = 1; i < stages.length; i++) {
-            await sleep(1500)
-            try { await sock.sendMessage(from, { text: stages[i], edit: k }) } catch (e) {}
-        }
-        return
-    }
-
-    if (cmd === 'broadcast1') {
-        if (!(await needOwner())) return
-        const raw = args.join(' ')
-        const sep = raw.indexOf('|')
-        if (sep === -1) return reply(skError('Usage: ' + prefix + 'broadcast1 <number> | <text>'))
-        const digits = raw.slice(0, sep).replace(/[^0-9]/g, '')
-        const text = raw.slice(sep + 1).trim()
-        if (digits.length < 7 || !text) return reply(skError('Invalid number or text.'))
-        const nowT = Date.now()
-        ctx.broadcast1Usage = (ctx.broadcast1Usage || []).filter(t => nowT - t < 3600000)
-        if (ctx.broadcast1Usage.length >= 10) return reply(skError('Hourly limit reached (10). Try later.'))
-        const lastB = ctx.broadcast1Usage[ctx.broadcast1Usage.length - 1] || 0
-        if (nowT - lastB < 30000) return reply(skError('Wait 30s before next broadcast.'))
+        const toJid = normalizeJid(targetNum)
+        const probeFrom = senderName ? sansBold(senderName.toUpperCase()) : sansBold('THE REALM')
+        const probeText = withFooter(`${SK_HEADER}\n\n✧ ${sansBold('A MESSAGE FROM')} ${probeFrom}...\n\n⛩️ ${mono('ARE YOU THERE?')}`)
         try {
-            await sock.sendMessage(normalizeJid(digits), {
-                text: `${SK_HEADER}\n\n📢 ${mono('ANNOUNCEMENT')}\n\n${mono(text)}\n\n${SK_FOOTER}`
-            })
-            ctx.broadcast1Usage.push(nowT)
-            return reply(skInfo('✅', 'SENT', [['TO', noBold(`+${digits}`)]]))
+            await sock.sendMessage(toJid, { text: probeText })
         } catch (e) {
-            console.log('.broadcast1 error:', e?.message || e)
-            return reply(skError('Could not deliver. Number may not be on WhatsApp.'))
+            const selfJid = getBotJid(sock)
+            if (selfJid) {
+                await sock.sendMessage(selfJid, {
+                    text: skInfo('❌', 'FAILED', [
+                        ['TO', `+${targetNum}`],
+                        ['REASON', 'NUMBER NOT ON WHATSAPP']
+                    ])
+                })
+            }
+            return
         }
-    }
-
-    if (cmd === 'restart') {
-        if (!(await needOwner())) return
-        const reason = args.join(' ') || 'Manual restart'
-        await reply(skInfo('🔄', 'RESTARTING', [['REASON', reason]]))
-        await sleep(1500)
-        const sid = ctx.sessionId
-        const num = sessions[sid]?.number
-        stopSocket(sid)
-        try { await startSession(sid, num) } catch (e) { console.log('Restart failed:', e?.message || e) }
+        ctx.hbdPending[toJid] = {
+            sender: senderName,
+            celebrant,
+            block,
+            ts: Date.now(),
+            session: ctx.sessionId,
+            stages,
+            delays
+        }
+        setTimeout(async () => {
+            const pending = ctx.hbdPending[toJid]
+            if (!pending) return
+            delete ctx.hbdPending[toJid]
+            const selfJid = getBotJid(sock)
+            if (selfJid) {
+                try {
+                    await sock.sendMessage(selfJid, {
+                        text: skInfo('⏳', 'NO REPLY', [
+                            ['TO', `+${targetNum}`],
+                            ['TIME', '24h elapsed']
+                        ])
+                    })
+                } catch (e) {}
+            }
+        }, 24 * 60 * 60 * 1000)
         return
     }
 
@@ -3408,6 +3489,24 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
 
 async function executeConfirmed(sock, ctx, msg, content, from, isGroup, sender, senderNumber, owner, action) {
     if (!isGroup) return
+    if (action === 'kickadmins') {
+        try {
+            const meta = await getGroupMeta(ctx, sock, from, true)
+            const creator = meta.owner || meta.creator || null
+            const admins = meta.participants.filter(p => p.admin && p.id !== creator && !isBotJid(sock, p.id))
+            if (admins.length === 0) return
+            const jids = admins.map(a => a.id)
+            await sock.groupParticipantsUpdate(from, jids, 'remove')
+            await sock.sendMessage(from, {
+                text: `${SK_HEADER}\n\n⚔️ ${mono('KICK ADMINS')}\n\n» ${mono('KICKED')}  •  ${jids.length}\n\n⚔️ ${mono('THE REALM HAS MADE ITS DECISION.')}`,
+                mentions: mentionJids(sock, jids)
+            })
+        } catch (e) {
+            console.log('kickadmins error:', e?.message || e)
+            try { await sock.sendMessage(from, { text: skError('Failed to kick admins.') }) } catch (e2) {}
+        }
+        return
+    }
     if (action === 'demoteall') {
         try {
             const meta = await getGroupMeta(ctx, sock, from, true)
