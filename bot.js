@@ -30,9 +30,9 @@ const crypto = require('crypto')
 const { execFile } = require('child_process')
 const P = require('pino')
 const { MongoClient } = require('mongodb')
-const baileys = require('@whiskeysockets/baileys')
+const baileys = require('@innovatorssoft/baileys')
 const makeWASocket = baileys.default
-const { useMultiFileAuthState, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON, proto, getUrlInfo } = baileys
+const { useMultiFileAuthState, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON, proto } = baileys
 
 let QRCode = null
 try { QRCode = require('qrcode') } catch (e) { QRCode = null }
@@ -2510,6 +2510,37 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         return reply(skLine('📖', 'COMMAND', `.» ${target}\n\n${cmdMap[target]}`))
     }
 
+    const GAME_HTML = {
+        snake: { file: 'snake.html', label: 'Snake', emoji: '🐍' },
+        dino: { file: 'dino.html', label: 'Dino Runner', emoji: '🦖' },
+        flappy: { file: 'flappy.html', label: 'Flappy Bird', emoji: '🐦' },
+        fishing: { file: 'fishing.html', label: 'Fishing Master', emoji: '🎣' },
+        blockblast: { file: 'blockblast.html', label: 'Block Blast', emoji: '🧩' },
+        ttt: { file: 'ttt.html', label: 'Tic-Tac-Toe', emoji: '❌' },
+        minesweeper: { file: 'minesweeper.html', label: 'Minesweeper', emoji: '💣' },
+        slots: { file: 'slots.html', label: 'Slots', emoji: '🎰' },
+        piano: { file: 'piano.html', label: 'Piano', emoji: '🎹' },
+        drum: { file: 'drum.html', label: 'Drum Hero', emoji: '🥁' },
+        guitar: { file: 'guitar.html', label: 'Guitar', emoji: '🎸' },
+        noxguitar: { file: 'noxguitar.html', label: 'NOX Guitar', emoji: '🌑' }
+    }
+
+    if (GAME_HTML[cmd]) {
+        const g = GAME_HTML[cmd]
+        const gamePath = path.join('.', 'games', g.file)
+        if (!fs.existsSync(gamePath)) {
+            return reply(skError('Game file not found: ' + g.file))
+        }
+        try {
+            const htmlPayload = fs.readFileSync(gamePath, 'utf-8')
+            await sock.sendRichHtml(from, htmlPayload, { quoted: msg })
+        } catch (e) {
+            console.log('.' + cmd + ' error:', e?.message || e)
+            return reply(skError('Failed to send game.'))
+        }
+        return
+    }
+
     if (cmd === 'games') {
         const text =
             `${SK_HEADER}\n\n` +
@@ -2528,41 +2559,6 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             `» ${prefix}${mono('noxguitar')}   •  ${mono('NOX Guitar')}\n\n` +
             `${SK_FOOTER}`
         return reply(text)
-    }
-
-    const GAME_FILES = {
-        snake: { file: 'snake.html', label: 'Snake', emoji: '🐍' },
-        dino: { file: 'dino.html', label: 'Dino Runner', emoji: '🦖' },
-        flappy: { file: 'flappy.html', label: 'Flappy Bird', emoji: '🐦' },
-        fishing: { file: 'fishing.html', label: 'Fishing Master', emoji: '🎣' },
-        blockblast: { file: 'blockblast.html', label: 'Block Blast', emoji: '🧩' },
-        ttt: { file: 'ttt.html', label: 'Tic-Tac-Toe', emoji: '❌' },
-        minesweeper: { file: 'minesweeper.html', label: 'Minesweeper', emoji: '💣' },
-        slots: { file: 'slots.html', label: 'Slots', emoji: '🎰' },
-        piano: { file: 'piano.html', label: 'Piano', emoji: '🎹' },
-        drum: { file: 'drum.html', label: 'Drum Hero', emoji: '🥁' },
-        guitar: { file: 'guitar.html', label: 'Guitar', emoji: '🎸' },
-        noxguitar: { file: 'noxguitar.html', label: 'NOX Guitar', emoji: '🌑' }
-    }
-
-    if (GAME_FILES[cmd]) {
-        const g = GAME_FILES[cmd]
-        const gameUrl = `https://marvsyboi2024-pixel.github.io/apiBaileysWA/games/${g.file}?v=2`
-        try {
-            let preview = null
-            try {
-                preview = await getUrlInfo(gameUrl, { thumbnailWidth: 400 })
-            } catch (e) {
-                console.log('getUrlInfo failed:', e?.message || e)
-            }
-            const payload = { text: gameUrl }
-            if (preview) payload.linkPreview = preview
-            await sock.sendMessage(from, payload, { quoted: msg })
-        } catch (e) {
-            console.log('.' + cmd + ' error:', e?.message || e)
-            return reply(skError('Failed to send game link.'))
-        }
-        return
     }
 
     if (cmd === 'resetallwarns') {
