@@ -2547,21 +2547,12 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
 
     if (GAME_FILES[cmd]) {
         const g = GAME_FILES[cmd]
-        const gamePath = path.join('.', 'games', g.file)
-        if (!fs.existsSync(gamePath)) {
-            return reply(skError('Game file not found: ' + g.file))
-        }
+        const gameUrl = `https://marvsyboi2024-pixel.github.io/apiBaileysWA/games/${g.file}`
         try {
-            const buf = fs.readFileSync(gamePath)
-            await sock.sendMessage(from, {
-                document: buf,
-                mimetype: 'text/html',
-                fileName: g.file,
-                caption: withFooter(`${SK_HEADER}\n\n${g.emoji} ${mono(g.label.toUpperCase())}\n\n» ${mono('SAVE')}  •  ${mono('Download the file')}\n» ${mono('PLAY')}  •  ${mono('Open in browser')}`)
-            }, { quoted: msg })
+            await sock.sendMessage(from, { text: gameUrl }, { quoted: msg })
         } catch (e) {
             console.log('.' + cmd + ' error:', e?.message || e)
-            return reply(skError('Failed to send game file.'))
+            return reply(skError('Failed to send game link.'))
         }
         return
     }
