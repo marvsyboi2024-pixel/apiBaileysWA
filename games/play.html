@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>WhatsApp</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; overflow:hidden; font-family:-apple-system,Roboto,Helvetica,Arial,sans-serif; }
+  body { background:#0b141a; display:flex; flex-direction:column; }
+
+  .wa-header {
+    background:#1f2c33;
+    color:#e9edef;
+    padding:8px 12px;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.4);
+    z-index:10;
+    flex-shrink:0;
+  }
+  .wa-back { font-size:22px; color:#aebac1; padding:4px 6px; cursor:pointer; }
+  .wa-avatar { width:38px; height:38px; border-radius:50%; background:linear-gradient(135deg,#6a7175,#4a5155); display:flex; align-items:center; justify-content:center; color:#fff; font-size:16px; font-weight:600; flex-shrink:0; }
+  .wa-info { flex:1; min-width:0; }
+  .wa-name { font-size:15px; font-weight:500; color:#e9edef; line-height:1.2; }
+  .wa-status { font-size:11px; color:#8696a0; line-height:1.2; }
+  .wa-icons { display:flex; gap:20px; color:#aebac1; font-size:18px; flex-shrink:0; padding-right:6px; }
+  .wa-icons span { cursor:pointer; }
+
+  .wa-body {
+    flex:1;
+    background-color:#0b141a;
+    background-image:
+      radial-gradient(circle at 15% 25%, rgba(255,255,255,0.025) 0%, transparent 45%),
+      radial-gradient(circle at 85% 75%, rgba(255,255,255,0.025) 0%, transparent 45%),
+      radial-gradient(circle at 50% 50%, rgba(255,255,255,0.015) 0%, transparent 50%);
+    padding:10px 8px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+  }
+
+  .wa-bubble {
+    background:#005c4b;
+    color:#e9edef;
+    border-radius:8px 8px 8px 2px;
+    padding:5px;
+    width:100%;
+    max-width:100%;
+    box-shadow:0 1px 1px rgba(0,0,0,0.3);
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    height:100%;
+  }
+  .wa-bubble::before {
+    content:"";
+    position:absolute;
+    top:0; left:-8px;
+    border-top:8px solid #005c4b;
+    border-left:8px solid transparent;
+  }
+
+  .wa-forwarded {
+    font-size:11px;
+    font-style:italic;
+    color:#9fb0b8;
+    padding:3px 8px 4px;
+    display:flex;
+    align-items:center;
+    gap:5px;
+    flex-shrink:0;
+  }
+  .wa-forwarded::before { content:"\21B7"; font-style:normal; font-size:13px; }
+
+  .game-frame {
+    flex:1;
+    width:100%;
+    border:none;
+    border-radius:6px;
+    background:#0a0000;
+    display:block;
+    min-height:0;
+  }
+
+  .wa-footer {
+    display:flex;
+    justify-content:flex-end;
+    align-items:center;
+    gap:5px;
+    font-size:11px;
+    color:#9fb0b8;
+    padding:5px 8px 2px;
+    flex-shrink:0;
+  }
+  .wa-check { color:#53bdeb; letter-spacing:-3px; font-size:13px; font-weight:600; }
+</style>
+</head>
+<body>
+  <div class="wa-header">
+    <div class="wa-back">&#8592;</div>
+    <div class="wa-avatar">D</div>
+    <div class="wa-info">
+      <div class="wa-name" id="contactName">Davodee</div>
+      <div class="wa-status">online</div>
+    </div>
+    <div class="wa-icons">
+      <span>&#128249;</span>
+      <span>&#128222;</span>
+      <span>&#8942;</span>
+    </div>
+  </div>
+  <div class="wa-body">
+    <div class="wa-bubble">
+      <div class="wa-forwarded">Forwarded</div>
+      <iframe id="gameFrame" class="game-frame" allow="autoplay"></iframe>
+      <div class="wa-footer">
+        <span id="msgTime"></span>
+        <span class="wa-check">&#10003;&#10003;</span>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function(){
+      const params = new URLSearchParams(location.search);
+      const game = params.get('g') || 'snake.html';
+      const name = params.get('n') || 'Davodee';
+      document.getElementById('contactName').textContent = name;
+      document.getElementById('gameFrame').src = game;
+      const d = new Date();
+      const hh = d.getHours().toString().padStart(2,'0');
+      const mm = d.getMinutes().toString().padStart(2,'0');
+      document.getElementById('msgTime').textContent = hh + ':' + mm;
+    })();
+  </script>
+</body>
+</html>
