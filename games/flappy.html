@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Flappy Bird — SUKUNA REALM</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: #0a0000; color: #eee; font-family: -apple-system, Arial, sans-serif; overflow: hidden; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px; }
+  h1 { color: #ff2222; font-size: 20px; letter-spacing: 3px; margin-bottom: 8px; font-weight: bold; }
+  #scorebar { display: flex; gap: 24px; margin-bottom: 12px; font-size: 14px; color: #ff6666; letter-spacing: 1px; }
+  #scorebar span b { color: #fff; }
+  #wrap { position: relative; width: 100%; max-width: 360px; }
+  canvas { width: 100%; background: #150000; border: 2px solid #440000; border-radius: 10px; display: block; touch-action: none; }
+  #overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; background: rgba(10,0,0,0.88); border-radius: 10px; text-align: center; padding: 20px; }
+  #overlay.show { display: flex; }
+  #overlay h2 { color: #ff2222; font-size: 22px; margin-bottom: 8px; letter-spacing: 3px; }
+  #overlay p { color: #ccc; font-size: 14px; margin-bottom: 16px; }
+  #overlay button { padding: 10px 24px; background: #aa0000; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; letter-spacing: 2px; cursor: pointer; }
+  #overlay button:active { background: #dd0000; }
+  #flap { margin-top: 14px; padding: 14px 40px; background: #220000; border: 1px solid #440000; color: #ff6666; font-size: 16px; border-radius: 8px; cursor: pointer; letter-spacing: 2px; font-weight: bold; }
+  #flap:active { background: #440000; color: #fff; }
+</style>
+</head>
+<body>
+<h1>SUKUNA FLAPPY</h1>
+<div id="scorebar">
+  <span>SCORE <b id="score">0</b></span>
+  <span>BEST <b id="best">0</b></span>
+</div>
+<div id="wrap">
+  <canvas id="c" width="360" height="480"></canvas>
+  <div id="overlay">
+    <h2 id="ovtitle">GAME OVER</h2>
+    <p id="ovtext">Score: 0</p>
+    <button id="restart">RESTART</button>
+  </div>
+</div>
+<button id="flap">FLAP</button>
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const overlay = document.getElementById('overlay');
+  const ovTitle = document.getElementById('ovtitle');
+  const ovText = document.getElementById('ovtext');
+  const restartBtn = document.getElementById('restart');
+  const flapBtn = document.getElementById('flap');
+
+  const W = canvas.width;
+  const H = canvas.height;
+  const GRAVITY = 0.4;
+  const JUMP = -7;
+  const PIPE_W = 60;
+  const GAP = 150;
+  const PIPE_SPACING = 220;
+
+  let bird, pipes, score, best, dead, started, raf, lastPipeX, groundOffset;
+
+  best = parseInt(localStorage.getItem('flappy_best') || '0', 10);
+  bestEl.textContent = best;
+
+  function reset() {
+    bird = { x: 80, y: H / 2, vy: 0, r: 14 };
+    pipes = [];
+    score = 0;
+    dead = false;
+    started = false;
+    lastPipeX = W;
+    groundOffset = 0;
+    scoreEl.textContent = '0';
+    overlay.classList.remove('show');
+    cancelAnimationFrame(raf);
+    loop();
+  }
+
+  function flap() {
+    if (dead) return;
+    started = true;
+    bird.vy = JUMP;
+  }
+
+  function spawnPipe() {
+    const gapY = 60 + Math.random() * (H - GAP - 120);
+    pipes.push({ x: W, top: gapY, bottom: gapY + GAP, scored: false });
+    lastPipeX = W;
+  }
+
+  function loop() {
+    if (dead) return;
+
+    if (started) {
+      bird.vy += GRAVITY;
+      bird.y += bird.vy;
+    }
+
+    if (bird.y - bird.r <= 0) {
+      bird.y = bird.r;
+      bird.vy = 0;
+    }
+    if (bird.y + bird.r >= H - 20) {
+      bird.y = H - 20 - bird.r;
+      return die();
+    }
+
+    const spacing = started ? PIPE_SPACING : 999999;
+    if (W - lastPipeX >= spacing) {
+      spawnPipe();
+    }
+    if (pipes.length === 0 && started) spawnPipe();
+
+    for (let i = pipes.length - 1; i >= 0; i--) {
+      const p = pipes[i];
+      p.x -= 2.4;
+      if (!p.scored && p.x + PIPE_W < bird.x - bird.r) {
+        p.scored = true;
+        score++;
+        scoreEl.textContent = score;
+      }
+      if (p.x + PIPE_W < -10) pipes.splice(i, 1);
+      if (bird.x + bird.r > p.x && bird.x - bird.r < p.x + PIPE_W) {
+        if (bird.y - bird.r < p.top || bird.y + bird.r > p.bottom) return die();
+      }
+    }
+
+    groundOffset = (groundOffset + 2.4) % 30;
+
+    draw();
+    raf = requestAnimationFrame(loop);
+  }
+
+  function die() {
+    dead = true;
+    cancelAnimationFrame(raf);
+    if (score > best) {
+      best = score;
+      localStorage.setItem('flappy_best', best);
+      bestEl.textContent = best;
+    }
+    ovTitle.textContent = 'GAME OVER';
+    ovText.textContent = 'Score: ' + score;
+    overlay.classList.add('show');
+  }
+
+  function draw() {
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#150000');
+    grad.addColorStop(1, '#2a0000');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    for (const p of pipes) {
+      ctx.fillStyle = '#aa0000';
+      ctx.fillRect(p.x, 0, PIPE_W, p.top);
+      ctx.fillRect(p.x, p.bottom, PIPE_W, H - p.bottom);
+      ctx.fillStyle = '#ff2222';
+      ctx.fillRect(p.x - 3, p.top - 22, PIPE_W + 6, 22);
+      ctx.fillRect(p.x - 3, p.bottom, PIPE_W + 6, 22);
+    }
+
+    ctx.fillStyle = '#150000';
+    ctx.fillRect(0, H - 20, W, 20);
+    ctx.strokeStyle = '#440000';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, H - 20);
+    ctx.lineTo(W, H - 20);
+    ctx.stroke();
+    ctx.strokeStyle = '#2a0000';
+    ctx.lineWidth = 1;
+    for (let x = -groundOffset; x < W; x += 30) {
+      ctx.beginPath();
+      ctx.moveTo(x, H - 20);
+      ctx.lineTo(x + 15, H - 20);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = '#ff2222';
+    ctx.beginPath();
+    ctx.arc(bird.x, bird.y, bird.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#150000';
+    ctx.beginPath();
+    ctx.arc(bird.x + 5, bird.y - 4, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffcc00';
+    ctx.beginPath();
+    ctx.moveTo(bird.x + bird.r - 2, bird.y);
+    ctx.lineTo(bird.x + bird.r + 8, bird.y + 2);
+    ctx.lineTo(bird.x + bird.r - 2, bird.y + 5);
+    ctx.fill();
+
+    if (!started && !dead) {
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.font = 'bold 14px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('TAP FLAP TO START', W / 2, 60);
+    }
+  }
+
+  flapBtn.addEventListener('click', flap);
+  canvas.addEventListener('click', flap);
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); flap(); }, { passive: false });
+  document.addEventListener('keydown', e => {
+    if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') { e.preventDefault(); flap(); }
+  });
+  restartBtn.addEventListener('click', reset);
+
+  reset();
+})();
+</script>
+</body>
+</html>

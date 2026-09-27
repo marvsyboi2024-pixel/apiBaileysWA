@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Fishing Master — SUKUNA REALM</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: #0a0000; color: #eee; font-family: -apple-system, Arial, sans-serif; overflow: hidden; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px; }
+  h1 { color: #ff2222; font-size: 20px; letter-spacing: 3px; margin-bottom: 8px; font-weight: bold; }
+  #scorebar { display: flex; gap: 20px; margin-bottom: 12px; font-size: 13px; color: #ff6666; letter-spacing: 1px; }
+  #scorebar span b { color: #fff; }
+  #wrap { position: relative; width: 100%; max-width: 400px; }
+  canvas { width: 100%; background: linear-gradient(to bottom, #001a2e 0%, #001a2e 30%, #003355 30%, #002244 100%); border: 2px solid #440000; border-radius: 10px; display: block; touch-action: none; }
+  #overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; background: rgba(10,0,0,0.88); border-radius: 10px; text-align: center; padding: 20px; }
+  #overlay.show { display: flex; }
+  #overlay h2 { color: #ff2222; font-size: 22px; margin-bottom: 8px; letter-spacing: 3px; }
+  #overlay p { color: #ccc; font-size: 14px; margin-bottom: 16px; }
+  #overlay button { padding: 10px 24px; background: #aa0000; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; letter-spacing: 2px; cursor: pointer; }
+  #overlay button:active { background: #dd0000; }
+  #hook { margin-top: 14px; padding: 14px 40px; background: #220000; border: 1px solid #440000; color: #ff6666; font-size: 16px; border-radius: 8px; cursor: pointer; letter-spacing: 2px; font-weight: bold; }
+  #hook:active { background: #440000; color: #fff; }
+</style>
+</head>
+<body>
+<h1>SUKUNA FISHING</h1>
+<div id="scorebar">
+  <span>COINS <b id="coins">0</b></span>
+  <span>CAUGHT <b id="caught">0</b></span>
+  <span>MISSES <b id="misses">0</b></span>
+</div>
+<div id="wrap">
+  <canvas id="c" width="400" height="500"></canvas>
+  <div id="overlay">
+    <h2 id="ovtitle">TIME UP</h2>
+    <p id="ovtext">Coins: 0</p>
+    <button id="restart">RESTART</button>
+  </div>
+</div>
+<button id="hook">CAST / REEL</button>
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const coinsEl = document.getElementById('coins');
+  const caughtEl = document.getElementById('caught');
+  const missesEl = document.getElementById('misses');
+  const overlay = document.getElementById('overlay');
+  const ovTitle = document.getElementById('ovtitle');
+  const ovText = document.getElementById('ovtext');
+  const restartBtn = document.getElementById('restart');
+  const hookBtn = document.getElementById('hook');
+
+  const W = canvas.width;
+  const H = canvas.height;
+  const WATER_Y = 150;
+  const DURATION = 60000;
+
+  const FISH_TYPES = [
+    { emoji: '🐟', value: 5, color: '#66aaff', r: 12, speed: 1.5, name: 'Small Fish' },
+    { emoji: '🐠', value: 10, color: '#ffaa66', r: 14, speed: 1.8, name: 'Tropical Fish' },
+    { emoji: '🐡', value: 20, color: '#ffcc44', r: 16, speed: 1.2, name: 'Puffer' },
+    { emoji: '🦐', value: 15, color: '#ff8899', r: 10, speed: 2.5, name: 'Shrimp' },
+    { emoji: '🦑', value: 30, color: '#cc66ff', r: 18, speed: 1.0, name: 'Squid' },
+    { emoji: '🐙', value: 50, color: '#ff4466', r: 22, speed: 0.8, name: 'Octopus' },
+    { emoji: '🦈', value: 100, color: '#88aacc', r: 28, speed: 0.6, name: 'Shark' }
+  ];
+
+  let hook, fishes, coins, caught, misses, dead, raf, startTime, spawnTimer, hookState, bobberY;
+
+  function reset() {
+    hook = { x: W / 2, y: WATER_Y };
+    bobberY = WATER_Y;
+    fishes = [];
+    coins = 0;
+    caught = 0;
+    misses = 0;
+    dead = false;
+    startTime = Date.now();
+    spawnTimer = 0;
+    hookState = 'idle';
+    coinsEl.textContent = '0';
+    caughtEl.textContent = '0';
+    missesEl.textContent = '0';
+    overlay.classList.remove('show');
+    cancelAnimationFrame(raf);
+    loop();
+  }
+
+  function spawnFish() {
+    const t = FISH_TYPES[Math.floor(Math.random() * FISH_TYPES.length)];
+    const fromLeft = Math.random() > 0.5;
+    fishes.push({
+      type: t,
+      x: fromLeft ? -30 : W + 30,
+      y: WATER_Y + 40 + Math.random() * (H - WATER_Y - 80),
+      vx: fromLeft ? t.speed : -t.speed,
+      bob: Math.random() * Math.PI * 2
+    });
+  }
+
+  function hookAction() {
+    if (dead) return;
+    if (hookState === 'idle') {
+      hookState = 'casting';
+      bobberY = WATER_Y;
+    } else if (hookState === 'casting') {
+      hookState = 'reeling';
+    }
+  }
+
+  function loop() {
+    if (dead) return;
+
+    const elapsed = Date.now() - startTime;
+    if (elapsed >= DURATION) return end();
+
+    spawnTimer += 16;
+    if (spawnTimer > 900) {
+      spawnTimer = 0;
+      if (fishes.length < 12) spawnFish();
+    }
+
+    if (hookState === 'casting') {
+      bobberY += 4;
+      if (bobberY > H - 40) {
+        bobberY = H - 40;
+        hookState = 'waiting';
+        setTimeout(() => { if (!dead) hookState = 'reeling'; }, 300);
+      }
+    } else if (hookState === 'reeling') {
+      bobberY -= 6;
+      if (bobberY <= WATER_Y) {
+        bobberY = WATER_Y;
+        hookState = 'idle';
+      }
+    }
+
+    for (let i = fishes.length - 1; i >= 0; i--) {
+      const f = fishes[i];
+      f.x += f.vx;
+      f.bob += 0.05;
+      if (f.x < -50 || f.x > W + 50) fishes.splice(i, 1);
+    }
+
+    if (hookState === 'casting' || hookState === 'waiting' || hookState === 'reeling') {
+      for (let i = fishes.length - 1; i >= 0; i--) {
+        const f = fishes[i];
+        const dx = f.x - W / 2;
+        const dy = f.y - bobberY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < f.type.r + 14) {
+          if (hookState !== 'reeling') hookState = 'reeling';
+          coins += f.type.value;
+          caught++;
+          coinsEl.textContent = coins;
+          caughtEl.textContent = caught;
+          fishes.splice(i, 1);
+          showCatch(f.type);
+          break;
+        }
+      }
+    }
+
+    draw();
+    raf = requestAnimationFrame(loop);
+  }
+
+  let catchMsg = null;
+  function showCatch(t) {
+    catchMsg = { text: '+' + t.value + '  ' + t.emoji + ' ' + t.name, t: Date.now(), color: t.color };
+  }
+
+  function end() {
+    dead = true;
+    cancelAnimationFrame(raf);
+    ovTitle.textContent = 'TIME UP';
+    ovText.textContent = 'Coins: ' + coins + '  •  Caught: ' + caught;
+    overlay.classList.add('show');
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#001a2e');
+    grad.addColorStop(0.3, '#001a2e');
+    grad.addColorStop(0.3, '#003355');
+    grad.addColorStop(1, '#002244');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = '#88ccff';
+    for (let i = 0; i < 4; i++) {
+      const x = (i * 137 + (Date.now() / 40) % 137) % W;
+      ctx.globalAlpha = 0.15;
+      ctx.beginPath();
+      ctx.arc(x, WATER_Y + 30 + i * 20, 20 + i * 8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.strokeStyle = '#aa0000';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(W / 2, WATER_Y);
+    ctx.lineTo(W / 2, bobberY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#ff2222';
+    ctx.beginPath();
+    ctx.arc(W / 2, bobberY, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(W / 2, bobberY, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    for (const f of fishes) {
+      const bobY = f.y + Math.sin(f.bob) * 5;
+      ctx.font = f.type.r * 2 + 'px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(f.type.emoji, f.x, bobY);
+    }
+
+    const remain = Math.max(0, Math.ceil((DURATION - (Date.now() - startTime)) / 1000));
+    ctx.fillStyle = '#ff6666';
+    ctx.font = 'bold 16px Arial';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('⏱ ' + remain + 's', 12, 12);
+
+    if (catchMsg && Date.now() - catchMsg.t < 1200) {
+      ctx.fillStyle = catchMsg.color;
+      ctx.font = 'bold 20px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.globalAlpha = Math.max(0, 1 - (Date.now() - catchMsg.t) / 1200);
+      ctx.fillText(catchMsg.text, W / 2, 90);
+      ctx.globalAlpha = 1;
+    }
+
+    if (hookState === 'idle' && fishes.length === 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.font = 'bold 14px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('TAP CAST TO START', W / 2, H - 40);
+    }
+  }
+
+  hookBtn.addEventListener('click', hookAction);
+  canvas.addEventListener('click', hookAction);
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); hookAction(); }, { passive: false });
+  document.addEventListener('keydown', e => {
+    if (e.key === ' ' || e.key === 'ArrowUp') { e.preventDefault(); hookAction(); }
+  });
+  restartBtn.addEventListener('click', reset);
+
+  reset();
+})();
+</script>
+</body>
+</html>

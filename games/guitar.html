@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Guitar — SUKUNA REALM</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: #0a0000; color: #eee; font-family: -apple-system, Arial, sans-serif; overflow: hidden; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; }
+  h1 { color: #ff2222; font-size: 20px; letter-spacing: 3px; margin-bottom: 8px; font-weight: bold; }
+  #display { font-size: 15px; color: #ffaa88; letter-spacing: 2px; margin-bottom: 10px; min-height: 20px; font-weight: bold; text-align: center; }
+  #chords { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; max-width: 460px; margin-bottom: 12px; }
+  .chord { padding: 10px 4px; background: linear-gradient(to bottom, #330000 0%, #1a0000 100%); border: 1px solid #660000; border-radius: 8px; text-align: center; cursor: pointer; }
+  .chord.active { background: linear-gradient(to bottom, #660000 0%, #330000 100%); border-color: #ff2222; }
+  .chord .cn { font-size: 14px; color: #ff6666; font-weight: bold; letter-spacing: 1px; }
+  .chord .cd { font-size: 9px; color: #aa5555; margin-top: 2px; letter-spacing: 1px; }
+  #fretboard { width: 100%; max-width: 460px; background: #2a1810; border-radius: 8px; padding: 12px 0; position: relative; border: 2px solid #550000; }
+  .string { height: 14px; margin: 2px 12px; position: relative; cursor: pointer; }
+  .string .wire { position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: linear-gradient(to right, #aa9977 0%, #ddccaa 50%, #aa9977 100%); transform: translateY(-50%); }
+  .string.s1 .wire { height: 2px; }
+  .string.s2 .wire { height: 2px; }
+  .string.s3 .wire { height: 1.5px; }
+  .string.s4 .wire { height: 1.5px; }
+  .string.s5 .wire { height: 1.8px; }
+  .string.s6 .wire { height: 2.2px; }
+  .string .label { position: absolute; left: -6px; top: 50%; transform: translateY(-50%); font-size: 9px; color: #886655; }
+  .string:active .wire, .string.active .wire { background: #ffcc88; box-shadow: 0 0 8px #ffaa44; }
+  #strum { margin-top: 14px; padding: 14px 40px; background: #aa0000; color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; letter-spacing: 3px; cursor: pointer; }
+  #strum:active { background: #dd0000; }
+  #hint { margin-top: 8px; font-size: 10px; color: #885555; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+<h1>SUKUNA GUITAR</h1>
+<div id="display">Tap a chord or pluck a string</div>
+<div id="chords"></div>
+<div id="fretboard">
+  <div class="string s6" data-note="E2"><div class="wire"></div><div class="label">E</div></div>
+  <div class="string s5" data-note="A2"><div class="wire"></div><div class="label">A</div></div>
+  <div class="string s4" data-note="D3"><div class="wire"></div><div class="label">D</div></div>
+  <div class="string s3" data-note="G3"><div class="wire"></div><div class="label">G</div></div>
+  <div class="string s2" data-note="B3"><div class="wire"></div><div class="label">B</div></div>
+  <div class="string s1" data-note="E4"><div class="wire"></div><div class="label">E</div></div>
+</div>
+<button id="strum">⚡ STRUM</button>
+<div id="hint">Tap strings individually or use chords</div>
+<script>
+(() => {
+  const chordsEl = document.getElementById('chords');
+  const display = document.getElementById('display');
+  const strumBtn = document.getElementById('strum');
+  const strings = document.querySelectorAll('.string');
+
+  const CHORDS = [
+    { name: 'Am',  notes: ['A2', 'E3', 'A3', 'C4', 'E4'] },
+    { name: 'C',   notes: ['C3', 'E3', 'G3', 'C4', 'E4'] },
+    { name: 'G',   notes: ['G2', 'B2', 'D3', 'G3', 'B3'] },
+    { name: 'F',   notes: ['F2', 'A2', 'C3', 'F3', 'A3'] },
+    { name: 'Dm',  notes: ['D3', 'A3', 'D4', 'F4'] },
+    { name: 'Em',  notes: ['E2', 'B2', 'E3', 'G3', 'B3'] },
+    { name: 'D',   notes: ['D3', 'A3', 'D4', 'F#4'] },
+    { name: 'A',   notes: ['A2', 'E3', 'A3', 'C#4', 'E4'] }
+  ];
+
+  const NOTE_FREQ = {
+    'E2': 82.41, 'F2': 87.31, 'G2': 98.00,
+    'A2': 110.00, 'B2': 123.47,
+    'C3': 130.81, 'D3': 146.83, 'E3': 164.81, 'F3': 174.61, 'G3': 196.00, 'A3': 220.00, 'B3': 246.94,
+    'C4': 261.63, 'D4': 293.66, 'E4': 329.63, 'F4': 349.23, 'F#4': 369.99, 'G4': 392.00, 'A4': 440.00, 'C#4': 277.18
+  };
+
+  let ctx = null;
+
+  function initAudio() {
+    if (!ctx) {
+      try { ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (e) { display.textContent = 'Audio unsupported'; }
+    }
+  }
+
+  function pluck(note, delay) {
+    initAudio();
+    if (!ctx) return;
+    const f = NOTE_FREQ[note];
+    if (!f) return;
+    const t = ctx.currentTime + (delay || 0);
+    const osc = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    osc.type = 'triangle';
+    osc2.type = 'sawtooth';
+    osc.frequency.value = f;
+    osc2.frequency.value = f * 2;
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(2500, t);
+    filter.frequency.exponentialRampToValueAtTime(400, t + 0.8);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.3, t + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+    osc.connect(filter);
+    osc2.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t);
+    osc2.start(t);
+    osc.stop(t + 1.5);
+    osc2.stop(t + 1.5);
+  }
+
+  function buildChords() {
+    CHORDS.forEach(c => {
+      const d = document.createElement('div');
+      d.className = 'chord';
+      d.innerHTML = '<div class="cn">' + c.name + '</div><div class="cd">' + c.notes.length + ' strings</div>';
+      d.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        d.classList.add('active');
+        setTimeout(() => d.classList.remove('active'), 200);
+        c.notes.forEach((n, i) => pluck(n, i * 0.04));
+        display.textContent = '🎸 ' + c.name;
+      });
+      chordsEl.appendChild(d);
+    });
+  }
+
+  strings.forEach(s => {
+    s.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      s.classList.add('active');
+      pluck(s.dataset.note, 0);
+      display.textContent = '♪ ' + s.dataset.note;
+    });
+    s.addEventListener('pointerup', () => s.classList.remove('active'));
+    s.addEventListener('pointerleave', () => s.classList.remove('active'));
+  });
+
+  strumBtn.addEventListener('click', () => {
+    const all = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'];
+    all.forEach((n, i) => pluck(n, i * 0.06));
+    display.textContent = '⚡ STRUM';
+  });
+
+  buildChords();
+})();
+</script>
+</body>
+</html>

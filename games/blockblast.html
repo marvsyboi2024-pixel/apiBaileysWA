@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Block Blast — SUKUNA REALM</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: #0a0000; color: #eee; font-family: -apple-system, Arial, sans-serif; overflow: hidden; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px; }
+  h1 { color: #ff2222; font-size: 18px; letter-spacing: 3px; margin-bottom: 6px; font-weight: bold; }
+  #scorebar { display: flex; gap: 20px; margin-bottom: 8px; font-size: 13px; color: #ff6666; letter-spacing: 1px; }
+  #scorebar span b { color: #fff; }
+  #wrap { position: relative; width: 100%; max-width: 360px; }
+  canvas { width: 100%; background: #150000; border: 2px solid #440000; border-radius: 10px; display: block; touch-action: none; }
+  #overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; background: rgba(10,0,0,0.9); border-radius: 10px; text-align: center; padding: 20px; }
+  #overlay.show { display: flex; }
+  #overlay h2 { color: #ff2222; font-size: 22px; margin-bottom: 8px; letter-spacing: 3px; }
+  #overlay p { color: #ccc; font-size: 14px; margin-bottom: 16px; }
+  #overlay button { padding: 10px 24px; background: #aa0000; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; letter-spacing: 2px; cursor: pointer; }
+  #overlay button:active { background: #dd0000; }
+  #hint { margin-top: 8px; color: #ff6666; font-size: 11px; letter-spacing: 1px; text-align: center; }
+</style>
+</head>
+<body>
+<h1>BLOCK BLAST</h1>
+<div id="scorebar">
+  <span>SCORE <b id="score">0</b></span>
+  <span>BEST <b id="best">0</b></span>
+  <span>LINES <b id="lines">0</b></span>
+</div>
+<div id="wrap">
+  <canvas id="c" width="360" height="560"></canvas>
+  <div id="overlay">
+    <h2>GAME OVER</h2>
+    <p id="ovtext">Score: 0</p>
+    <button id="restart">RESTART</button>
+  </div>
+</div>
+<div id="hint">Tap a piece, then tap the grid to place it</div>
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const linesEl = document.getElementById('lines');
+  const overlay = document.getElementById('overlay');
+  const ovtext = document.getElementById('ovtext');
+  const restartBtn = document.getElementById('restart');
+
+  const COLS = 8;
+  const ROWS = 8;
+  const CELL = 40;
+  const BOARD_X = (360 - COLS * CELL) / 2;
+  const BOARD_Y = 40;
+
+  const SHAPES = [
+    { c: '#ff2222', s: [[1]] },
+    { c: '#ff6666', s: [[1,1]] },
+    { c: '#ff2222', s: [[1],[1]] },
+    { c: '#ffaa00', s: [[1,1],[1,1]] },
+    { c: '#ff4444', s: [[1,1,1]] },
+    { c: '#ff4444', s: [[1],[1],[1]] },
+    { c: '#cc0000', s: [[1,0],[1,1]] },
+    { c: '#cc0000', s: [[0,1],[1,1]] },
+    { c: '#ff8888', s: [[1,1,1],[0,1,0]] },
+    { c: '#aa0000', s: [[1,1],[1,0]] }
+  ];
+
+  let board, score, best, lines, pieces, selected, dead;
+
+  best = parseInt(localStorage.getItem('blockblast_best') || '0', 10);
+  bestEl.textContent = best;
+
+  function newPiece() {
+    const sh = SHAPES[Math.floor(Math.random() * SHAPES.length)];
+    return { color: sh.c, shape: sh.s, used: false };
+  }
+
+  function reset() {
+    board = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+    score = 0;
+    lines = 0;
+    dead = false;
+    selected = null;
+    pieces = [newPiece(), newPiece(), newPiece()];
+    scoreEl.textContent = '0';
+    linesEl.textContent = '0';
+    overlay.classList.remove('show');
+    draw();
+  }
+
+  function canPlace(shape, row, col) {
+    for (let r = 0; r < shape.length; r++) {
+      for (let c = 0; c < shape[r].length; c++) {
+        if (!shape[r][c]) continue;
+        const br = row + r;
+        const bc = col + c;
+        if (br < 0 || br >= ROWS || bc < 0 || bc >= COLS) return false;
+        if (board[br][bc]) return false;
+      }
+    }
+    return true;
+  }
+
+  function place(shape, color, row, col) {
+    for (let r = 0; r < shape.length; r++) {
+      for (let c = 0; c < shape[r].length; c++) {
+        if (shape[r][c]) board[row + r][col + c] = color;
+      }
+    }
+  }
+
+  function clearLines() {
+    let cleared = 0;
+    for (let r = 0; r < ROWS; r++) {
+      if (board[r].every(c => c)) {
+        board[r] = Array(COLS).fill(null);
+        cleared++;
+      }
+    }
+    for (let c = 0; c < COLS; c++) {
+      let full = true;
+      for (let r = 0; r < ROWS; r++) if (!board[r][c]) { full = false; break; }
+      if (full) {
+        for (let r = 0; r < ROWS; r++) board[r][c] = null;
+        cleared++;
+      }
+    }
+    if (cleared > 0) {
+      score += cleared * 100 + (cleared - 1) * 50;
+      lines += cleared;
+      scoreEl.textContent = score;
+      linesEl.textContent = lines;
+    }
+  }
+
+  function anyMoveAvailable() {
+    for (const p of pieces) {
+      if (p.used) continue;
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if (canPlace(p.shape, r, c)) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 360, 560);
+
+    ctx.fillStyle = '#0a0000';
+    ctx.fillRect(0, 0, 360, 560);
+
+    ctx.fillStyle = '#1a0000';
+    ctx.fillRect(BOARD_X - 4, BOARD_Y - 4, COLS * CELL + 8, ROWS * CELL + 8);
+
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const x = BOARD_X + c * CELL;
+        const y = BOARD_Y + r * CELL;
+        ctx.fillStyle = board[r][c] || '#220000';
+        ctx.fillRect(x + 1, y + 1, CELL - 2, CELL - 2);
+        if (board[r][c]) {
+          ctx.fillStyle = 'rgba(255,255,255,0.12)';
+          ctx.fillRect(x + 1, y + 1, CELL - 2, 6);
+        }
+      }
+    }
+
+    const trayY = BOARD_Y + ROWS * CELL + 20;
+    const trayX = BOARD_X;
+    const slotW = (COLS * CELL) / 3;
+
+    for (let i = 0; i < pieces.length; i++) {
+      const p = pieces[i];
+      const px = trayX + i * slotW + slotW / 2;
+      const py = trayY + 30;
+      if (p.used) continue;
+      const shW = p.shape[0].length * 20;
+      const shH = p.shape.length * 20;
+      const ox = px - shW / 2;
+      const oy = py - shH / 2;
+      for (let r = 0; r < p.shape.length; r++) {
+        for (let c = 0; c < p.shape[r].length; c++) {
+          if (!p.shape[r][c]) continue;
+          ctx.fillStyle = p.color;
+          ctx.fillRect(ox + c * 20 + 1, oy + r * 20 + 1, 18, 18);
+        }
+      }
+      if (selected === i) {
+        ctx.strokeStyle = '#ffff00';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px - slotW / 2 + 6, trayY + 4, slotW - 12, 52);
+      }
+    }
+
+    const p = selected !== null ? pieces[selected] : null;
+    if (p && !p.used) {
+      const shW = p.shape[0].length * CELL;
+      const shH = p.shape.length * CELL;
+      ctx.globalAlpha = 0.15;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(BOARD_X, BOARD_Y, COLS * CELL, ROWS * CELL);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function pickPiece(x, y) {
+    const trayY = BOARD_Y + ROWS * CELL + 20;
+    if (y < trayY || y > trayY + 60) return -1;
+    const trayX = BOARD_X;
+    const slotW = (COLS * CELL) / 3;
+    for (let i = 0; i < pieces.length; i++) {
+      const px = trayX + i * slotW;
+      if (x >= px && x < px + slotW) return i;
+    }
+    return -1;
+  }
+
+  function tryPlaceAt(x, y) {
+    if (selected === null) return false;
+    const p = pieces[selected];
+    if (!p || p.used) return false;
+    const col = Math.floor((x - BOARD_X) / CELL);
+    const row = Math.floor((y - BOARD_Y) / CELL);
+    if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return false;
+    const shW = p.shape[0].length;
+    const shH = p.shape.length;
+    const sc = Math.max(0, Math.min(COLS - shW, col));
+    const sr = Math.max(0, Math.min(ROWS - shH, row));
+    if (!canPlace(p.shape, sr, sc)) return false;
+    place(p.shape, p.color, sr, sc);
+    p.used = true;
+    score += p.shape.flat().filter(Boolean).length * 5;
+    scoreEl.textContent = score;
+    clearLines();
+    if (pieces.every(pp => pp.used)) {
+      pieces = [newPiece(), newPiece(), newPiece()];
+    }
+    selected = null;
+    draw();
+    if (!anyMoveAvailable()) {
+      dead = true;
+      if (score > best) {
+        best = score;
+        localStorage.setItem('blockblast_best', best);
+        bestEl.textContent = best;
+      }
+      ovtext.textContent = 'Score: ' + score;
+      overlay.classList.add('show');
+    }
+    return true;
+  }
+
+  function handleTap(x, y) {
+    if (dead) return;
+    const trayY = BOARD_Y + ROWS * CELL + 20;
+    if (y < trayY - 10) {
+      tryPlaceAt(x, y);
+    } else {
+      const idx = pickPiece(x, y);
+      if (idx >= 0 && !pieces[idx].used) selected = idx;
+      else selected = null;
+      draw();
+    }
+  }
+
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+  }
+
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); const p = getPos(e); handleTap(p.x, p.y); }, { passive: false });
+  canvas.addEventListener('click', e => { const p = getPos(e); handleTap(p.x, p.y); });
+  restartBtn.addEventListener('click', reset);
+
+  reset();
+})();
+</script>
+</body>
+</html>

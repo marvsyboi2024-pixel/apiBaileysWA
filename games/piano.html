@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Piano — SUKUNA REALM</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: #0a0000; color: #eee; font-family: -apple-system, Arial, sans-serif; overflow: hidden; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; }
+  h1 { color: #ff2222; font-size: 20px; letter-spacing: 3px; margin-bottom: 10px; font-weight: bold; }
+  #display { font-size: 16px; color: #ffaa88; letter-spacing: 2px; margin-bottom: 12px; min-height: 22px; font-weight: bold; }
+  #piano { position: relative; width: 100%; max-width: 720px; height: 220px; }
+  .white-row { display: flex; width: 100%; height: 100%; }
+  .white { flex: 1; background: linear-gradient(to bottom, #f5f0e8 0%, #d8d0c4 100%); border: 1px solid #000; border-radius: 0 0 6px 6px; color: #333; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; font-size: 12px; font-weight: bold; cursor: pointer; }
+  .white.active { background: linear-gradient(to bottom, #ffcccc 0%, #ff9999 100%); }
+  .black-row { position: absolute; top: 0; left: 0; width: 100%; height: 60%; pointer-events: none; }
+  .black { position: absolute; width: 6.5%; height: 100%; background: linear-gradient(to bottom, #1a1a1a 0%, #000 100%); border-radius: 0 0 5px 5px; cursor: pointer; pointer-events: auto; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px; color: #666; font-size: 11px; font-weight: bold; }
+  .black.active { background: linear-gradient(to bottom, #660000 0%, #330000 100%); }
+  #octave { margin-top: 16px; display: flex; gap: 8px; align-items: center; font-size: 13px; color: #ff6666; letter-spacing: 1px; }
+  #octave button { padding: 6px 14px; background: #220000; border: 1px solid #440000; color: #ff6666; font-size: 14px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+  #octave button:active { background: #440000; color: #fff; }
+  #octave b { color: #fff; font-size: 15px; min-width: 30px; text-align: center; }
+</style>
+</head>
+<body>
+<h1>SUKUNA PIANO</h1>
+<div id="display">Tap keys to play</div>
+<div id="piano">
+  <div class="white-row" id="whites"></div>
+  <div class="black-row" id="blacks"></div>
+</div>
+<div id="octave">
+  <button id="octDown">−</button>
+  <b id="octVal">4</b>
+  <button id="octUp">+</button>
+</div>
+<script>
+(() => {
+  const whiteRow = document.getElementById('whites');
+  const blackRow = document.getElementById('blacks');
+  const display = document.getElementById('display');
+  const octVal = document.getElementById('octVal');
+  const octUp = document.getElementById('octUp');
+  const octDown = document.getElementById('octDown');
+
+  const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const WHITE_IDX = [0, 2, 4, 5, 7, 9, 11];
+  const BLACK_IDX = [1, 3, 6, 8, 10];
+  const BLACK_POS = [10.7, 24.3, 54.5, 67.5, 81.5];
+  const NUM_WHITE = 14;
+
+  let octave = 4;
+  let ctx = null;
+  let audioReady = false;
+
+  function initAudio() {
+    if (audioReady) return;
+    try {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      audioReady = true;
+    } catch (e) {
+      display.textContent = 'Audio not supported';
+    }
+  }
+
+  function freq(note, oct) {
+    const i = NOTES.indexOf(note);
+    const midi = (oct + 1) * 12 + i;
+    return 440 * Math.pow(2, (midi - 69) / 12);
+  }
+
+  function playNote(note, oct) {
+    initAudio();
+    if (!ctx) return;
+    const f = freq(note, oct);
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = f;
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.2);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 1.3);
+    display.textContent = '♪ ' + note + oct;
+  }
+
+  function buildKeyboard() {
+    whiteRow.innerHTML = '';
+    blackRow.innerHTML = '';
+    whiteRow.style.display = 'flex';
+    whiteRow.style.width = '100%';
+    whiteRow.style.height = '100%';
+
+    const totalWhite = NUM_WHITE;
+    const whiteW = 100 / totalWhite;
+
+    for (let i = 0; i < totalWhite; i++) {
+      const noteIdx = i % 7;
+      const octOff = Math.floor(i / 7);
+      const note = ['C','D','E','F','G','A','B'][noteIdx];
+      const w = document.createElement('div');
+      w.className = 'white';
+      w.dataset.note = note;
+      w.dataset.oct = octave + octOff;
+      w.textContent = note + (octave + octOff);
+      w.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        w.classList.add('active');
+        playNote(note, octave + octOff);
+      });
+      w.addEventListener('pointerup', () => w.classList.remove('active'));
+      w.addEventListener('pointerleave', () => w.classList.remove('active'));
+      whiteRow.appendChild(w);
+    }
+
+    // place black keys
+    for (let oct = 0; oct < 2; oct++) {
+      const base = oct * 7;
+      for (let k = 0; k < BLACK_POS.length; k++) {
+        const leftPct = (base * whiteW) + (BLACK_POS[k] * whiteW / 100);
+        const noteIdx = BLACK_IDX[k];
+        const note = NOTES[noteIdx];
+        const b = document.createElement('div');
+        b.className = 'black';
+        b.style.left = leftPct + '%';
+        b.textContent = note;
+        b.addEventListener('pointerdown', e => {
+          e.preventDefault();
+          b.classList.add('active');
+          playNote(note, octave + oct);
+        });
+        b.addEventListener('pointerup', () => b.classList.remove('active'));
+        b.addEventListener('pointerleave', () => b.classList.remove('active'));
+        blackRow.appendChild(b);
+      }
+    }
+  }
+
+  octUp.addEventListener('click', () => { if (octave < 7) { octave++; octVal.textContent = octave; buildKeyboard(); } });
+  octDown.addEventListener('click', () => { if (octave > 1) { octave--; octVal.textContent = octave; buildKeyboard(); } });
+
+  buildKeyboard();
+})();
+</script>
+</body>
+</html>

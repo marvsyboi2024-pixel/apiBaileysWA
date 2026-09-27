@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Slots — SUKUNA REALM</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: #0a0000; color: #eee; font-family: -apple-system, Arial, sans-serif; overflow: hidden; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px; }
+  h1 { color: #ff2222; font-size: 22px; letter-spacing: 4px; margin-bottom: 12px; font-weight: bold; }
+  #balance { font-size: 15px; color: #ffcc66; letter-spacing: 2px; margin-bottom: 12px; }
+  #balance b { color: #fff; font-size: 20px; }
+  #machine { display: flex; gap: 10px; background: #220000; padding: 14px; border-radius: 12px; border: 2px solid #440000; }
+  .reel { width: 90px; height: 100px; background: #150000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 54px; border: 1px solid #440000; overflow: hidden; }
+  .reel.spinning { animation: spin 0.1s linear infinite; }
+  @keyframes spin { 0% { transform: translateY(-4px); } 100% { transform: translateY(4px); } }
+  #msg { margin-top: 14px; font-size: 16px; letter-spacing: 2px; font-weight: bold; min-height: 24px; color: #ffaa88; text-align: center; }
+  #bet { margin-top: 12px; display: flex; gap: 8px; align-items: center; font-size: 13px; color: #ff6666; letter-spacing: 1px; }
+  #bet button { width: 32px; height: 32px; background: #220000; border: 1px solid #440000; color: #ff6666; font-size: 18px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+  #bet button:active { background: #440000; }
+  #bet b { color: #fff; font-size: 15px; min-width: 40px; text-align: center; }
+  #spin { margin-top: 16px; padding: 14px 50px; background: #aa0000; color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; letter-spacing: 4px; cursor: pointer; }
+  #spin:active { background: #dd0000; }
+  #spin:disabled { opacity: 0.4; cursor: not-allowed; }
+  #reset { margin-top: 10px; padding: 6px 16px; background: transparent; border: 1px solid #440000; color: #ff6666; font-size: 11px; border-radius: 5px; cursor: pointer; letter-spacing: 1px; }
+  .paytable { margin-top: 14px; font-size: 11px; color: #ff8888; letter-spacing: 1px; text-align: center; line-height: 1.7; }
+</style>
+</head>
+<body>
+<h1>SUKUNA SLOTS</h1>
+<div id="balance">BALANCE <b id="bal">1000</b></div>
+<div id="machine">
+  <div class="reel" id="r0">🍒</div>
+  <div class="reel" id="r1">🍒</div>
+  <div class="reel" id="r2">🍒</div>
+</div>
+<div id="msg">Press SPIN to play</div>
+<div id="bet">
+  <button id="dec">−</button>
+  <b id="betAmt">10</b>
+  <button id="inc">+</button>
+</div>
+<button id="spin">SPIN</button>
+<button id="reset">RESET BALANCE</button>
+<div class="paytable">
+  💎💎💎 ×100 &nbsp;·&nbsp; 7️⃣7️⃣7️⃣ ×50 &nbsp;·&nbsp; ⭐⭐⭐ ×25<br>
+  🍒🍒🍒 ×15 &nbsp;·&nbsp; 🍋🍋🍋 ×10 &nbsp;·&nbsp; Any two ×2
+</div>
+<script>
+(() => {
+  const SYMBOLS = ['🍒', '🍋', '⭐', '7️⃣', '💎', '🔔', '🍀'];
+  const PAYOUTS = { '💎': 100, '7️⃣': 50, '⭐': 25, '🍒': 15, '🍋': 10, '🔔': 8, '🍀': 5 };
+
+  const balEl = document.getElementById('bal');
+  const msgEl = document.getElementById('msg');
+  const betEl = document.getElementById('betAmt');
+  const spinBtn = document.getElementById('spin');
+  const decBtn = document.getElementById('dec');
+  const incBtn = document.getElementById('inc');
+  const resetBtn = document.getElementById('reset');
+  const reels = [document.getElementById('r0'), document.getElementById('r1'), document.getElementById('r2')];
+
+  let balance = parseInt(localStorage.getItem('slots_balance') || '1000', 10);
+  let bet = parseInt(localStorage.getItem('slots_bet') || '10', 10);
+  let spinning = false;
+
+  updateUI();
+
+  function updateUI() {
+    balEl.textContent = balance;
+    betEl.textContent = bet;
+  }
+
+  function save() {
+    localStorage.setItem('slots_balance', balance);
+    localStorage.setItem('slots_bet', bet);
+  }
+
+  decBtn.addEventListener('click', () => {
+    if (spinning) return;
+    if (bet > 10) { bet -= 10; updateUI(); save(); }
+  });
+  incBtn.addEventListener('click', () => {
+    if (spinning) return;
+    if (bet < 500 && bet + 10 <= balance) { bet += 10; updateUI(); save(); }
+  });
+
+  resetBtn.addEventListener('click', () => {
+    if (spinning) return;
+    balance = 1000;
+    bet = 10;
+    updateUI();
+    save();
+    msgEl.textContent = 'Balance reset';
+  });
+
+  spinBtn.addEventListener('click', spin);
+
+  function pick() {
+    return SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+  }
+
+  function spin() {
+    if (spinning) return;
+    if (balance < bet) {
+      msgEl.textContent = '❌ Not enough balance';
+      return;
+    }
+    spinning = true;
+    spinBtn.disabled = true;
+    balance -= bet;
+    updateUI();
+    save();
+    msgEl.textContent = 'Spinning...';
+
+    reels.forEach(r => r.classList.add('spinning'));
+
+    const final = [pick(), pick(), pick()];
+    const rollDuration = [800, 1200, 1600];
+
+    reels.forEach((r, i) => {
+      let ticks = 0;
+      const maxTicks = 8 + i * 4;
+      const ticker = setInterval(() => {
+        r.textContent = pick();
+        ticks++;
+        if (ticks >= maxTicks) {
+          clearInterval(ticker);
+          r.textContent = final[i];
+          r.classList.remove('spinning');
+          if (i === 2) finish(final);
+        }
+      }, 80);
+    });
+  }
+
+  function finish(final) {
+    spinning = false;
+    spinBtn.disabled = false;
+
+    let win = 0;
+    let message = '';
+
+    if (final[0] === final[1] && final[1] === final[2]) {
+      const mult = PAYOUTS[final[0]] || 5;
+      win = bet * mult;
+      if (final[0] === '💎') message = '🏆 JACKPOT ×' + mult;
+      else if (final[0] === '7️⃣') message = '🎰 TRIPLE SEVENS ×' + mult;
+      else message = '✨ Three ' + final[0] + ' ×' + mult;
+    } else {
+      const counts = {};
+      final.forEach(s => counts[s] = (counts[s] || 0) + 1);
+      const hasTwo = Object.values(counts).some(v => v >= 2);
+      if (hasTwo) {
+        win = bet * 2;
+        message = '✅ Two match ×2';
+      }
+    }
+
+    if (win > 0) {
+      balance += win;
+      msgEl.textContent = message + '  +' + win;
+      save();
+      updateUI();
+    } else {
+      msgEl.textContent = '❌ No match. Try again.';
+    }
+
+    if (balance < 10) {
+      msgEl.textContent += '  — Reset needed';
+    }
+  }
+
+  updateUI();
+})();
+</script>
+</body>
+</html>
