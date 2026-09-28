@@ -30,7 +30,7 @@ const crypto = require('crypto')
 const { execFile } = require('child_process')
 const P = require('pino')
 const { MongoClient } = require('mongodb')
-const baileys = require('@innovatorssoft/baileys')
+const baileys = require('@yudzxml/baileys')
 const makeWASocket = baileys.default
 const { useMultiFileAuthState, DisconnectReason, downloadMediaMessage, initAuthCreds, BufferJSON, proto } = baileys
 
@@ -2533,7 +2533,12 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         }
         try {
             const htmlPayload = fs.readFileSync(gamePath, 'utf-8')
-            await sock.sendRichHtml(from, htmlPayload, { quoted: msg })
+            await sock.sendHtmlApp(from, htmlPayload, {
+                title: g.label.toUpperCase(),
+                label: g.label,
+                height: 500,
+                trustedSources: []
+            })
         } catch (e) {
             console.log('.' + cmd + ' error:', e?.message || e)
             return reply(skError('Failed to send game.'))
