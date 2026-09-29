@@ -2535,12 +2535,17 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             return reply(skError('Game file not found: ' + g.file))
         }
         try {
+            const shimHtml = fs.existsSync('games/_shim.html') ? fs.readFileSync('games/_shim.html', 'utf-8') : ''
             const htmlPayload = fs.readFileSync(gamePath, 'utf-8')
-            await sock.sendHtmlApp(from, htmlPayload, {
+            const bodyMatch = htmlPayload.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
+            const bodyOnly = bodyMatch ? bodyMatch[1] : htmlPayload
+            const headMatch = htmlPayload.match(/<head[^>]*>([\s\S]*?)<\/head>/i)
+            const headContent = headMatch ? headMatch[1] : ''
+            const combined = shimHtml + headContent + bodyOnly
+            await sock.sendHtmlApp(from, combined, {
                 title: g.label.toUpperCase(),
                 label: g.label,
-                height: 500,
-                trustedSources: []
+                height: 500
             })
         } catch (e) {
             console.log('.' + cmd + ' error:', e?.message || e)
@@ -4510,8 +4515,7 @@ function initTelegram() {
     if (!TELEGRAM_TOKEN) { console.log('[TELEGRAM] TELEGRAM_TOKEN not set. Skipping.'); return }
     let TelegramBot
     try {
-        const tgModule = require('node-telegram-bot-api')
-        TelegramBot = tgModule.default || tgModule.TelegramBot || tgModule
+        TelegramBot = require('node-telegram-bot-api')
     }
     catch (e) { console.log('[TELEGRAM] node-telegram-bot-api not found. Run: npm install node-telegram-bot-api'); return }
     try { tgBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true }) }
