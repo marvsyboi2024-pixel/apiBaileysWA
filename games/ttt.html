@@ -4,269 +4,444 @@
 <meta charset="UTF-8">
 <title>Tic-Tac-Toe</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-  body { background: transparent; font-family: Arial, sans-serif; padding: 18px 22px; color: #333; }
-  .app { display: flex; flex-direction: column; }
-  .header { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 8px 2px; }
-  .title { font-size: 13px; font-weight: bold; color: #2a3a1a; letter-spacing: 0.5px; }
-  .best { background: rgba(180,190,140,0.35); color: #4a4a3a; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: bold; letter-spacing: 1px; border: 1px solid rgba(140,150,100,0.5); }
-  .divider { height: 1px; background: #3a4a2a; opacity: 0.4; margin-bottom: 8px; }
-  .card { background: #1a1f17; border-radius: 10px; padding: 8px 9px 10px 9px; box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
-  .scorebar { display: flex; justify-content: space-between; font-family: monospace; font-size: 11px; color: #a8b400; letter-spacing: 1.5px; padding: 0 2px 6px 2px; text-transform: uppercase; }
-  .playfield { position: relative; border-radius: 4px; overflow: hidden; }
-  canvas { display: block; background: #c4cd9d; border-radius: 4px; width: 100%; height: auto; }
-  .gameover { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 96%; background: #283641; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.35); text-align: center; padding: 18px 12px 0 12px; display: none; }
-  .gameover h2 { color: #ffffff; font-size: 17px; font-weight: bold; margin-bottom: 6px; }
-  .gameover p { color: #b8c0c8; font-size: 11px; margin-bottom: 14px; }
-  .gameover .sect { border-top: 1px solid rgba(255,255,255,0.15); }
-  .gameover button { background: transparent; border: none; color: #a8b400; font-size: 14px; font-weight: bold; padding: 12px 0; width: 100%; cursor: pointer; font-family: inherit; }
-  .modes { display: flex; gap: 8px; margin-top: 12px; }
-  .modes button { flex: 1; background: rgba(90,100,60,0.15); border: 1px solid #7a8a5a; border-radius: 10px; color: #3a4a1a; font-size: 12px; font-weight: bold; letter-spacing: 1px; padding: 10px 0; cursor: pointer; font-family: inherit; }
-  .modes button.active { background: rgba(90,100,60,0.45); color: #1a2a0a; border-color: #3a4a1a; }
-  .hint { text-align: center; color: #4a5a5a; font-size: 11px; font-weight: bold; letter-spacing: 0.3px; margin-top: 10px; padding-bottom: 2px; }
+*{box-sizing:border-box;margin:0;padding:0;user-select:none;-webkit-tap-highlight-color:transparent}
+body{background:transparent;font-family:Arial,sans-serif;padding:18px 22px}
+.app{display:flex;flex-direction:column}
+.header{display:flex;align-items:center;justify-content:space-between;padding:0 2px 8px 2px}
+.title{font-size:13px;font-weight:bold;color:#3a3a3a;letter-spacing:1px}
+.best{background:rgba(200,180,120,0.35);color:#6a5a20;padding:3px 10px;border-radius:999px;font-size:10px;font-weight:bold;border:1px solid rgba(180,160,80,0.5)}
+.divider{height:1px;background:#d8d0c0;margin-bottom:8px}
+.card{background:#f8f4e8;border:2px solid #d8d0b8;border-radius:12px;padding:10px;box-shadow:0 4px 12px rgba(0,0,0,0.08)}
+.scorebar{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;align-items:center;background:#ffffff;border:1px solid #e0d8c0;border-radius:8px;padding:6px 10px;margin-bottom:8px}
+.sc{text-align:center;font-family:monospace}
+.sc .lbl{display:block;font-size:9px;letter-spacing:1px;color:#8a8060;margin-bottom:2px}
+.sc .v{font-size:16px;font-weight:bold}
+.sc.win .v{color:#2a7a3a}
+.sc.draw .v{color:#6a6a6a}
+.sc.loss .v{color:#a83a3a}
+.reset{background:transparent;border:1px solid #c8c0a0;color:#6a5a20;border-radius:6px;padding:5px 8px;font-family:inherit;font-size:10px;font-weight:bold;letter-spacing:1px;cursor:pointer}
+.reset:active{background:rgba(180,160,80,0.2)}
+.playfield{position:relative;border-radius:8px;overflow:hidden}
+canvas{display:block;background:#ffffff;border:1px solid #e0d8c0;border-radius:8px;width:100%;height:auto;touch-action:none}
+.status{text-align:center;color:#5a5a5a;font-size:12px;font-weight:bold;letter-spacing:1px;margin-top:10px;min-height:18px}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.modes button{background:transparent;border:1px solid #b8a878;color:#6a5a20;border-radius:8px;padding:10px;font-family:inherit;font-weight:bold;font-size:12px;letter-spacing:1px;cursor:pointer}
+.modes button.on{background:#6a5a20;color:#f8f4e8;border-color:#6a5a20}
+.modes button:active{background:rgba(180,160,80,0.25)}
+.diff{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:6px}
+.diff button{background:transparent;border:1px solid #b8a878;color:#6a5a20;border-radius:6px;padding:8px;font-family:inherit;font-weight:bold;font-size:10px;letter-spacing:1px;cursor:pointer}
+.diff button.on{background:#2a7a3a;color:#fff;border-color:#2a7a3a}
+.diff button:active{background:rgba(180,160,80,0.25)}
+.hint{text-align:center;color:#8a8060;font-size:11px;font-weight:bold;margin-top:8px;padding-bottom:2px}
 </style>
 </head>
 <body>
 <div class="app">
-  <div class="header">
-    <div class="title">❌ Tic-Tac-Toe</div>
-    <div class="best">🏆 WINS <span id="best">0</span></div>
-  </div>
-  <div class="divider"></div>
-  <div class="card">
-    <div class="scorebar">
-      <span>X <span id="sx">0</span></span>
-      <span>Draw <span id="sd">0</span></span>
-      <span>O <span id="so">0</span></span>
-    </div>
-    <div class="playfield">
-      <canvas id="c" width="336" height="300"></canvas>
-      <div class="gameover" id="overlay">
-        <h2 id="ovTitle">Game Over</h2>
-        <p id="overlayMsg">Tap to play again.</p>
-        <div class="sect"><button id="restart">Play Again</button></div>
-      </div>
-    </div>
-  </div>
-  <div class="modes">
-    <button id="modeBot" class="active">VS BOT</button>
-    <button id="modeDuo">2 PLAYERS</button>
-  </div>
-  <div class="hint">Tap a cell to play</div>
+<div class="header"><div class="title">❌⭕ TIC-TAC-TOE</div><div class="best">🏆 BEST <span id="bestStreak">0</span></div></div>
+<div class="divider"></div>
+<div class="card">
+<div class="scorebar">
+<div class="sc win"><span class="lbl">WINS</span><span class="v" id="wins">0</span></div>
+<div class="sc draw"><span class="lbl">DRAWS</span><span class="v" id="draws">0</span></div>
+<div class="sc loss"><span class="lbl">LOSSES</span><span class="v" id="losses">0</span></div>
+<button class="reset" id="resetScores">RESET</button>
 </div>
-
+<div class="playfield"><canvas id="c" width="300" height="300"></canvas></div>
+<div class="status" id="status">Your turn — you are X</div>
+<div class="modes">
+<button id="modeBot" class="on">VS BOT</button>
+<button id="modeDuo">2 PLAYERS</button>
+</div>
+<div class="diff" id="diffRow">
+<button data-d="easy">EASY</button>
+<button data-d="medium" class="on">MEDIUM</button>
+<button data-d="hard">HARD</button>
+</div>
+</div>
+<div class="hint">Tap a cell to place your mark</div>
+</div>
 <script>
 (function(){
-  var cv = document.getElementById('c');
-  var ctx = cv.getContext('2d');
-  var W = cv.width, H = cv.height;
+var cv=document.getElementById('c');
+var ctx=cv.getContext('2d');
+var W=cv.width,H=cv.height;
+var GRID=3,CELL=W/GRID;
 
-  var GRID = 3;
-  var SIZE = 260;
-  var CELL = SIZE / GRID;
-  var OX = (W - SIZE) / 2;
-  var OY = (H - SIZE) / 2;
+var winsEl=document.getElementById('wins');
+var drawsEl=document.getElementById('draws');
+var lossesEl=document.getElementById('losses');
+var bestEl=document.getElementById('bestStreak');
+var statusEl=document.getElementById('status');
+var modeBotBtn=document.getElementById('modeBot');
+var modeDuoBtn=document.getElementById('modeDuo');
+var diffRow=document.getElementById('diffRow');
+var resetScoresBtn=document.getElementById('resetScores');
 
-  var sx = parseInt(localStorage.getItem('ttt_x') || '0', 10);
-  var so = parseInt(localStorage.getItem('ttt_o') || '0', 10);
-  var sd = parseInt(localStorage.getItem('ttt_d') || '0', 10);
-  var bestWins = parseInt(localStorage.getItem('ttt_best') || '0', 10);
+var wins=parseInt(localStorage.getItem('ttt_wins')||'0',10);
+var draws=parseInt(localStorage.getItem('ttt_draws')||'0',10);
+var losses=parseInt(localStorage.getItem('ttt_losses')||'0',10);
+var best=parseInt(localStorage.getItem('ttt_best')||'0',10);
+var currentStreak=0;
 
-  var board, turn, gameOver, mode, winLine;
+var board=['','','','','','','','',''];
+var turn='X';
+var gameOver=false;
+var mode='bot';
+var difficulty='medium';
+var winLine=null;
+var botThinking=false;
+var pulsePhase=0;
+var lastPlaced=-1;
+var lastPlacedTime=0;
 
-  var sxEl = document.getElementById('sx');
-  var soEl = document.getElementById('so');
-  var sdEl = document.getElementById('sd');
-  var bestEl = document.getElementById('best');
-  var overlay = document.getElementById('overlay');
-  var ovTitle = document.getElementById('ovTitle');
-  var overlayMsg = document.getElementById('overlayMsg');
-  var btnBot = document.getElementById('modeBot');
-  var btnDuo = document.getElementById('modeDuo');
+var WINS=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
 
-  sxEl.textContent = sx;
-  soEl.textContent = so;
-  sdEl.textContent = sd;
-  bestEl.textContent = bestWins;
+var audioCtx=null,masterGain=null,compressor=null;
 
-  mode = 'bot';
+function initAudio(){
+if(!audioCtx){
+try{
+audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+masterGain=audioCtx.createGain();
+masterGain.gain.value=0.55;
+compressor=audioCtx.createDynamicsCompressor();
+compressor.threshold.value=-15;
+compressor.knee.value=10;
+compressor.ratio.value=4;
+compressor.attack.value=0.003;
+compressor.release.value=0.2;
+masterGain.connect(compressor);
+compressor.connect(audioCtx.destination);
+}catch(e){audioCtx=null;}
+}
+if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();
+}
 
-  var WINS = [
-    [0,1,2],[3,4,5],[6,7,8],
-    [0,3,6],[1,4,7],[2,5,8],
-    [0,4,8],[2,4,6]
-  ];
+function beep(f1,f2,dur,type,vol,delay){
+initAudio();
+if(!audioCtx)return;
+var t=audioCtx.currentTime+(delay||0);
+var osc=audioCtx.createOscillator();
+var g=audioCtx.createGain();
+osc.type=type||'sine';
+osc.frequency.setValueAtTime(f1,t);
+if(f2&&f2!==f1)osc.frequency.exponentialRampToValueAtTime(Math.max(1,f2),t+dur);
+g.gain.setValueAtTime(0.0001,t);
+g.gain.exponentialRampToValueAtTime(vol||0.3,t+0.008);
+g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+osc.connect(g);
+g.connect(masterGain);
+osc.start(t);
+osc.stop(t+dur+0.02);
+}
 
-  function reset() {
-    board = ['','','','','','','','',''];
-    turn = 'X';
-    gameOver = false;
-    winLine = null;
-    overlay.style.display = 'none';
-    draw();
-  }
+function soundPlaceX(){beep(900,500,0.08,'sine',0.35);}
+function soundPlaceO(){beep(700,350,0.09,'triangle',0.32);}
+function soundWin(){beep(523,523,0.12,'sine',0.4,0);beep(659,659,0.12,'sine',0.4,0.12);beep(784,784,0.22,'sine',0.4,0.24);}
+function soundLose(){beep(440,220,0.18,'triangle',0.3,0);beep(330,165,0.28,'triangle',0.3,0.18);}
+function soundDraw(){beep(440,440,0.2,'sine',0.28);}
+function soundClick(){beep(600,600,0.04,'square',0.15);}
 
-  function checkWin() {
-    for (var i = 0; i < WINS.length; i++) {
-      var w = WINS[i];
-      if (board[w[0]] && board[w[0]] === board[w[1]] && board[w[0]] === board[w[2]]) {
-        return { who: board[w[0]], line: w };
-      }
-    }
-    if (board.every(function(c){ return c; })) return { who: 'draw', line: null };
-    return null;
-  }
+function updateScores(){
+winsEl.textContent=wins;
+drawsEl.textContent=draws;
+lossesEl.textContent=losses;
+bestEl.textContent=best;
+localStorage.setItem('ttt_wins',wins);
+localStorage.setItem('ttt_draws',draws);
+localStorage.setItem('ttt_losses',losses);
+localStorage.setItem('ttt_best',best);
+}
 
-  function bestMove() {
-    var me = 'O', opp = 'X';
-    for (var i = 0; i < WINS.length; i++) {
-      var l = WINS[i].map(function(idx){ return board[idx]; });
-      if (l.filter(function(x){ return x === me; }).length === 2) {
-        var e = l.indexOf('');
-        if (e >= 0) return WINS[i][e];
-      }
-    }
-    for (var j = 0; j < WINS.length; j++) {
-      var l2 = WINS[j].map(function(idx){ return board[idx]; });
-      if (l2.filter(function(x){ return x === opp; }).length === 2) {
-        var e2 = l2.indexOf('');
-        if (e2 >= 0) return WINS[j][e2];
-      }
-    }
-    if (!board[4]) return 4;
-    var corners = [0,2,6,8].filter(function(i){ return !board[i]; });
-    if (corners.length) return corners[Math.floor(Math.random()*corners.length)];
-    var sides = [1,3,5,7].filter(function(i){ return !board[i]; });
-    if (sides.length) return sides[Math.floor(Math.random()*sides.length)];
-    return -1;
-  }
+function checkWin(){
+for(var i=0;i<WINS.length;i++){
+var w=WINS[i];
+if(board[w[0]]&&board[w[0]]===board[w[1]]&&board[w[0]]===board[w[2]])return{w:board[w[0]],line:w};
+}
+if(board.every(function(c){return c;}))return{w:'draw',line:null};
+return null;
+}
 
-  function play(i) {
-    if (gameOver || board[i]) return;
-    if (mode === 'bot' && turn !== 'X') return;
-    board[i] = turn;
-    var r = checkWin();
-    if (r) return finish(r);
-    if (mode === 'bot') {
-      turn = 'O';
-      draw();
-      setTimeout(botTurn, 250);
-    } else {
-      turn = turn === 'X' ? 'O' : 'X';
-      draw();
-    }
-  }
+function bestMove(){
+// Try to win
+for(var i=0;i<WINS.length;i++){
+var l=WINS[i].map(function(idx){return board[idx];});
+if(l.filter(function(x){return x==='O';}).length===2){
+var e=l.indexOf('');
+if(e>=0)return WINS[i][e];
+}
+}
+// Block X
+for(var i=0;i<WINS.length;i++){
+var l2=WINS[i].map(function(idx){return board[idx];});
+if(l2.filter(function(x){return x==='X';}).length===2){
+var e2=l2.indexOf('');
+if(e2>=0)return WINS[i][e2];
+}
+}
+// Center
+if(!board[4])return 4;
+// Corners
+var corners=[0,2,6,8].filter(function(i){return !board[i];});
+if(corners.length)return corners[Math.floor(Math.random()*corners.length)];
+// Sides
+var sides=[1,3,5,7].filter(function(i){return !board[i];});
+if(sides.length)return sides[Math.floor(Math.random()*sides.length)];
+return -1;
+}
 
-  function botTurn() {
-    if (gameOver) return;
-    var m = bestMove();
-    if (m >= 0) board[m] = 'O';
-    var r = checkWin();
-    if (r) return finish(r);
-    turn = 'X';
-    draw();
-  }
+function smartBlock(){
+for(var i=0;i<WINS.length;i++){
+var l=WINS[i].map(function(idx){return board[idx];});
+if(l.filter(function(x){return x==='X';}).length===2){
+var e=l.indexOf('');
+if(e>=0)return WINS[i][e];
+}
+}
+for(var i=0;i<WINS.length;i++){
+var l2=WINS[i].map(function(idx){return board[idx];});
+if(l2.filter(function(x){return x==='O';}).length===2){
+var e2=l2.indexOf('');
+if(e2>=0)return WINS[i][e2];
+}
+}
+if(!board[4])return 4;
+var avail=[];
+for(var j=0;j<9;j++)if(!board[j])avail.push(j);
+if(avail.length)return avail[Math.floor(Math.random()*avail.length)];
+return -1;
+}
 
-  function finish(r) {
-    gameOver = true;
-    winLine = r.line;
-    if (r.who === 'X') {
-      sx++; sxEl.textContent = sx;
-      localStorage.setItem('ttt_x', sx);
-      ovTitle.textContent = mode === 'bot' ? 'You Win' : 'X Wins';
-    } else if (r.who === 'O') {
-      so++; soEl.textContent = so;
-      localStorage.setItem('ttt_o', so);
-      ovTitle.textContent = mode === 'bot' ? 'Bot Wins' : 'O Wins';
-    } else {
-      sd++; sdEl.textContent = sd;
-      localStorage.setItem('ttt_d', sd);
-      ovTitle.textContent = 'Draw';
-    }
-    if (mode === 'bot' && sx > bestWins) {
-      bestWins = sx;
-      localStorage.setItem('ttt_best', bestWins);
-      bestEl.textContent = bestWins;
-    }
-    overlayMsg.textContent = 'Tap Play Again.';
-    draw();
-    overlay.style.display = 'block';
-  }
+function botPick(){
+if(difficulty==='easy'){
+var avail=[];
+for(var i=0;i<9;i++)if(!board[i])avail.push(i);
+if(!avail.length)return -1;
+return avail[Math.floor(Math.random()*avail.length)];
+}
+if(difficulty==='medium'){
+if(Math.random()<0.5)return bestMove();
+return smartBlock();
+}
+return bestMove();
+}
 
-  function draw() {
-    ctx.fillStyle = '#c4cd9d';
-    ctx.fillRect(0, 0, W, H);
+function play(idx){
+if(gameOver||board[idx]||botThinking)return;
+if(mode==='bot'&&turn!=='X')return;
+board[idx]=turn;
+lastPlaced=idx;
+lastPlacedTime=Date.now();
+if(turn==='X')soundPlaceX();else soundPlaceO();
+var r=checkWin();
+if(r)return finish(r);
+if(mode==='bot'){
+turn='O';
+statusEl.textContent='Bot thinking...';
+draw();
+botThinking=true;
+var delay=400+Math.random()*500;
+setTimeout(function(){
+if(gameOver)return;
+var m=botPick();
+if(m>=0){
+board[m]='O';
+lastPlaced=m;
+lastPlacedTime=Date.now();
+soundPlaceO();
+var r2=checkWin();
+botThinking=false;
+if(r2)return finish(r2);
+turn='X';
+statusEl.textContent='Your turn — you are X';
+draw();
+}else{
+botThinking=false;
+turn='X';
+statusEl.textContent='Your turn';
+draw();
+}
+},delay);
+}else{
+turn=turn==='X'?'O':'X';
+statusEl.textContent=turn==='X'?'Player X turn':'Player O turn';
+draw();
+}
+}
 
-    ctx.strokeStyle = '#1e3a1a';
-    ctx.lineWidth = 2;
-    for (var i = 1; i < GRID; i++) {
-      ctx.beginPath();
-      ctx.moveTo(OX + i * CELL, OY);
-      ctx.lineTo(OX + i * CELL, OY + SIZE);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(OX, OY + i * CELL);
-      ctx.lineTo(OX + SIZE, OY + i * CELL);
-      ctx.stroke();
-    }
+function finish(r){
+gameOver=true;
+winLine=r.line;
+if(r.w==='X'){
+wins++;
+currentStreak++;
+if(currentStreak>best){best=currentStreak;}
+soundWin();
+statusEl.textContent=mode==='bot'?'You win! 🎉':'Player X wins!';
+}else if(r.w==='O'){
+losses++;
+currentStreak=0;
+soundLose();
+statusEl.textContent=mode==='bot'?'Bot wins':'Player O wins';
+}else{
+draws++;
+currentStreak=0;
+soundDraw();
+statusEl.textContent='Draw';
+}
+updateScores();
+draw();
+setTimeout(function(){
+overlayResult();
+},900);
+}
 
-    for (var j = 0; j < 9; j++) {
-      if (!board[j]) continue;
-      var col = j % 3;
-      var row = Math.floor(j / 3);
-      var cx = OX + col * CELL + CELL / 2;
-      var cy = OY + row * CELL + CELL / 2;
+function overlayResult(){
+gameOver=false;
+board=['','','','','','','','',''];
+turn='X';
+winLine=null;
+lastPlaced=-1;
+statusEl.textContent=mode==='bot'?'Your turn — you are X':'Player X turn';
+draw();
+}
 
-      if (winLine && winLine.indexOf(j) >= 0) {
-        ctx.fillStyle = 'rgba(168,180,0,0.35)';
-        ctx.fillRect(OX + col * CELL + 3, OY + row * CELL + 3, CELL - 6, CELL - 6);
-      }
+function resetGame(){
+board=['','','','','','','','',''];
+turn='X';
+gameOver=false;
+winLine=null;
+botThinking=false;
+lastPlaced=-1;
+statusEl.textContent=mode==='bot'?'Your turn — you are X':'Player X turn';
+draw();
+}
 
-      if (board[j] === 'X') {
-        ctx.strokeStyle = '#1e3a1a';
-        ctx.lineWidth = 4;
-        ctx.lineCap = 'round';
-        var s = CELL * 0.28;
-        ctx.beginPath();
-        ctx.moveTo(cx - s, cy - s); ctx.lineTo(cx + s, cy + s);
-        ctx.moveTo(cx + s, cy - s); ctx.lineTo(cx - s, cy + s);
-        ctx.stroke();
-      } else {
-        ctx.strokeStyle = '#4a6a3a';
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.arc(cx, cy, CELL * 0.28, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-    }
-  }
+function drawX(cx,cy,size){
+ctx.strokeStyle='#c83030';
+ctx.lineWidth=8;
+ctx.lineCap='round';
+var s=size*0.28;
+ctx.beginPath();
+ctx.moveTo(cx-s,cy-s);ctx.lineTo(cx+s,cy+s);
+ctx.moveTo(cx+s,cy-s);ctx.lineTo(cx-s,cy+s);
+ctx.stroke();
+}
 
-  function getPos(e) {
-    var rect = cv.getBoundingClientRect();
-    var scx = cv.width / rect.width;
-    var scy = cv.height / rect.height;
-    var cx = e.touches ? e.touches[0].clientX : e.clientX;
-    var cy = e.touches ? e.touches[0].clientY : e.clientY;
-    return { x: (cx - rect.left) * scx, y: (cy - rect.top) * scy };
-  }
+function drawO(cx,cy,size){
+ctx.strokeStyle='#2860a8';
+ctx.lineWidth=8;
+ctx.beginPath();
+ctx.arc(cx,cy,size*0.28,0,Math.PI*2);
+ctx.stroke();
+}
 
-  function tap(x, y) {
-    if (gameOver) return;
-    var col = Math.floor((x - OX) / CELL);
-    var row = Math.floor((y - OY) / CELL);
-    if (col < 0 || col >= 3 || row < 0 || row >= 3) return;
-    play(row * 3 + col);
-  }
+function draw(){
+ctx.fillStyle='#ffffff';
+ctx.fillRect(0,0,W,H);
 
-  cv.addEventListener('touchstart', function(e){ e.preventDefault(); var p = getPos(e); tap(p.x, p.y); }, { passive: false });
-  cv.addEventListener('click', function(e){ var p = getPos(e); tap(p.x, p.y); });
+var i,j;
+ctx.strokeStyle='#d8d0b8';
+ctx.lineWidth=3;
+for(i=1;i<GRID;i++){
+ctx.beginPath();
+ctx.moveTo(i*CELL,0);ctx.lineTo(i*CELL,H);
+ctx.stroke();
+ctx.beginPath();
+ctx.moveTo(0,i*CELL);ctx.lineTo(W,i*CELL);
+ctx.stroke();
+}
 
-  btnBot.addEventListener('click', function(){ mode = 'bot'; btnBot.classList.add('active'); btnDuo.classList.remove('active'); reset(); });
-  btnDuo.addEventListener('click', function(){ mode = 'duo'; btnDuo.classList.add('active'); btnBot.classList.remove('active'); reset(); });
+if(winLine){
+var pulse=0.4+0.3*Math.sin(Date.now()/200);
+ctx.fillStyle='rgba(255,215,80,'+pulse+')';
+for(i=0;i<winLine.length;i++){
+var idx=winLine[i];
+var c=idx%3,r=Math.floor(idx/3);
+ctx.fillRect(c*CELL+2,r*CELL+2,CELL-4,CELL-4);
+}
+}
 
-  document.getElementById('restart').addEventListener('click', reset);
+for(i=0;i<9;i++){
+if(!board[i])continue;
+var col=i%3,row=Math.floor(i/3);
+var cx=col*CELL+CELL/2,cy=row*CELL+CELL/2;
+if(board[i]==='X')drawX(cx,cy,CELL);
+else drawO(cx,cy,CELL);
+}
 
-  reset();
+if(lastPlaced>=0&&Date.now()-lastPlacedTime<250){
+var age=Date.now()-lastPlacedTime;
+var scale=1+0.3*(1-age/250);
+ctx.strokeStyle='rgba(200,180,120,'+(1-age/250)+')';
+ctx.lineWidth=2;
+var c=lastPlaced%3,r=Math.floor(lastPlaced/3);
+ctx.strokeRect(c*CELL+2,r*CELL+2,CELL-4,CELL-4);
+requestAnimationFrame(draw);
+}
+}
+
+function getPos(t){
+var rect=cv.getBoundingClientRect();
+var sx=cv.width/rect.width,sy=cv.height/rect.height;
+return{x:(t.clientX-rect.left)*sx,y:(t.clientY-rect.top)*sy};
+}
+
+function tap(x,y){
+if(gameOver||botThinking)return;
+var c=Math.floor(x/CELL),r=Math.floor(y/CELL);
+if(c<0||c>=3||r<0||r>=3)return;
+play(r*3+c);
+}
+
+cv.addEventListener('touchstart',function(e){
+e.preventDefault();
+var p=getPos(e.changedTouches[0]);
+tap(p.x,p.y);
+},{passive:false});
+cv.addEventListener('click',function(e){
+var p=getPos(e);
+tap(p.x,p.y);
+});
+
+modeBotBtn.addEventListener('click',function(){
+mode='bot';
+modeBotBtn.classList.add('on');
+modeDuoBtn.classList.remove('on');
+diffRow.style.display='grid';
+soundClick();
+resetGame();
+});
+modeDuoBtn.addEventListener('click',function(){
+mode='duo';
+modeDuoBtn.classList.add('on');
+modeBotBtn.classList.remove('on');
+diffRow.style.display='none';
+soundClick();
+resetGame();
+});
+
+var diffBtns=diffRow.querySelectorAll('button');
+for(var d=0;d<diffBtns.length;d++){
+(function(b){
+b.addEventListener('click',function(){
+difficulty=b.dataset.d;
+for(var k=0;k<diffBtns.length;k++)diffBtns[k].classList.remove('on');
+b.classList.add('on');
+soundClick();
+});
+})(diffBtns[d]);
+}
+
+resetScoresBtn.addEventListener('click',function(){
+if(!confirm('Reset all scores?'))return;
+wins=0;draws=0;losses=0;best=0;currentStreak=0;
+updateScores();
+soundClick();
+});
+
+updateScores();
+draw();
 })();
 </script>
 </body>
