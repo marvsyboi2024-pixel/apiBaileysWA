@@ -2522,7 +2522,10 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         piano: { file: 'piano.html', label: 'Piano', emoji: '🎹' },
         drum: { file: 'drum.html', label: 'Drum Hero', emoji: '🥁' },
         guitar: { file: 'guitar.html', label: 'Guitar', emoji: '🎸' },
-        noxguitar: { file: 'noxguitar.html', label: 'NOX Guitar', emoji: '🌑' }
+        noxguitar: { file: 'noxguitar.html', label: 'NOX Guitar', emoji: '🌑' },
+        subway: { file: 'subway.html', label: 'Subway Surf', emoji: '🚇' },
+        arena: { file: 'arena.html', label: 'M.K. Arena', emoji: '⚔️' },
+        overdrive: { file: 'overdrive.html', label: 'M.K. Overdrive', emoji: '🏎️' }
     }
 
     if (GAME_HTML[cmd]) {
@@ -2561,7 +2564,10 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             `» ${prefix}${mono('piano')}       •  ${mono('Piano')}\n` +
             `» ${prefix}${mono('drum')}        •  ${mono('Drum Hero')}\n` +
             `» ${prefix}${mono('guitar')}      •  ${mono('Guitar')}\n` +
-            `» ${prefix}${mono('noxguitar')}   •  ${mono('NOX Guitar')}\n\n` +
+            `» ${prefix}${mono('noxguitar')}   •  ${mono('NOX Guitar')}\n` +
+            `» ${prefix}${mono('subway')}      •  ${mono('Subway Surf')}\n` +
+            `» ${prefix}${mono('arena')}       •  ${mono('M.K. Arena')}\n` +
+            `» ${prefix}${mono('overdrive')}   •  ${mono('M.K. Overdrive')}\n\n` +
             `${SK_FOOTER}`
         return reply(text)
     }
@@ -3818,6 +3824,9 @@ function renderMenu(ctx, sock) {
         `» ${p}${mono('drum')}          •  ${mono('Drum Hero')}\n` +
         `» ${p}${mono('guitar')}        •  ${mono('Guitar')}\n` +
         `» ${p}${mono('noxguitar')}     •  ${mono('NOX Guitar')}\n` +
+        `» ${p}${mono('subway')}       •  ${mono('Subway Surf')}\n` +
+        `» ${p}${mono('arena')}        •  ${mono('M.K. Arena')}\n` +
+        `» ${p}${mono('overdrive')}    •  ${mono('M.K. Overdrive')}\n` +
         `\n` +
         `📥 ${mono('DOWNLOADER')}\n` +
         `» ${p}${mono('tt <url>')}  •  ${mono('TikTok (owner)')}\n` +
