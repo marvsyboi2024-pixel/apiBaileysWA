@@ -2,141 +2,191 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Dino Runner — SUKUNA REALM</title>
+<title>Dino</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; background: #0a0000; color: #eee; font-family: -apple-system, Arial, sans-serif; overflow: hidden; }
-  body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px; }
-  h1 { color: #ff2222; font-size: 20px; letter-spacing: 3px; margin-bottom: 8px; font-weight: bold; }
-  #scorebar { display: flex; gap: 24px; margin-bottom: 12px; font-size: 14px; color: #ff6666; letter-spacing: 1px; }
-  #scorebar span b { color: #fff; }
-  #wrap { position: relative; width: 100%; max-width: 480px; }
-  canvas { width: 100%; background: #150000; border: 2px solid #440000; border-radius: 10px; display: block; touch-action: none; }
-  #overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; background: rgba(10,0,0,0.88); border-radius: 10px; text-align: center; padding: 20px; }
-  #overlay.show { display: flex; }
-  #overlay h2 { color: #ff2222; font-size: 22px; margin-bottom: 8px; letter-spacing: 3px; }
-  #overlay p { color: #ccc; font-size: 14px; margin-bottom: 16px; }
-  #overlay button { padding: 10px 24px; background: #aa0000; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; letter-spacing: 2px; cursor: pointer; }
-  #overlay button:active { background: #dd0000; }
-  #jump { margin-top: 14px; padding: 14px 40px; background: #220000; border: 1px solid #440000; color: #ff6666; font-size: 16px; border-radius: 8px; cursor: pointer; letter-spacing: 2px; font-weight: bold; }
-  #jump:active { background: #440000; color: #fff; }
+  body { background: transparent; font-family: Arial, sans-serif; padding: 18px 22px; color: #333; }
+  .app { display: flex; flex-direction: column; }
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 8px 2px; }
+  .title { font-size: 13px; font-weight: bold; color: #2a3a1a; letter-spacing: 0.5px; }
+  .best { background: rgba(180,190,140,0.35); color: #4a4a3a; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: bold; letter-spacing: 1px; border: 1px solid rgba(140,150,100,0.5); }
+  .divider { height: 1px; background: #3a4a2a; opacity: 0.4; margin-bottom: 8px; }
+  .card { background: #1a1f17; border-radius: 10px; padding: 8px 9px 10px 9px; box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+  .scorebar { display: flex; justify-content: space-between; font-family: monospace; font-size: 11px; color: #a8b400; letter-spacing: 1.5px; padding: 0 2px 6px 2px; text-transform: uppercase; }
+  .playfield { position: relative; border-radius: 4px; overflow: hidden; }
+  canvas { display: block; background: #c4cd9d; border-radius: 4px; width: 100%; height: auto; }
+  .gameover { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 96%; background: #283641; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.35); text-align: center; padding: 18px 12px 0 12px; display: none; }
+  .gameover h2 { color: #ffffff; font-size: 17px; font-weight: bold; margin-bottom: 6px; }
+  .gameover p { color: #b8c0c8; font-size: 11px; margin-bottom: 14px; }
+  .gameover .sect { border-top: 1px solid rgba(255,255,255,0.15); }
+  .gameover button { background: transparent; border: none; color: #a8b400; font-size: 14px; font-weight: bold; padding: 12px 0; width: 100%; cursor: pointer; font-family: inherit; }
+  .jump { display: flex; justify-content: center; margin-top: 12px; width: 100%; }
+  .jump button { background: rgba(90,100,60,0.15); border: 1px solid #7a8a5a; border-radius: 12px; color: #3a4a1a; font-size: 15px; font-weight: bold; letter-spacing: 3px; padding: 0; height: 52px; width: 100%; cursor: pointer; font-family: inherit; }
+  .jump button:active { background: rgba(90,100,60,0.35); color: #1a2a0a; }
+  .hint { text-align: center; color: #4a5a5a; font-size: 11px; font-weight: bold; letter-spacing: 0.3px; margin-top: 8px; padding-bottom: 2px; }
 </style>
-<meta property="og:title" content="Dino Runner — SUKUNA REALM">
-<meta property="og:description" content="Jump over cacti. Survive as long as you can.">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="SUKUNA REALM">
-<meta name="twitter:card" content="summary">
-<meta property="og:image" content="https://marvsyboi2024-pixel.github.io/apiBaileysWA/games/preview.jpg">
 </head>
 <body>
-<h1>SUKUNA RUNNER</h1>
-<div id="scorebar">
-  <span>SCORE <b id="score">0</b></span>
-  <span>BEST <b id="best">0</b></span>
-</div>
-<div id="wrap">
-  <canvas id="c" width="480" height="200"></canvas>
-  <div id="overlay">
-    <h2 id="ovtitle">GAME OVER</h2>
-    <p id="ovtext">Score: 0</p>
-    <button id="restart">RESTART</button>
+<div class="app">
+  <div class="header">
+    <div class="title">🦖 Dino</div>
+    <div class="best">🏆 BEST <span id="best">0000</span></div>
   </div>
+  <div class="divider"></div>
+  <div class="card">
+    <div class="scorebar">
+      <span>Score <span id="score">0000</span></span>
+      <span>SPD <span id="speed">1</span></span>
+    </div>
+    <div class="playfield">
+      <canvas id="c" width="336" height="200"></canvas>
+      <div class="gameover" id="overlay">
+        <h2>Game Over</h2>
+        <p id="overlayMsg">Your score: 0000.</p>
+        <div class="sect"><button id="restart">Play Again</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="jump">
+    <button id="jumpBtn">JUMP</button>
+  </div>
+  <div class="hint">Tap JUMP once to jump, twice to double-jump!</div>
 </div>
-<button id="jump">JUMP</button>
+
 <script>
-(() => {
-  const canvas = document.getElementById('c');
-  const ctx = canvas.getContext('2d');
-  const scoreEl = document.getElementById('score');
-  const bestEl = document.getElementById('best');
-  const overlay = document.getElementById('overlay');
-  const ovTitle = document.getElementById('ovtitle');
-  const ovText = document.getElementById('ovtext');
-  const restartBtn = document.getElementById('restart');
-  const jumpBtn = document.getElementById('jump');
+(function(){
+  var cv = document.getElementById('c');
+  var ctx = cv.getContext('2d');
+  var W = cv.width, H = cv.height;
+  var GROUND = H - 30;
 
-  const W = canvas.width;
-  const H = canvas.height;
-  const GROUND_Y = H - 40;
+  var DINO_H = 26;
+  var H_PEAK = 40;
+  var T_AIR = 0.6;
+  var V0 = 4 * H_PEAK / T_AIR;
+  var GRAV = 8 * H_PEAK / (T_AIR * T_AIR);
+  var V0_DOUBLE = V0 * 1.15;
 
-  let dino, cacti, clouds, groundOffset, score, best, speed, dead, spawned, timer, lastTime, raf;
+  var scoreEl = document.getElementById('score');
+  var bestEl = document.getElementById('best');
+  var speedEl = document.getElementById('speed');
+  var overlay = document.getElementById('overlay');
+  var overlayMsg = document.getElementById('overlayMsg');
+
+  var dino, cacti, clouds, groundOffset, score, distance, best, speed, dead;
+  var jumpsLeft, framesSinceSpawn, framesUntilSpawn, lastTime, raf;
 
   best = parseInt(localStorage.getItem('dino_best') || '0', 10);
-  bestEl.textContent = best;
+  bestEl.textContent = pad(best);
+
+  function pad(n){ n = String(n); while (n.length < 4) n = '0' + n; return n; }
 
   function reset() {
-    dino = { x: 60, y: GROUND_Y - 40, w: 30, h: 40, vy: 0, jumping: false };
+    dino = { x: 40, y: GROUND - DINO_H, w: 22, h: DINO_H, vy: 0, onGround: true };
     cacti = [];
-    clouds = [
-      { x: 200, y: 40, w: 40, h: 12 },
-      { x: 400, y: 70, w: 50, h: 12 }
-    ];
+    clouds = [{x:150,y:30,w:35},{x:290,y:55,w:40}];
     groundOffset = 0;
     score = 0;
-    speed = 4;
+    distance = 0;
+    speed = 1.5;
     dead = false;
-    spawned = 0;
-    scoreEl.textContent = '0';
-    overlay.classList.remove('show');
+    jumpsLeft = 2;
+    framesSinceSpawn = 0;
+    framesUntilSpawn = 50;
+    scoreEl.textContent = pad(0);
+    speedEl.textContent = '1';
+    overlay.style.display = 'none';
     lastTime = performance.now();
     cancelAnimationFrame(raf);
-    loop();
+    raf = requestAnimationFrame(tick);
   }
 
-  function spawnCactus() {
-    const h = 25 + Math.floor(Math.random() * 25);
-    const w = 15 + Math.floor(Math.random() * 10);
-    cacti.push({ x: W + 10, y: GROUND_Y - h, w, h });
+  function spawnGroup() {
+    var r = Math.random();
+    var count = 1;
+    if (score > 200 && r < 0.35) count = 2;
+    if (score > 500 && r < 0.15) count = 3;
+
+    var baseH = 14 + Math.floor(Math.random() * 12);
+    if (baseH > DINO_H) baseH = DINO_H;
+
+    var w = 10;
+    var gapInside = 3;
+    var startX = W + 10;
+
+    for (var i = 0; i < count; i++) {
+      var h = baseH;
+      if (Math.random() < 0.3) h = Math.min(DINO_H, h + 5);
+      cacti.push({ x: startX + i * (w + gapInside), y: GROUND - h, w: w, h: h });
+    }
   }
 
-  function loop(now) {
+  function tick(now) {
     if (dead) return;
-    if (!now) now = performance.now();
-    const dt = Math.min(32, now - lastTime);
+    var dt = Math.min(0.05, (now - lastTime) / 1000);
     lastTime = now;
 
     groundOffset = (groundOffset + speed) % 40;
     speed += 0.0015;
+    if (speed > 6) speed = 6;
 
-    dino.vy += 1.2;
-    dino.y += dino.vy;
-    if (dino.y >= GROUND_Y - dino.h) {
-      dino.y = GROUND_Y - dino.h;
+    // SCORE: based on distance traveled. ~10 pts per second at start.
+    distance += speed * dt * 10;
+    score = Math.floor(distance);
+
+    dino.vy += GRAV * dt;
+    dino.y += dino.vy * dt;
+    if (dino.y >= GROUND - DINO_H) {
+      dino.y = GROUND - DINO_H;
       dino.vy = 0;
-      dino.jumping = false;
+      dino.onGround = true;
+      jumpsLeft = 2;
+    } else {
+      dino.onGround = false;
     }
 
-    spawned += dt;
-    if (spawned > 1400 - Math.min(600, speed * 40)) {
-      spawned = 0;
-      spawnCactus();
+    framesSinceSpawn++;
+    if (framesSinceSpawn >= framesUntilSpawn) {
+      spawnGroup();
+      framesSinceSpawn = 0;
+      var gapTime = 0.9 + Math.random() * 0.7;
+      framesUntilSpawn = Math.floor(gapTime * 42);
+      var minPx = 130;
+      if (framesUntilSpawn * speed < minPx) {
+        framesUntilSpawn = Math.ceil(minPx / speed);
+      }
     }
 
-    for (let i = cacti.length - 1; i >= 0; i--) {
+    for (var i = cacti.length - 1; i >= 0; i--) {
       cacti[i].x -= speed;
       if (cacti[i].x + cacti[i].w < -10) cacti.splice(i, 1);
     }
 
-    for (const cl of clouds) {
-      cl.x -= speed * 0.3;
-      if (cl.x + cl.w < -10) {
-        cl.x = W + 20;
-        cl.y = 30 + Math.random() * 60;
+    for (var j = 0; j < clouds.length; j++) {
+      clouds[j].x -= speed * 0.3;
+      if (clouds[j].x + clouds[j].w < -10) {
+        clouds[j].x = W + 20;
+        clouds[j].y = 20 + Math.random() * 50;
       }
     }
 
-    for (const c of cacti) {
-      if (dino.x < c.x + c.w && dino.x + dino.w > c.x && dino.y < c.y + c.h && dino.y + dino.h > c.y) {
+    for (var k = 0; k < cacti.length; k++) {
+      var c = cacti[k];
+      var padX = 2, padY = 2;
+      if (dino.x + padX < c.x + c.w - padX &&
+          dino.x + dino.w - padX > c.x + padX &&
+          dino.y + padY < c.y + c.h - padY &&
+          dino.y + dino.h - padY > c.y + padY) {
         return die();
       }
     }
 
-    score = Math.floor(groundOffset * 0.5 + speed * 5);
-    scoreEl.textContent = score;
+    scoreEl.textContent = pad(score);
+    var lv = Math.floor(score / 100) + 1;
+    speedEl.textContent = lv;
 
     draw();
-    raf = requestAnimationFrame(loop);
+    raf = requestAnimationFrame(tick);
   }
 
   function die() {
@@ -145,73 +195,66 @@
     if (score > best) {
       best = score;
       localStorage.setItem('dino_best', best);
-      bestEl.textContent = best;
+      bestEl.textContent = pad(best);
     }
-    ovTitle.textContent = 'GAME OVER';
-    ovText.textContent = 'Score: ' + score;
-    overlay.classList.add('show');
+    overlayMsg.textContent = 'Your score: ' + pad(score) + '.';
+    overlay.style.display = 'block';
   }
 
   function draw() {
-    ctx.fillStyle = '#150000';
+    ctx.fillStyle = '#c4cd9d';
     ctx.fillRect(0, 0, W, H);
 
-    ctx.fillStyle = '#1f0000';
-    for (const cl of clouds) {
+    ctx.fillStyle = '#b8c08e';
+    for (var cl = 0; cl < clouds.length; cl++) {
       ctx.beginPath();
-      ctx.arc(cl.x + cl.w / 2, cl.y, 8, 0, Math.PI * 2);
-      ctx.arc(cl.x + cl.w / 4, cl.y + 3, 6, 0, Math.PI * 2);
-      ctx.arc(cl.x + cl.w * 0.75, cl.y + 3, 6, 0, Math.PI * 2);
+      ctx.arc(clouds[cl].x + clouds[cl].w / 2, clouds[cl].y, 7, 0, Math.PI * 2);
+      ctx.arc(clouds[cl].x + clouds[cl].w / 4, clouds[cl].y + 2, 5, 0, Math.PI * 2);
+      ctx.arc(clouds[cl].x + clouds[cl].w * 0.75, clouds[cl].y + 2, 5, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    ctx.strokeStyle = '#440000';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, GROUND_Y + 2);
-    ctx.lineTo(W, GROUND_Y + 2);
-    ctx.stroke();
+    ctx.fillStyle = '#1e3a1a';
+    ctx.fillRect(0, GROUND, W, 2);
 
-    ctx.strokeStyle = '#2a0000';
-    ctx.lineWidth = 1;
-    for (let x = -groundOffset; x < W; x += 40) {
-      ctx.beginPath();
-      ctx.moveTo(x, GROUND_Y + 2);
-      ctx.lineTo(x + 20, GROUND_Y + 2);
-      ctx.stroke();
+    ctx.fillStyle = '#8a9468';
+    for (var x = -groundOffset; x < W; x += 40) {
+      ctx.fillRect(x, GROUND + 6, 20, 2);
     }
 
-    for (const c of cacti) {
-      ctx.fillStyle = '#cc0000';
+    ctx.fillStyle = '#1e3a1a';
+    for (var i = 0; i < cacti.length; i++) {
+      var c = cacti[i];
       ctx.fillRect(c.x, c.y, c.w, c.h);
-      ctx.fillStyle = '#991111';
-      ctx.fillRect(c.x + 2, c.y + 4, 3, c.h - 8);
-      ctx.fillRect(c.x + c.w - 5, c.y + 6, 3, c.h - 10);
+      ctx.fillRect(c.x + 2, c.y + 4, 2, c.h - 8);
+      ctx.fillRect(c.x + c.w - 4, c.y + 6, 2, c.h - 10);
     }
 
-    ctx.fillStyle = '#ff2222';
+    ctx.fillStyle = '#1e3a1a';
     ctx.fillRect(dino.x, dino.y, dino.w, dino.h);
-    ctx.fillStyle = '#150000';
-    ctx.fillRect(dino.x + dino.w - 8, dino.y + 8, 4, 4);
-    ctx.fillStyle = '#ff6666';
-    ctx.fillRect(dino.x, dino.y + dino.h - 6, dino.w - 8, 4);
+    ctx.fillStyle = '#c4cd9d';
+    ctx.fillRect(dino.x + dino.w - 8, dino.y + 6, 3, 3);
+    ctx.fillRect(dino.x, dino.y + dino.h - 4, dino.w - 6, 2);
   }
 
   function jump() {
-    if (dead) return;
-    if (!dino.jumping) {
-      dino.vy = -13;
-      dino.jumping = true;
+    if (dead) { reset(); return; }
+    if (jumpsLeft === 2) {
+      dino.vy = -V0;
+      jumpsLeft = 1;
+    } else if (jumpsLeft === 1) {
+      dino.vy = -V0_DOUBLE;
+      jumpsLeft = 0;
     }
   }
 
-  jumpBtn.addEventListener('click', jump);
-  canvas.addEventListener('click', jump);
-  canvas.addEventListener('touchstart', e => { e.preventDefault(); jump(); }, { passive: false });
-  document.addEventListener('keydown', e => {
+  document.getElementById('jumpBtn').addEventListener('click', jump);
+  cv.addEventListener('click', jump);
+  cv.addEventListener('touchstart', function(e){ e.preventDefault(); jump(); }, { passive: false });
+  document.addEventListener('keydown', function(e){
     if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') { e.preventDefault(); jump(); }
   });
-  restartBtn.addEventListener('click', reset);
+  document.getElementById('restart').addEventListener('click', reset);
 
   reset();
 })();

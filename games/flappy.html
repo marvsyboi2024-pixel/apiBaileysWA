@@ -2,140 +2,149 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Flappy Bird — SUKUNA REALM</title>
+<title>Flappy</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; background: #0a0000; color: #eee; font-family: -apple-system, Arial, sans-serif; overflow: hidden; }
-  body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px; }
-  h1 { color: #ff2222; font-size: 20px; letter-spacing: 3px; margin-bottom: 8px; font-weight: bold; }
-  #scorebar { display: flex; gap: 24px; margin-bottom: 12px; font-size: 14px; color: #ff6666; letter-spacing: 1px; }
-  #scorebar span b { color: #fff; }
-  #wrap { position: relative; width: 100%; max-width: 360px; }
-  canvas { width: 100%; background: #150000; border: 2px solid #440000; border-radius: 10px; display: block; touch-action: none; }
-  #overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; background: rgba(10,0,0,0.88); border-radius: 10px; text-align: center; padding: 20px; }
-  #overlay.show { display: flex; }
-  #overlay h2 { color: #ff2222; font-size: 22px; margin-bottom: 8px; letter-spacing: 3px; }
-  #overlay p { color: #ccc; font-size: 14px; margin-bottom: 16px; }
-  #overlay button { padding: 10px 24px; background: #aa0000; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; letter-spacing: 2px; cursor: pointer; }
-  #overlay button:active { background: #dd0000; }
-  #flap { margin-top: 14px; padding: 14px 40px; background: #220000; border: 1px solid #440000; color: #ff6666; font-size: 16px; border-radius: 8px; cursor: pointer; letter-spacing: 2px; font-weight: bold; }
-  #flap:active { background: #440000; color: #fff; }
+  body { background: transparent; font-family: Arial, sans-serif; padding: 18px 22px; color: #333; }
+  .app { display: flex; flex-direction: column; }
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 8px 2px; }
+  .title { font-size: 13px; font-weight: bold; color: #2a3a1a; letter-spacing: 0.5px; }
+  .best { background: rgba(180,190,140,0.35); color: #4a4a3a; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: bold; letter-spacing: 1px; border: 1px solid rgba(140,150,100,0.5); }
+  .divider { height: 1px; background: #3a4a2a; opacity: 0.4; margin-bottom: 8px; }
+  .card { background: #1a1f17; border-radius: 10px; padding: 8px 9px 10px 9px; box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+  .scorebar { display: flex; justify-content: space-between; font-family: monospace; font-size: 11px; color: #a8b400; letter-spacing: 1.5px; padding: 0 2px 6px 2px; text-transform: uppercase; }
+  .playfield { position: relative; border-radius: 4px; overflow: hidden; }
+  canvas { display: block; background: #c4cd9d; border-radius: 4px; width: 100%; height: auto; }
+  .gameover { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 96%; background: #283641; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.35); text-align: center; padding: 18px 12px 0 12px; display: none; }
+  .gameover h2 { color: #ffffff; font-size: 17px; font-weight: bold; margin-bottom: 6px; }
+  .gameover p { color: #b8c0c8; font-size: 11px; margin-bottom: 14px; }
+  .gameover .sect { border-top: 1px solid rgba(255,255,255,0.15); }
+  .gameover button { background: transparent; border: none; color: #a8b400; font-size: 14px; font-weight: bold; padding: 12px 0; width: 100%; cursor: pointer; font-family: inherit; }
+  .jump { display: flex; justify-content: center; margin-top: 12px; width: 100%; }
+  .jump button { background: rgba(90,100,60,0.15); border: 1px solid #7a8a5a; border-radius: 12px; color: #3a4a1a; font-size: 15px; font-weight: bold; letter-spacing: 3px; padding: 0; height: 52px; width: 100%; cursor: pointer; font-family: inherit; }
+  .jump button:active { background: rgba(90,100,60,0.35); color: #1a2a0a; }
+  .hint { text-align: center; color: #4a5a5a; font-size: 11px; font-weight: bold; letter-spacing: 0.3px; margin-top: 8px; padding-bottom: 2px; }
 </style>
-<meta property="og:title" content="Flappy Bird — SUKUNA REALM">
-<meta property="og:description" content="Tap to fly through pipes. Do not crash.">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="SUKUNA REALM">
-<meta name="twitter:card" content="summary">
-<meta property="og:image" content="https://marvsyboi2024-pixel.github.io/apiBaileysWA/games/preview.jpg">
 </head>
 <body>
-<h1>SUKUNA FLAPPY</h1>
-<div id="scorebar">
-  <span>SCORE <b id="score">0</b></span>
-  <span>BEST <b id="best">0</b></span>
-</div>
-<div id="wrap">
-  <canvas id="c" width="360" height="480"></canvas>
-  <div id="overlay">
-    <h2 id="ovtitle">GAME OVER</h2>
-    <p id="ovtext">Score: 0</p>
-    <button id="restart">RESTART</button>
+<div class="app">
+  <div class="header">
+    <div class="title">🐦 Flappy</div>
+    <div class="best">🏆 BEST <span id="best">0000</span></div>
   </div>
+  <div class="divider"></div>
+  <div class="card">
+    <div class="scorebar">
+      <span>Score <span id="score">0000</span></span>
+      <span>SPD <span id="speed">1</span></span>
+    </div>
+    <div class="playfield">
+      <canvas id="c" width="336" height="200"></canvas>
+      <div class="gameover" id="overlay">
+        <h2>Game Over</h2>
+        <p id="overlayMsg">Your score: 0000.</p>
+        <div class="sect"><button id="restart">Play Again</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="jump">
+    <button id="flapBtn">FLAP</button>
+  </div>
+  <div class="hint">Tap FLAP to fly through pipes!</div>
 </div>
-<button id="flap">FLAP</button>
+
 <script>
-(() => {
-  const canvas = document.getElementById('c');
-  const ctx = canvas.getContext('2d');
-  const scoreEl = document.getElementById('score');
-  const bestEl = document.getElementById('best');
-  const overlay = document.getElementById('overlay');
-  const ovTitle = document.getElementById('ovtitle');
-  const ovText = document.getElementById('ovtext');
-  const restartBtn = document.getElementById('restart');
-  const flapBtn = document.getElementById('flap');
+(function(){
+  var cv = document.getElementById('c');
+  var ctx = cv.getContext('2d');
+  var W = cv.width, H = cv.height;
 
-  const W = canvas.width;
-  const H = canvas.height;
-  const GRAVITY = 0.4;
-  const JUMP = -7;
-  const PIPE_W = 60;
-  const GAP = 150;
-  const PIPE_SPACING = 220;
+  var GRAVITY = 380;        // px/s^2
+  var FLAP_V = -115;        // px/s
+  var BIRD_X = 70;
+  var BIRD_R = 8;
+  var PIPE_W = 26;
+  var GAP = 85;
+  var GROUND_Y = H - 22;
 
-  let bird, pipes, score, best, dead, started, raf, lastPipeX, groundOffset;
+  var scoreEl = document.getElementById('score');
+  var bestEl = document.getElementById('best');
+  var speedEl = document.getElementById('speed');
+  var overlay = document.getElementById('overlay');
+  var overlayMsg = document.getElementById('overlayMsg');
+
+  var bird, pipes, groundOffset, score, best, speed, dead, started, lastTime, raf, spawned;
 
   best = parseInt(localStorage.getItem('flappy_best') || '0', 10);
-  bestEl.textContent = best;
+  bestEl.textContent = pad(best);
+
+  function pad(n){ n = String(n); while (n.length < 4) n = '0' + n; return n; }
 
   function reset() {
-    bird = { x: 80, y: H / 2, vy: 0, r: 14 };
+    bird = { x: BIRD_X, y: H / 2, vy: 0 };
     pipes = [];
+    groundOffset = 0;
     score = 0;
+    speed = 70;              // px/s scroll
     dead = false;
     started = false;
-    lastPipeX = W;
-    groundOffset = 0;
-    scoreEl.textContent = '0';
-    overlay.classList.remove('show');
+    spawned = 0;
+    scoreEl.textContent = pad(0);
+    speedEl.textContent = '1';
+    overlay.style.display = 'none';
+    lastTime = performance.now();
     cancelAnimationFrame(raf);
-    loop();
-  }
-
-  function flap() {
-    if (dead) return;
-    started = true;
-    bird.vy = JUMP;
+    raf = requestAnimationFrame(tick);
   }
 
   function spawnPipe() {
-    const gapY = 60 + Math.random() * (H - GAP - 120);
-    pipes.push({ x: W, top: gapY, bottom: gapY + GAP, scored: false });
-    lastPipeX = W;
+    var minTop = 20;
+    var maxTop = GROUND_Y - GAP - 20;
+    var top = minTop + Math.random() * (maxTop - minTop);
+    pipes.push({ x: W, top: top, bottom: top + GAP, scored: false });
   }
 
-  function loop() {
+  function tick(now) {
     if (dead) return;
+    var dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
 
     if (started) {
-      bird.vy += GRAVITY;
-      bird.y += bird.vy;
+      bird.vy += GRAVITY * dt;
+      bird.y += bird.vy * dt;
+      groundOffset = (groundOffset + speed * dt) % 24;
+      spawned += speed * dt;
     }
 
-    if (bird.y - bird.r <= 0) {
-      bird.y = bird.r;
-      bird.vy = 0;
-    }
-    if (bird.y + bird.r >= H - 20) {
-      bird.y = H - 20 - bird.r;
-      return die();
-    }
+    if (bird.y - BIRD_R <= 0) { bird.y = BIRD_R; bird.vy = 0; }
+    if (bird.y + BIRD_R >= GROUND_Y) { bird.y = GROUND_Y - BIRD_R; return die(); }
 
-    const spacing = started ? PIPE_SPACING : 999999;
-    if (W - lastPipeX >= spacing) {
+    var spawnGap = 130;
+    if (spawned >= spawnGap) {
+      spawned = 0;
       spawnPipe();
     }
-    if (pipes.length === 0 && started) spawnPipe();
 
-    for (let i = pipes.length - 1; i >= 0; i--) {
-      const p = pipes[i];
-      p.x -= 2.4;
-      if (!p.scored && p.x + PIPE_W < bird.x - bird.r) {
+    for (var i = pipes.length - 1; i >= 0; i--) {
+      var p = pipes[i];
+      if (started) p.x -= speed * dt;
+      if (!p.scored && p.x + PIPE_W < bird.x - BIRD_R) {
         p.scored = true;
         score++;
-        scoreEl.textContent = score;
+        scoreEl.textContent = pad(score);
+        var lv = Math.floor(score / 5) + 1;
+        speedEl.textContent = lv;
+        if (speed < 130) speed += 4;
       }
       if (p.x + PIPE_W < -10) pipes.splice(i, 1);
-      if (bird.x + bird.r > p.x && bird.x - bird.r < p.x + PIPE_W) {
-        if (bird.y - bird.r < p.top || bird.y + bird.r > p.bottom) return die();
+
+      if (bird.x + BIRD_R > p.x + 1 && bird.x - BIRD_R < p.x + PIPE_W - 1) {
+        if (bird.y - BIRD_R < p.top + 1 || bird.y + BIRD_R > p.bottom - 1) return die();
       }
     }
 
-    groundOffset = (groundOffset + 2.4) % 30;
-
     draw();
-    raf = requestAnimationFrame(loop);
+    raf = requestAnimationFrame(tick);
   }
 
   function die() {
@@ -144,76 +153,69 @@
     if (score > best) {
       best = score;
       localStorage.setItem('flappy_best', best);
-      bestEl.textContent = best;
+      bestEl.textContent = pad(best);
     }
-    ovTitle.textContent = 'GAME OVER';
-    ovText.textContent = 'Score: ' + score;
-    overlay.classList.add('show');
+    overlayMsg.textContent = 'Your score: ' + pad(score) + '.';
+    overlay.style.display = 'block';
   }
 
   function draw() {
-    const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, '#150000');
-    grad.addColorStop(1, '#2a0000');
-    ctx.fillStyle = grad;
+    ctx.fillStyle = '#c4cd9d';
     ctx.fillRect(0, 0, W, H);
 
-    for (const p of pipes) {
-      ctx.fillStyle = '#aa0000';
+    for (var i = 0; i < pipes.length; i++) {
+      var p = pipes[i];
+      ctx.fillStyle = '#1e3a1a';
       ctx.fillRect(p.x, 0, PIPE_W, p.top);
-      ctx.fillRect(p.x, p.bottom, PIPE_W, H - p.bottom);
-      ctx.fillStyle = '#ff2222';
-      ctx.fillRect(p.x - 3, p.top - 22, PIPE_W + 6, 22);
-      ctx.fillRect(p.x - 3, p.bottom, PIPE_W + 6, 22);
+      ctx.fillRect(p.x, p.bottom, PIPE_W, GROUND_Y - p.bottom);
+      ctx.fillStyle = '#2a4a1a';
+      ctx.fillRect(p.x - 2, p.top - 8, PIPE_W + 4, 8);
+      ctx.fillRect(p.x - 2, p.bottom, PIPE_W + 4, 8);
     }
 
-    ctx.fillStyle = '#150000';
-    ctx.fillRect(0, H - 20, W, 20);
-    ctx.strokeStyle = '#440000';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, H - 20);
-    ctx.lineTo(W, H - 20);
-    ctx.stroke();
-    ctx.strokeStyle = '#2a0000';
-    ctx.lineWidth = 1;
-    for (let x = -groundOffset; x < W; x += 30) {
-      ctx.beginPath();
-      ctx.moveTo(x, H - 20);
-      ctx.lineTo(x + 15, H - 20);
-      ctx.stroke();
+    ctx.fillStyle = '#1e3a1a';
+    ctx.fillRect(0, GROUND_Y, W, 2);
+    ctx.fillStyle = '#8a9468';
+    for (var x = -groundOffset; x < W; x += 24) {
+      ctx.fillRect(x, GROUND_Y + 6, 12, 2);
     }
 
-    ctx.fillStyle = '#ff2222';
+    ctx.fillStyle = '#1e3a1a';
     ctx.beginPath();
-    ctx.arc(bird.x, bird.y, bird.r, 0, Math.PI * 2);
+    ctx.arc(bird.x, bird.y, BIRD_R, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#150000';
+    ctx.fillStyle = '#c4cd9d';
     ctx.beginPath();
-    ctx.arc(bird.x + 5, bird.y - 4, 3, 0, Math.PI * 2);
+    ctx.arc(bird.x + 3, bird.y - 2, 2, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#ffcc00';
+    ctx.fillStyle = '#8a9468';
     ctx.beginPath();
-    ctx.moveTo(bird.x + bird.r - 2, bird.y);
-    ctx.lineTo(bird.x + bird.r + 8, bird.y + 2);
-    ctx.lineTo(bird.x + bird.r - 2, bird.y + 5);
+    ctx.moveTo(bird.x + BIRD_R - 1, bird.y);
+    ctx.lineTo(bird.x + BIRD_R + 6, bird.y + 2);
+    ctx.lineTo(bird.x + BIRD_R - 1, bird.y + 4);
     ctx.fill();
 
     if (!started && !dead) {
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      ctx.font = 'bold 14px Arial';
+      ctx.fillStyle = 'rgba(40,54,65,0.7)';
+      ctx.font = 'bold 11px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText('TAP FLAP TO START', W / 2, 60);
+      ctx.fillText('TAP FLAP TO START', W / 2, 34);
     }
   }
 
-  flapBtn.addEventListener('click', flap);
-  canvas.addEventListener('click', flap);
-  canvas.addEventListener('touchstart', e => { e.preventDefault(); flap(); }, { passive: false });
-  document.addEventListener('keydown', e => {
+  function flap() {
+    if (dead) { reset(); return; }
+    started = true;
+    bird.vy = FLAP_V;
+  }
+
+  document.getElementById('flapBtn').addEventListener('click', flap);
+  cv.addEventListener('click', flap);
+  cv.addEventListener('touchstart', function(e){ e.preventDefault(); flap(); }, { passive: false });
+  document.addEventListener('keydown', function(e){
     if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') { e.preventDefault(); flap(); }
   });
-  restartBtn.addEventListener('click', reset);
+  document.getElementById('restart').addEventListener('click', reset);
 
   reset();
 })();

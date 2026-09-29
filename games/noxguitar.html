@@ -2,96 +2,100 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>NOX Guitar — SUKUNA REALM</title>
+<title>NOX Guitar</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; background: #050008; color: #eee; font-family: -apple-system, Arial, sans-serif; overflow: hidden; }
-  body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; }
-  h1 { color: #aa44ff; font-size: 20px; letter-spacing: 4px; margin-bottom: 8px; font-weight: bold; text-shadow: 0 0 12px #aa44ff; }
-  #display { font-size: 15px; color: #cc88ff; letter-spacing: 2px; margin-bottom: 12px; min-height: 20px; font-weight: bold; text-align: center; text-shadow: 0 0 6px #aa44ff; }
-  #chords { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; max-width: 460px; margin-bottom: 12px; }
-  .chord { padding: 10px 4px; background: linear-gradient(to bottom, #1a0033 0%, #0a0018 100%); border: 1px solid #440066; border-radius: 8px; text-align: center; cursor: pointer; box-shadow: inset 0 0 8px #330055; }
-  .chord.active { background: linear-gradient(to bottom, #4400aa 0%, #220055 100%); border-color: #aa44ff; box-shadow: 0 0 14px #aa44ff; }
-  .chord .cn { font-size: 14px; color: #cc88ff; font-weight: bold; letter-spacing: 1px; }
-  .chord .cd { font-size: 9px; color: #775599; margin-top: 2px; letter-spacing: 1px; }
-  #fretboard { width: 100%; max-width: 460px; background: linear-gradient(to bottom, #100020 0%, #050010 100%); border-radius: 8px; padding: 12px 0; position: relative; border: 2px solid #440066; box-shadow: inset 0 0 20px #220044; }
-  .string { height: 14px; margin: 2px 12px; position: relative; cursor: pointer; }
-  .string .wire { position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: linear-gradient(to right, #664488 0%, #cc99ff 50%, #664488 100%); transform: translateY(-50%); }
-  .string.s1 .wire { height: 2px; }
-  .string.s2 .wire { height: 2px; }
-  .string.s3 .wire { height: 1.5px; }
-  .string.s4 .wire { height: 1.5px; }
-  .string.s5 .wire { height: 1.8px; }
-  .string.s6 .wire { height: 2.2px; }
-  .string .label { position: absolute; left: -6px; top: 50%; transform: translateY(-50%); font-size: 9px; color: #775599; }
-  .string:active .wire, .string.active .wire { background: #ffddff; box-shadow: 0 0 10px #aa44ff; }
-  #strum { margin-top: 14px; padding: 14px 40px; background: linear-gradient(to bottom, #6600cc 0%, #330066 100%); color: #fff; border: 1px solid #aa44ff; border-radius: 8px; font-size: 14px; font-weight: bold; letter-spacing: 3px; cursor: pointer; box-shadow: 0 0 16px #6600cc; text-shadow: 0 0 8px #ffddff; }
-  #strum:active { background: linear-gradient(to bottom, #8800ff 0%, #5500aa 100%); }
-  #hint { margin-top: 8px; font-size: 10px; color: #664488; letter-spacing: 1px; }
+  body { background: transparent; font-family: Arial, sans-serif; padding: 18px 22px; color: #ccc; }
+  .app { display: flex; flex-direction: column; }
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 8px 2px; }
+  .title { font-size: 13px; font-weight: bold; color: #cc88ff; letter-spacing: 1px; text-shadow: 0 0 8px #aa44ff; }
+  .best { background: rgba(120,60,180,0.35); color: #cc88ff; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: bold; letter-spacing: 1px; border: 1px solid rgba(170,68,255,0.5); }
+  .divider { height: 1px; background: #3a1a5a; opacity: 0.6; margin-bottom: 8px; }
+  .card { background: #0a0510; border-radius: 10px; padding: 8px 9px 10px 9px; box-shadow: 0 2px 12px rgba(120,60,180,0.25); }
+  .scorebar { display: flex; justify-content: space-between; font-family: monospace; font-size: 11px; color: #cc88ff; letter-spacing: 1.5px; padding: 0 2px 6px 2px; text-transform: uppercase; }
+  .playfield { position: relative; border-radius: 4px; overflow: hidden; }
+  canvas { display: block; background: #050010; border-radius: 4px; width: 100%; height: auto; touch-action: none; }
+  .hint { text-align: center; color: #775599; font-size: 11px; font-weight: bold; letter-spacing: 0.3px; margin-top: 10px; padding-bottom: 2px; }
 </style>
-<meta property="og:title" content="NOX Guitar — SUKUNA REALM">
-<meta property="og:description" content="Dark. Distorted. Heavy. Your guitar.">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="SUKUNA REALM">
-<meta name="twitter:card" content="summary">
-<meta property="og:image" content="https://marvsyboi2024-pixel.github.io/apiBaileysWA/games/preview.jpg">
 </head>
 <body>
-<h1>N̸O̸X̸ G̸U̸I̸T̸A̸R̸</h1>
-<div id="display">Tap a chord or pluck a string</div>
-<div id="chords"></div>
-<div id="fretboard">
-  <div class="string s6" data-note="E2"><div class="wire"></div><div class="label">E</div></div>
-  <div class="string s5" data-note="A2"><div class="wire"></div><div class="label">A</div></div>
-  <div class="string s4" data-note="D3"><div class="wire"></div><div class="label">D</div></div>
-  <div class="string s3" data-note="G3"><div class="wire"></div><div class="label">G</div></div>
-  <div class="string s2" data-note="B3"><div class="wire"></div><div class="label">B</div></div>
-  <div class="string s1" data-note="E4"><div class="wire"></div><div class="label">E</div></div>
+<div class="app">
+  <div class="header">
+    <div class="title">🌑 NOX GUITAR</div>
+    <div class="best">🎵 <span id="lastNote">—</span></div>
+  </div>
+  <div class="divider"></div>
+  <div class="card">
+    <div class="scorebar">
+      <span>Mode <span id="modeLabel">STRINGS</span></span>
+      <span>Notes <span id="count">0</span></span>
+    </div>
+    <div class="playfield">
+      <canvas id="c" width="336" height="240"></canvas>
+    </div>
+  </div>
+  <div class="hint">Tap a chord, or strum individual strings</div>
 </div>
-<button id="strum">⚡ DARK STRUM</button>
-<div id="hint">Distorted. Heavy. Yours.</div>
-<script>
-(() => {
-  const chordsEl = document.getElementById('chords');
-  const display = document.getElementById('display');
-  const strumBtn = document.getElementById('strum');
-  const strings = document.querySelectorAll('.string');
 
-  const CHORDS = [
-    { name: 'Am',  notes: ['A2', 'E3', 'A3', 'C4', 'E4'] },
-    { name: 'C',   notes: ['C3', 'E3', 'G3', 'C4', 'E4'] },
-    { name: 'G',   notes: ['G2', 'B2', 'D3', 'G3', 'B3'] },
-    { name: 'F',   notes: ['F2', 'A2', 'C3', 'F3', 'A3'] },
-    { name: 'Dm',  notes: ['D3', 'A3', 'D4', 'F4'] },
-    { name: 'Em',  notes: ['E2', 'B2', 'E3', 'G3', 'B3'] },
-    { name: 'D',   notes: ['D3', 'A3', 'D4', 'F#4'] },
-    { name: 'A',   notes: ['A2', 'E3', 'A3', 'C#4', 'E4'] }
+<script>
+(function(){
+  var cv = document.getElementById('c');
+  var ctx = cv.getContext('2d');
+  var W = cv.width, H = cv.height;
+
+  var CHORD_H = 68;
+  var STRING_TOP = CHORD_H + 8;
+  var STRING_AREA_H = H - STRING_TOP - 10;
+  var NUM_STRINGS = 6;
+  var STRING_GAP = STRING_AREA_H / (NUM_STRINGS + 1);
+
+  var CHORDS = [
+    { name: 'Am', notes: ['A2','E3','A3','C4','E4'] },
+    { name: 'C',  notes: ['C3','E3','G3','C4','E4'] },
+    { name: 'G',  notes: ['G2','B2','D3','G3','B3'] },
+    { name: 'Em', notes: ['E2','B2','E3','G3','B3'] }
   ];
 
-  const NOTE_FREQ = {
+  var STRINGS = [
+    { note: 'E2', label: 'E' },
+    { note: 'A2', label: 'A' },
+    { note: 'D3', label: 'D' },
+    { note: 'G3', label: 'G' },
+    { note: 'B3', label: 'B' },
+    { note: 'E4', label: 'E' }
+  ];
+
+  var FREQ = {
     'E2': 82.41, 'F2': 87.31, 'G2': 98.00,
     'A2': 110.00, 'B2': 123.47,
     'C3': 130.81, 'D3': 146.83, 'E3': 164.81, 'F3': 174.61, 'G3': 196.00, 'A3': 220.00, 'B3': 246.94,
     'C4': 261.63, 'D4': 293.66, 'E4': 329.63, 'F4': 349.23, 'F#4': 369.99, 'G4': 392.00, 'A4': 440.00, 'C#4': 277.18
   };
 
-  let ctx = null;
+  var lastNoteEl = document.getElementById('lastNote');
+  var countEl = document.getElementById('count');
+  var modeEl = document.getElementById('modeLabel');
+
+  var audioCtx = null;
+  var noteCount = 0;
+  var activeChord = -1;
+  var activeStrings = {};
+  var chordTimer = null;
 
   function initAudio() {
-    if (!ctx) {
-      try { ctx = new (window.AudioContext || window.webkitAudioContext)(); }
-      catch (e) { display.textContent = 'Audio unsupported'; }
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (e) { audioCtx = null; }
     }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
   }
 
-  // NOX = distorted. Add waveshaper + 3x oscillators.
   function makeDistortionCurve(amount) {
-    const k = amount || 40;
-    const n = 44100;
-    const curve = new Float32Array(n);
-    for (let i = 0; i < n; i++) {
-      const x = (i * 2) / n - 1;
+    var k = amount || 40;
+    var n = 44100;
+    var curve = new Float32Array(n);
+    for (var i = 0; i < n; i++) {
+      var x = (i * 2) / n - 1;
       curve[i] = ((3 + k) * x * 20 * (Math.PI / 180)) / (Math.PI + k * Math.abs(x));
     }
     return curve;
@@ -99,38 +103,40 @@
 
   function pluck(note, delay) {
     initAudio();
-    if (!ctx) return;
-    const f = NOTE_FREQ[note];
+    if (!audioCtx) return;
+    var f = FREQ[note];
     if (!f) return;
-    const t = ctx.currentTime + (delay || 0);
+    var t = audioCtx.currentTime + (delay || 0);
 
-    const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    const osc3 = ctx.createOscillator();
+    var osc1 = audioCtx.createOscillator();
+    var osc2 = audioCtx.createOscillator();
+    var osc3 = audioCtx.createOscillator();
+
     osc1.type = 'sawtooth';
     osc2.type = 'square';
     osc3.type = 'triangle';
+
     osc1.frequency.value = f;
     osc2.frequency.value = f;
     osc3.frequency.value = f * 0.5;
 
-    const shaper = ctx.createWaveShaper();
-    shaper.curve = makeDistortionCurve(60);
+    var shaper = audioCtx.createWaveShaper();
+    shaper.curve = makeDistortionCurve(65);
     shaper.oversample = '4x';
 
-    const filter = ctx.createBiquadFilter();
+    var filter = audioCtx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(3500, t);
-    filter.frequency.exponentialRampToValueAtTime(600, t + 1.0);
+    filter.frequency.setValueAtTime(3200, t);
+    filter.frequency.exponentialRampToValueAtTime(500, t + 1.0);
 
-    const gain = ctx.createGain();
+    var gain = audioCtx.createGain();
     gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(0.22, t + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.22, t + 0.006);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
 
-    const mix1 = ctx.createGain(); mix1.gain.value = 0.5;
-    const mix2 = ctx.createGain(); mix2.gain.value = 0.3;
-    const mix3 = ctx.createGain(); mix3.gain.value = 0.4;
+    var mix1 = audioCtx.createGain(); mix1.gain.value = 0.5;
+    var mix2 = audioCtx.createGain(); mix2.gain.value = 0.28;
+    var mix3 = audioCtx.createGain(); mix3.gain.value = 0.35;
 
     osc1.connect(mix1);
     osc2.connect(mix2);
@@ -140,7 +146,7 @@
     mix3.connect(shaper);
     shaper.connect(filter);
     filter.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(audioCtx.destination);
 
     osc1.start(t);
     osc2.start(t);
@@ -150,40 +156,177 @@
     osc3.stop(t + 1.7);
   }
 
-  function buildChords() {
-    CHORDS.forEach(c => {
-      const d = document.createElement('div');
-      d.className = 'chord';
-      d.innerHTML = '<div class="cn">' + c.name + '</div><div class="cd">' + c.notes.length + ' strings</div>';
-      d.addEventListener('pointerdown', e => {
-        e.preventDefault();
-        d.classList.add('active');
-        setTimeout(() => d.classList.remove('active'), 250);
-        c.notes.forEach((n, i) => pluck(n, i * 0.035));
-        display.textContent = '🌑 ' + c.name;
-      });
-      chordsEl.appendChild(d);
-    });
+  function strum() {
+    for (var i = 0; i < STRINGS.length; i++) {
+      pluck(STRINGS[i].note, i * 0.045);
+    }
+    noteCount += 6;
+    countEl.textContent = noteCount;
+    lastNoteEl.textContent = 'DARK STRUM';
   }
 
-  strings.forEach(s => {
-    s.addEventListener('pointerdown', e => {
-      e.preventDefault();
-      s.classList.add('active');
-      pluck(s.dataset.note, 0);
-      display.textContent = '🌑 ' + s.dataset.note;
-    });
-    s.addEventListener('pointerup', () => s.classList.remove('active'));
-    s.addEventListener('pointerleave', () => s.classList.remove('active'));
+  function playChord(idx) {
+    var c = CHORDS[idx];
+    for (var i = 0; i < c.notes.length; i++) {
+      pluck(c.notes[i], i * 0.035);
+    }
+    noteCount += c.notes.length;
+    countEl.textContent = noteCount;
+    lastNoteEl.textContent = c.name;
+  }
+
+  function draw() {
+    // Dark gradient background
+    var grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#050010');
+    grad.addColorStop(1, '#0a0520');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Chords row
+    var cw = (W - 24) / CHORDS.length;
+    for (var i = 0; i < CHORDS.length; i++) {
+      var x = 12 + i * cw;
+      var y = 8;
+      var inset = 3;
+      var bx = x + inset;
+      var by = y + inset;
+      var bw = cw - inset * 2;
+      var bh = CHORD_H - 16;
+
+      var isActive = (activeChord === i);
+      ctx.fillStyle = isActive ? '#6600cc' : '#1a0033';
+      roundRect(bx, by, bw, bh, 8);
+      ctx.fill();
+
+      if (isActive) {
+        ctx.shadowColor = '#aa44ff';
+        ctx.shadowBlur = 14;
+        roundRect(bx, by, bw, bh, 8);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
+      ctx.fillStyle = isActive ? '#ffffff' : '#cc88ff';
+      ctx.font = 'bold 14px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(CHORDS[i].name, bx + bw / 2, by + bh / 2);
+    }
+
+    // Strum bar
+    var strumY = CHORD_H + 2;
+    ctx.fillStyle = '#330066';
+    roundRect(12, strumY, W - 24, 16, 6);
+    ctx.fill();
+    ctx.fillStyle = '#cc88ff';
+    ctx.font = 'bold 9px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⚡ DARK STRUM', W / 2, strumY + 8);
+
+    // Strings
+    for (var j = 0; j < NUM_STRINGS; j++) {
+      var sy = STRING_TOP + (j + 1) * STRING_GAP;
+      var isHit = activeStrings[j];
+
+      if (isHit) {
+        ctx.shadowColor = '#aa44ff';
+        ctx.shadowBlur = 10;
+      }
+      ctx.strokeStyle = isHit ? '#ffccff' : '#664488';
+      ctx.lineWidth = isHit ? 3 : 2;
+      ctx.beginPath();
+      ctx.moveTo(20, sy);
+      ctx.lineTo(W - 20, sy);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      ctx.fillStyle = '#775599';
+      ctx.font = 'bold 10px Arial';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(STRINGS[j].label, 6, sy);
+    }
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  function getPos(e) {
+    var rect = cv.getBoundingClientRect();
+    var sx = cv.width / rect.width;
+    var sy = cv.height / rect.height;
+    var cx = e.touches ? e.touches[0].clientX : e.clientX;
+    var cy = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: (cx - rect.left) * sx, y: (cy - rect.top) * sy };
+  }
+
+  function tap(x, y) {
+    // Chord row
+    if (y >= 8 && y <= CHORD_H - 8) {
+      var cw = (W - 24) / CHORDS.length;
+      var idx = Math.floor((x - 12) / cw);
+      if (idx >= 0 && idx < CHORDS.length) {
+        playChord(idx);
+        activeChord = idx;
+        clearTimeout(chordTimer);
+        chordTimer = setTimeout(function(){ activeChord = -1; draw(); }, 250);
+        draw();
+        return;
+      }
+    }
+
+    // Strum bar
+    if (y >= CHORD_H + 2 && y <= CHORD_H + 18) {
+      strum();
+      return;
+    }
+
+    // Strings
+    var best = -1;
+    var bestDist = 14;
+    for (var j = 0; j < NUM_STRINGS; j++) {
+      var sy = STRING_TOP + (j + 1) * STRING_GAP;
+      var d = Math.abs(y - sy);
+      if (d < bestDist) { bestDist = d; best = j; }
+    }
+    if (best >= 0) {
+      pluck(STRINGS[best].note, 0);
+      noteCount++;
+      countEl.textContent = noteCount;
+      lastNoteEl.textContent = STRINGS[best].label;
+      activeStrings[best] = true;
+      setTimeout(function(){ activeStrings[best] = false; draw(); }, 200);
+      draw();
+    }
+  }
+
+  cv.addEventListener('touchstart', function(e){ e.preventDefault(); var p = getPos(e); tap(p.x, p.y); }, { passive: false });
+  cv.addEventListener('click', function(e){ var p = getPos(e); tap(p.x, p.y); });
+
+  document.addEventListener('keydown', function(e){
+    var map = { a: 0, s: 1, d: 2, f: 3, g: 4, h: 5 };
+    if (map[e.key] !== undefined) {
+      pluck(STRINGS[map[e.key]].note, 0);
+      noteCount++;
+      countEl.textContent = noteCount;
+      lastNoteEl.textContent = STRINGS[map[e.key]].label;
+    }
   });
 
-  strumBtn.addEventListener('click', () => {
-    const all = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'];
-    all.forEach((n, i) => pluck(n, i * 0.05));
-    display.textContent = '⚡ DARK STRUM';
-  });
-
-  buildChords();
+  draw();
 })();
 </script>
 </body>

@@ -2,183 +2,207 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Slots — SUKUNA REALM</title>
+<title>Slots</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; background: #0a0000; color: #eee; font-family: -apple-system, Arial, sans-serif; overflow: hidden; }
-  body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px; }
-  h1 { color: #ff2222; font-size: 22px; letter-spacing: 4px; margin-bottom: 12px; font-weight: bold; }
-  #balance { font-size: 15px; color: #ffcc66; letter-spacing: 2px; margin-bottom: 12px; }
-  #balance b { color: #fff; font-size: 20px; }
-  #machine { display: flex; gap: 10px; background: #220000; padding: 14px; border-radius: 12px; border: 2px solid #440000; }
-  .reel { width: 90px; height: 100px; background: #150000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 54px; border: 1px solid #440000; overflow: hidden; }
-  .reel.spinning { animation: spin 0.1s linear infinite; }
-  @keyframes spin { 0% { transform: translateY(-4px); } 100% { transform: translateY(4px); } }
-  #msg { margin-top: 14px; font-size: 16px; letter-spacing: 2px; font-weight: bold; min-height: 24px; color: #ffaa88; text-align: center; }
-  #bet { margin-top: 12px; display: flex; gap: 8px; align-items: center; font-size: 13px; color: #ff6666; letter-spacing: 1px; }
-  #bet button { width: 32px; height: 32px; background: #220000; border: 1px solid #440000; color: #ff6666; font-size: 18px; border-radius: 5px; cursor: pointer; font-weight: bold; }
-  #bet button:active { background: #440000; }
-  #bet b { color: #fff; font-size: 15px; min-width: 40px; text-align: center; }
-  #spin { margin-top: 16px; padding: 14px 50px; background: #aa0000; color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; letter-spacing: 4px; cursor: pointer; }
-  #spin:active { background: #dd0000; }
-  #spin:disabled { opacity: 0.4; cursor: not-allowed; }
-  #reset { margin-top: 10px; padding: 6px 16px; background: transparent; border: 1px solid #440000; color: #ff6666; font-size: 11px; border-radius: 5px; cursor: pointer; letter-spacing: 1px; }
-  .paytable { margin-top: 14px; font-size: 11px; color: #ff8888; letter-spacing: 1px; text-align: center; line-height: 1.7; }
+  body { background: transparent; font-family: Arial, sans-serif; padding: 18px 22px; color: #333; }
+  .app { display: flex; flex-direction: column; }
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 8px 2px; }
+  .title { font-size: 13px; font-weight: bold; color: #2a3a1a; letter-spacing: 0.5px; }
+  .best { background: rgba(180,190,140,0.35); color: #4a4a3a; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: bold; letter-spacing: 1px; border: 1px solid rgba(140,150,100,0.5); }
+  .divider { height: 1px; background: #3a4a2a; opacity: 0.4; margin-bottom: 8px; }
+  .card { background: #1a1f17; border-radius: 10px; padding: 8px 9px 10px 9px; box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+  .scorebar { display: flex; justify-content: space-between; font-family: monospace; font-size: 11px; color: #a8b400; letter-spacing: 1.5px; padding: 0 2px 6px 2px; text-transform: uppercase; }
+  .playfield { position: relative; border-radius: 4px; overflow: hidden; }
+  canvas { display: block; background: #c4cd9d; border-radius: 4px; width: 100%; height: auto; }
+  .overlay { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 96%; background: #283641; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.35); text-align: center; padding: 18px 12px 0 12px; display: none; }
+  .overlay h2 { color: #ffffff; font-size: 17px; font-weight: bold; margin-bottom: 6px; }
+  .overlay p { color: #b8c0c8; font-size: 11px; margin-bottom: 14px; }
+  .overlay .sect { border-top: 1px solid rgba(255,255,255,0.15); }
+  .overlay button { background: transparent; border: none; color: #a8b400; font-size: 14px; font-weight: bold; padding: 12px 0; width: 100%; cursor: pointer; font-family: inherit; }
+  .jump { display: flex; justify-content: center; margin-top: 12px; width: 100%; }
+  .jump button { background: rgba(90,100,60,0.15); border: 1px solid #7a8a5a; border-radius: 12px; color: #3a4a1a; font-size: 15px; font-weight: bold; letter-spacing: 3px; padding: 0; height: 52px; width: 100%; cursor: pointer; font-family: inherit; }
+  .jump button:active { background: rgba(90,100,60,0.35); color: #1a2a0a; }
+  .jump button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .hint { text-align: center; color: #4a5a5a; font-size: 11px; font-weight: bold; letter-spacing: 0.3px; margin-top: 8px; padding-bottom: 2px; }
 </style>
-<meta property="og:title" content="Slots — SUKUNA REALM">
-<meta property="og:description" content="Spin the reels. Chase the jackpot.">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="SUKUNA REALM">
-<meta name="twitter:card" content="summary">
-<meta property="og:image" content="https://marvsyboi2024-pixel.github.io/apiBaileysWA/games/preview.jpg">
 </head>
 <body>
-<h1>SUKUNA SLOTS</h1>
-<div id="balance">BALANCE <b id="bal">1000</b></div>
-<div id="machine">
-  <div class="reel" id="r0">🍒</div>
-  <div class="reel" id="r1">🍒</div>
-  <div class="reel" id="r2">🍒</div>
+<div class="app">
+  <div class="header">
+    <div class="title">🎰 Slots</div>
+    <div class="best">🏆 BEST <span id="best">1000</span></div>
+  </div>
+  <div class="divider"></div>
+  <div class="card">
+    <div class="scorebar">
+      <span>Coins <span id="coins">1000</span></span>
+      <span>Bet <span id="bet">10</span></span>
+    </div>
+    <div class="playfield">
+      <canvas id="c" width="336" height="200"></canvas>
+      <div class="overlay" id="overlay">
+        <h2 id="ovTitle">Result</h2>
+        <p id="ovMsg">+0 coins</p>
+        <div class="sect"><button id="closeOv">Continue</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="jump">
+    <button id="spinBtn">SPIN</button>
+  </div>
+  <div class="hint">Tap SPIN to play · win 3 in a row!</div>
 </div>
-<div id="msg">Press SPIN to play</div>
-<div id="bet">
-  <button id="dec">−</button>
-  <b id="betAmt">10</b>
-  <button id="inc">+</button>
-</div>
-<button id="spin">SPIN</button>
-<button id="reset">RESET BALANCE</button>
-<div class="paytable">
-  💎💎💎 ×100 &nbsp;·&nbsp; 7️⃣7️⃣7️⃣ ×50 &nbsp;·&nbsp; ⭐⭐⭐ ×25<br>
-  🍒🍒🍒 ×15 &nbsp;·&nbsp; 🍋🍋🍋 ×10 &nbsp;·&nbsp; Any two ×2
-</div>
+
 <script>
-(() => {
-  const SYMBOLS = ['🍒', '🍋', '⭐', '7️⃣', '💎', '🔔', '🍀'];
-  const PAYOUTS = { '💎': 100, '7️⃣': 50, '⭐': 25, '🍒': 15, '🍋': 10, '🔔': 8, '🍀': 5 };
+(function(){
+  var cv = document.getElementById('c');
+  var ctx = cv.getContext('2d');
+  var W = cv.width, H = cv.height;
 
-  const balEl = document.getElementById('bal');
-  const msgEl = document.getElementById('msg');
-  const betEl = document.getElementById('betAmt');
-  const spinBtn = document.getElementById('spin');
-  const decBtn = document.getElementById('dec');
-  const incBtn = document.getElementById('inc');
-  const resetBtn = document.getElementById('reset');
-  const reels = [document.getElementById('r0'), document.getElementById('r1'), document.getElementById('r2')];
+  var SYMS = [
+    { c: '#1e3a1a', v: 5,  s: '🍒' },
+    { c: '#2a5a2a', v: 8,  s: '🍋' },
+    { c: '#8a6a1a', v: 12, s: '⭐' },
+    { c: '#5a4a1a', v: 20, s: '🔔' },
+    { c: '#8a1a1a', v: 50, s: '7️⃣' },
+    { c: '#3a1a5a', v: 100, s: '💎' }
+  ];
 
-  let balance = parseInt(localStorage.getItem('slots_balance') || '1000', 10);
-  let bet = parseInt(localStorage.getItem('slots_bet') || '10', 10);
-  let spinning = false;
+  var coins = parseInt(localStorage.getItem('slot_coins') || '1000', 10);
+  var bet = 10;
+  var spinBtn = document.getElementById('spinBtn');
+  var coinsEl = document.getElementById('coins');
+  var betEl = document.getElementById('bet');
+  var bestEl = document.getElementById('best');
+  var overlay = document.getElementById('overlay');
+  var ovTitle = document.getElementById('ovTitle');
+  var ovMsg = document.getElementById('ovMsg');
+  var closeOv = document.getElementById('closeOv');
+
+  var current = [0, 0, 0];
+  var spinning = false;
+  var spinTimer = null;
+
+  var best = parseInt(localStorage.getItem('slot_best') || '1000', 10);
+  bestEl.textContent = best;
 
   updateUI();
 
   function updateUI() {
-    balEl.textContent = balance;
+    coinsEl.textContent = coins;
     betEl.textContent = bet;
+    spinBtn.disabled = coins < bet;
   }
 
-  function save() {
-    localStorage.setItem('slots_balance', balance);
-    localStorage.setItem('slots_bet', bet);
+  function saveAll() {
+    localStorage.setItem('slot_coins', coins);
+    if (coins > best) {
+      best = coins;
+      localStorage.setItem('slot_best', best);
+      bestEl.textContent = best;
+    }
   }
 
-  decBtn.addEventListener('click', () => {
-    if (spinning) return;
-    if (bet > 10) { bet -= 10; updateUI(); save(); }
-  });
-  incBtn.addEventListener('click', () => {
-    if (spinning) return;
-    if (bet < 500 && bet + 10 <= balance) { bet += 10; updateUI(); save(); }
-  });
-
-  resetBtn.addEventListener('click', () => {
-    if (spinning) return;
-    balance = 1000;
-    bet = 10;
-    updateUI();
-    save();
-    msgEl.textContent = 'Balance reset';
-  });
-
-  spinBtn.addEventListener('click', spin);
-
-  function pick() {
-    return SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+  function randomSym() {
+    return Math.floor(Math.random() * SYMS.length);
   }
 
   function spin() {
-    if (spinning) return;
-    if (balance < bet) {
-      msgEl.textContent = '❌ Not enough balance';
-      return;
-    }
+    if (spinning || coins < bet) return;
     spinning = true;
-    spinBtn.disabled = true;
-    balance -= bet;
+    coins -= bet;
     updateUI();
-    save();
-    msgEl.textContent = 'Spinning...';
-
-    reels.forEach(r => r.classList.add('spinning'));
-
-    const final = [pick(), pick(), pick()];
-    const rollDuration = [800, 1200, 1600];
-
-    reels.forEach((r, i) => {
-      let ticks = 0;
-      const maxTicks = 8 + i * 4;
-      const ticker = setInterval(() => {
-        r.textContent = pick();
-        ticks++;
-        if (ticks >= maxTicks) {
-          clearInterval(ticker);
-          r.textContent = final[i];
-          r.classList.remove('spinning');
-          if (i === 2) finish(final);
-        }
-      }, 80);
-    });
+    spinBtn.textContent = 'SPINNING';
+    var spinCount = 0;
+    var maxSpins = 18;
+    spinTimer = setInterval(function(){
+      current = [randomSym(), randomSym(), randomSym()];
+      draw();
+      spinCount++;
+      if (spinCount >= maxSpins) {
+        clearInterval(spinTimer);
+        finalize();
+      }
+    }, 70);
   }
 
-  function finish(final) {
+  function finalize() {
     spinning = false;
+    spinBtn.textContent = 'SPIN';
     spinBtn.disabled = false;
+    var a = current[0], b = current[1], c = current[2];
+    var win = 0;
+    var msg = '';
 
-    let win = 0;
-    let message = '';
-
-    if (final[0] === final[1] && final[1] === final[2]) {
-      const mult = PAYOUTS[final[0]] || 5;
-      win = bet * mult;
-      if (final[0] === '💎') message = '🏆 JACKPOT ×' + mult;
-      else if (final[0] === '7️⃣') message = '🎰 TRIPLE SEVENS ×' + mult;
-      else message = '✨ Three ' + final[0] + ' ×' + mult;
+    if (a === b && b === c) {
+      win = SYMS[a].v * bet;
+      msg = 'JACKPOT! ' + SYMS[a].s + SYMS[a].s + SYMS[a].s + ' ×' + SYMS[a].v;
+    } else if (a === b || b === c || a === c) {
+      win = bet * 2;
+      msg = 'Two match! +' + win;
     } else {
-      const counts = {};
-      final.forEach(s => counts[s] = (counts[s] || 0) + 1);
-      const hasTwo = Object.values(counts).some(v => v >= 2);
-      if (hasTwo) {
-        win = bet * 2;
-        message = '✅ Two match ×2';
-      }
+      msg = 'No match. Try again.';
     }
 
     if (win > 0) {
-      balance += win;
-      msgEl.textContent = message + '  +' + win;
-      save();
+      coins += win;
       updateUI();
-    } else {
-      msgEl.textContent = '❌ No match. Try again.';
+      saveAll();
     }
 
-    if (balance < 10) {
-      msgEl.textContent += '  — Reset needed';
+    ovTitle.textContent = win > 0 ? 'You Win!' : 'No Win';
+    ovMsg.textContent = msg;
+    overlay.style.display = 'block';
+    draw();
+    if (coins < bet) {
+      spinBtn.disabled = true;
     }
   }
 
-  updateUI();
+  function draw() {
+    ctx.fillStyle = '#c4cd9d';
+    ctx.fillRect(0, 0, W, H);
+
+    var reelW = 70;
+    var reelH = 110;
+    var gap = 14;
+    var totalW = reelW * 3 + gap * 2;
+    var startX = (W - totalW) / 2;
+    var startY = (H - reelH) / 2;
+
+    for (var i = 0; i < 3; i++) {
+      var x = startX + i * (reelW + gap);
+      var y = startY;
+
+      ctx.fillStyle = '#1a1f17';
+      ctx.fillRect(x - 3, y - 3, reelW + 6, reelH + 6);
+
+      ctx.fillStyle = '#f0f0e0';
+      ctx.fillRect(x, y, reelW, reelH);
+
+      var sym = SYMS[current[i]];
+      ctx.font = 'bold 42px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(sym.s, x + reelW / 2, y + reelH / 2);
+    }
+
+    ctx.fillStyle = '#3a4a2a';
+    ctx.font = 'bold 10px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('TAP SPIN', W / 2, H - 16);
+  }
+
+  spinBtn.addEventListener('click', spin);
+  closeOv.addEventListener('click', function(){ overlay.style.display = 'none'; });
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); spin(); }
+  });
+
+  draw();
 })();
 </script>
 </body>

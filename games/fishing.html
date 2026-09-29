@@ -2,269 +2,243 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Fishing Master — SUKUNA REALM</title>
+<title>Fishing</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; background: #0a0000; color: #eee; font-family: -apple-system, Arial, sans-serif; overflow: hidden; }
-  body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px; }
-  h1 { color: #ff2222; font-size: 20px; letter-spacing: 3px; margin-bottom: 8px; font-weight: bold; }
-  #scorebar { display: flex; gap: 20px; margin-bottom: 12px; font-size: 13px; color: #ff6666; letter-spacing: 1px; }
-  #scorebar span b { color: #fff; }
-  #wrap { position: relative; width: 100%; max-width: 400px; }
-  canvas { width: 100%; background: linear-gradient(to bottom, #001a2e 0%, #001a2e 30%, #003355 30%, #002244 100%); border: 2px solid #440000; border-radius: 10px; display: block; touch-action: none; }
-  #overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; background: rgba(10,0,0,0.88); border-radius: 10px; text-align: center; padding: 20px; }
-  #overlay.show { display: flex; }
-  #overlay h2 { color: #ff2222; font-size: 22px; margin-bottom: 8px; letter-spacing: 3px; }
-  #overlay p { color: #ccc; font-size: 14px; margin-bottom: 16px; }
-  #overlay button { padding: 10px 24px; background: #aa0000; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; letter-spacing: 2px; cursor: pointer; }
-  #overlay button:active { background: #dd0000; }
-  #hook { margin-top: 14px; padding: 14px 40px; background: #220000; border: 1px solid #440000; color: #ff6666; font-size: 16px; border-radius: 8px; cursor: pointer; letter-spacing: 2px; font-weight: bold; }
-  #hook:active { background: #440000; color: #fff; }
+  body { background: transparent; font-family: Arial, sans-serif; padding: 18px 22px; color: #333; }
+  .app { display: flex; flex-direction: column; }
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 8px 2px; }
+  .title { font-size: 13px; font-weight: bold; color: #2a3a1a; letter-spacing: 0.5px; }
+  .best { background: rgba(180,190,140,0.35); color: #4a4a3a; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: bold; letter-spacing: 1px; border: 1px solid rgba(140,150,100,0.5); }
+  .divider { height: 1px; background: #3a4a2a; opacity: 0.4; margin-bottom: 8px; }
+  .card { background: #1a1f17; border-radius: 10px; padding: 8px 9px 10px 9px; box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+  .scorebar { display: flex; justify-content: space-between; font-family: monospace; font-size: 11px; color: #a8b400; letter-spacing: 1.5px; padding: 0 2px 6px 2px; text-transform: uppercase; }
+  .playfield { position: relative; border-radius: 4px; overflow: hidden; }
+  canvas { display: block; background: #c4cd9d; border-radius: 4px; width: 100%; height: auto; }
+  .gameover { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 96%; background: #283641; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.35); text-align: center; padding: 18px 12px 0 12px; display: none; }
+  .gameover h2 { color: #ffffff; font-size: 17px; font-weight: bold; margin-bottom: 6px; }
+  .gameover p { color: #b8c0c8; font-size: 11px; margin-bottom: 14px; }
+  .gameover .sect { border-top: 1px solid rgba(255,255,255,0.15); }
+  .gameover button { background: transparent; border: none; color: #a8b400; font-size: 14px; font-weight: bold; padding: 12px 0; width: 100%; cursor: pointer; font-family: inherit; }
+  .jump { display: flex; justify-content: center; margin-top: 12px; width: 100%; }
+  .jump button { background: rgba(90,100,60,0.15); border: 1px solid #7a8a5a; border-radius: 12px; color: #3a4a1a; font-size: 15px; font-weight: bold; letter-spacing: 3px; padding: 0; height: 52px; width: 100%; cursor: pointer; font-family: inherit; }
+  .jump button:active { background: rgba(90,100,60,0.35); color: #1a2a0a; }
+  .hint { text-align: center; color: #4a5a5a; font-size: 11px; font-weight: bold; letter-spacing: 0.3px; margin-top: 8px; padding-bottom: 2px; }
 </style>
-<meta property="og:title" content="Fishing Master — SUKUNA REALM">
-<meta property="og:description" content="Catch fish and earn coins. 60 seconds on the clock.">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="SUKUNA REALM">
-<meta name="twitter:card" content="summary">
-<meta property="og:image" content="https://marvsyboi2024-pixel.github.io/apiBaileysWA/games/preview.jpg">
 </head>
 <body>
-<h1>SUKUNA FISHING</h1>
-<div id="scorebar">
-  <span>COINS <b id="coins">0</b></span>
-  <span>CAUGHT <b id="caught">0</b></span>
-  <span>MISSES <b id="misses">0</b></span>
-</div>
-<div id="wrap">
-  <canvas id="c" width="400" height="500"></canvas>
-  <div id="overlay">
-    <h2 id="ovtitle">TIME UP</h2>
-    <p id="ovtext">Coins: 0</p>
-    <button id="restart">RESTART</button>
+<div class="app">
+  <div class="header">
+    <div class="title">🎣 Fishing</div>
+    <div class="best">🏆 BEST <span id="best">0000</span></div>
   </div>
+  <div class="divider"></div>
+  <div class="card">
+    <div class="scorebar">
+      <span>Coins <span id="score">0000</span></span>
+      <span>Time <span id="time">60</span></span>
+    </div>
+    <div class="playfield">
+      <canvas id="c" width="336" height="200"></canvas>
+      <div class="gameover" id="overlay">
+        <h2>Time Up</h2>
+        <p id="overlayMsg">You caught 0 fish, coins: 0000.</p>
+        <div class="sect"><button id="restart">Play Again</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="jump">
+    <button id="castBtn">CAST</button>
+  </div>
+  <div class="hint">Tap CAST to lower the hook, tap again to reel!</div>
 </div>
-<button id="hook">CAST / REEL</button>
+
 <script>
-(() => {
-  const canvas = document.getElementById('c');
-  const ctx = canvas.getContext('2d');
-  const coinsEl = document.getElementById('coins');
-  const caughtEl = document.getElementById('caught');
-  const missesEl = document.getElementById('misses');
-  const overlay = document.getElementById('overlay');
-  const ovTitle = document.getElementById('ovtitle');
-  const ovText = document.getElementById('ovtext');
-  const restartBtn = document.getElementById('restart');
-  const hookBtn = document.getElementById('hook');
+(function(){
+  var cv = document.getElementById('c');
+  var ctx = cv.getContext('2d');
+  var W = cv.width, H = cv.height;
+  var WATER_Y = 55;
+  var DURATION = 60;
 
-  const W = canvas.width;
-  const H = canvas.height;
-  const WATER_Y = 150;
-  const DURATION = 60000;
-
-  const FISH_TYPES = [
-    { emoji: '🐟', value: 5, color: '#66aaff', r: 12, speed: 1.5, name: 'Small Fish' },
-    { emoji: '🐠', value: 10, color: '#ffaa66', r: 14, speed: 1.8, name: 'Tropical Fish' },
-    { emoji: '🐡', value: 20, color: '#ffcc44', r: 16, speed: 1.2, name: 'Puffer' },
-    { emoji: '🦐', value: 15, color: '#ff8899', r: 10, speed: 2.5, name: 'Shrimp' },
-    { emoji: '🦑', value: 30, color: '#cc66ff', r: 18, speed: 1.0, name: 'Squid' },
-    { emoji: '🐙', value: 50, color: '#ff4466', r: 22, speed: 0.8, name: 'Octopus' },
-    { emoji: '🦈', value: 100, color: '#88aacc', r: 28, speed: 0.6, name: 'Shark' }
+  var FISH = [
+    { c: '#3a7a3a', r: 6, v: 4, name: 'Small' },
+    { c: '#7a8a3a', r: 8, v: 8, name: 'Medium' },
+    { c: '#a86a3a', r: 10, v: 15, name: 'Big' },
+    { c: '#aa2a3a', r: 12, v: 30, name: 'Rare' }
   ];
 
-  let hook, fishes, coins, caught, misses, dead, raf, startTime, spawnTimer, hookState, bobberY;
+  var scoreEl = document.getElementById('score');
+  var timeEl = document.getElementById('time');
+  var bestEl = document.getElementById('best');
+  var overlay = document.getElementById('overlay');
+  var overlayMsg = document.getElementById('overlayMsg');
+
+  var fishes, coins, caught, timeLeft, hookY, hookState, dead, lastTime, raf, spawnTimer;
+
+  var best = parseInt(localStorage.getItem('fish_best') || '0', 10);
+  bestEl.textContent = pad(best);
+
+  function pad(n){ n = String(n); while (n.length < 4) n = '0' + n; return n; }
 
   function reset() {
-    hook = { x: W / 2, y: WATER_Y };
-    bobberY = WATER_Y;
     fishes = [];
     coins = 0;
     caught = 0;
-    misses = 0;
-    dead = false;
-    startTime = Date.now();
-    spawnTimer = 0;
+    timeLeft = DURATION;
+    hookY = WATER_Y;
     hookState = 'idle';
-    coinsEl.textContent = '0';
-    caughtEl.textContent = '0';
-    missesEl.textContent = '0';
-    overlay.classList.remove('show');
+    dead = false;
+    spawnTimer = 0;
+    scoreEl.textContent = pad(0);
+    timeEl.textContent = '60';
+    overlay.style.display = 'none';
+    lastTime = performance.now();
     cancelAnimationFrame(raf);
-    loop();
+    raf = requestAnimationFrame(tick);
   }
 
   function spawnFish() {
-    const t = FISH_TYPES[Math.floor(Math.random() * FISH_TYPES.length)];
-    const fromLeft = Math.random() > 0.5;
+    var t = FISH[Math.floor(Math.random() * FISH.length)];
+    var fromLeft = Math.random() > 0.5;
     fishes.push({
-      type: t,
-      x: fromLeft ? -30 : W + 30,
-      y: WATER_Y + 40 + Math.random() * (H - WATER_Y - 80),
-      vx: fromLeft ? t.speed : -t.speed,
-      bob: Math.random() * Math.PI * 2
+      t: t,
+      x: fromLeft ? -20 : W + 20,
+      y: WATER_Y + 20 + Math.random() * (H - WATER_Y - 40),
+      vx: (fromLeft ? t.v : -t.v),
+      wobble: Math.random() * Math.PI * 2
     });
   }
 
-  function hookAction() {
+  function tick(now) {
     if (dead) return;
-    if (hookState === 'idle') {
-      hookState = 'casting';
-      bobberY = WATER_Y;
-    } else if (hookState === 'casting') {
-      hookState = 'reeling';
-    }
-  }
+    var dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
 
-  function loop() {
-    if (dead) return;
+    timeLeft -= dt;
+    if (timeLeft <= 0) { timeLeft = 0; return die(); }
+    timeEl.textContent = Math.ceil(timeLeft);
 
-    const elapsed = Date.now() - startTime;
-    if (elapsed >= DURATION) return end();
-
-    spawnTimer += 16;
-    if (spawnTimer > 900) {
+    spawnTimer += dt;
+    if (spawnTimer > 0.8) {
       spawnTimer = 0;
-      if (fishes.length < 12) spawnFish();
+      if (fishes.length < 8) spawnFish();
     }
 
-    if (hookState === 'casting') {
-      bobberY += 4;
-      if (bobberY > H - 40) {
-        bobberY = H - 40;
-        hookState = 'waiting';
-        setTimeout(() => { if (!dead) hookState = 'reeling'; }, 300);
-      }
-    } else if (hookState === 'reeling') {
-      bobberY -= 6;
-      if (bobberY <= WATER_Y) {
-        bobberY = WATER_Y;
-        hookState = 'idle';
-      }
+    if (hookState === 'down') {
+      hookY += 90 * dt;
+      if (hookY >= H - 20) { hookY = H - 20; hookState = 'up'; }
+    } else if (hookState === 'up') {
+      hookY -= 130 * dt;
+      if (hookY <= WATER_Y) { hookY = WATER_Y; hookState = 'idle'; }
     }
 
-    for (let i = fishes.length - 1; i >= 0; i--) {
-      const f = fishes[i];
-      f.x += f.vx;
-      f.bob += 0.05;
-      if (f.x < -50 || f.x > W + 50) fishes.splice(i, 1);
+    for (var i = fishes.length - 1; i >= 0; i--) {
+      var f = fishes[i];
+      f.x += f.vx * dt;
+      f.wobble += dt * 6;
+      if (f.x < -40 || f.x > W + 40) fishes.splice(i, 1);
     }
 
-    if (hookState === 'casting' || hookState === 'waiting' || hookState === 'reeling') {
-      for (let i = fishes.length - 1; i >= 0; i--) {
-        const f = fishes[i];
-        const dx = f.x - W / 2;
-        const dy = f.y - bobberY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < f.type.r + 14) {
-          if (hookState !== 'reeling') hookState = 'reeling';
-          coins += f.type.value;
+    if (hookState !== 'idle') {
+      for (var j = fishes.length - 1; j >= 0; j--) {
+        var ff = fishes[j];
+        var dx = ff.x - W / 2;
+        var dy = ff.y - hookY;
+        var d = Math.sqrt(dx * dx + dy * dy);
+        if (d < ff.t.r + 10) {
+          coins += ff.t.v;
           caught++;
-          coinsEl.textContent = coins;
-          caughtEl.textContent = caught;
-          fishes.splice(i, 1);
-          showCatch(f.type);
+          scoreEl.textContent = pad(coins);
+          if (hookState === 'up' || hookState === 'down') hookState = 'up';
+          fishes.splice(j, 1);
           break;
         }
       }
     }
 
     draw();
-    raf = requestAnimationFrame(loop);
+    raf = requestAnimationFrame(tick);
   }
 
-  let catchMsg = null;
-  function showCatch(t) {
-    catchMsg = { text: '+' + t.value + '  ' + t.emoji + ' ' + t.name, t: Date.now(), color: t.color };
-  }
-
-  function end() {
+  function die() {
     dead = true;
     cancelAnimationFrame(raf);
-    ovTitle.textContent = 'TIME UP';
-    ovText.textContent = 'Coins: ' + coins + '  •  Caught: ' + caught;
-    overlay.classList.add('show');
+    if (coins > best) {
+      best = coins;
+      localStorage.setItem('fish_best', best);
+      bestEl.textContent = pad(best);
+    }
+    overlayMsg.textContent = 'You caught ' + caught + ' fish, coins: ' + pad(coins) + '.';
+    overlay.style.display = 'block';
   }
 
   function draw() {
-    ctx.clearRect(0, 0, W, H);
-    const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, '#001a2e');
-    grad.addColorStop(0.3, '#001a2e');
-    grad.addColorStop(0.3, '#003355');
-    grad.addColorStop(1, '#002244');
+    var grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#c4cd9d');
+    grad.addColorStop(0.28, '#c4cd9d');
+    grad.addColorStop(0.28, '#7a9a7a');
+    grad.addColorStop(1, '#3a5a3a');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
-    ctx.fillStyle = '#88ccff';
-    for (let i = 0; i < 4; i++) {
-      const x = (i * 137 + (Date.now() / 40) % 137) % W;
-      ctx.globalAlpha = 0.15;
+    ctx.strokeStyle = '#1e3a1a';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, WATER_Y);
+    ctx.lineTo(W, WATER_Y);
+    ctx.stroke();
+
+    for (var i = 0; i < fishes.length; i++) {
+      var f = fishes[i];
+      var wobble = Math.sin(f.wobble) * 2;
+      ctx.fillStyle = f.t.c;
       ctx.beginPath();
-      ctx.arc(x, WATER_Y + 30 + i * 20, 20 + i * 8, 0, Math.PI * 2);
+      ctx.ellipse(f.x, f.y + wobble, f.t.r, f.t.r * 0.7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#1e3a1a';
+      ctx.beginPath();
+      ctx.arc(f.x + (f.vx > 0 ? f.t.r * 0.4 : -f.t.r * 0.4), f.y + wobble - 1, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = f.t.c;
+      var tailDir = f.vx > 0 ? -1 : 1;
+      ctx.beginPath();
+      ctx.moveTo(f.x + tailDir * f.t.r * 0.9, f.y + wobble);
+      ctx.lineTo(f.x + tailDir * (f.t.r * 1.5), f.y + wobble - 4);
+      ctx.lineTo(f.x + tailDir * (f.t.r * 1.5), f.y + wobble + 4);
       ctx.fill();
     }
-    ctx.globalAlpha = 1;
 
-    ctx.strokeStyle = '#aa0000';
+    ctx.strokeStyle = '#3a4a2a';
     ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]);
     ctx.beginPath();
     ctx.moveTo(W / 2, WATER_Y);
-    ctx.lineTo(W / 2, bobberY);
+    ctx.lineTo(W / 2, hookY);
     ctx.stroke();
-    ctx.setLineDash([]);
 
-    ctx.fillStyle = '#ff2222';
+    ctx.fillStyle = '#aa2a3a';
     ctx.beginPath();
-    ctx.arc(W / 2, bobberY, 10, 0, Math.PI * 2);
+    ctx.arc(W / 2, hookY, 5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(W / 2, bobberY, 4, 0, Math.PI * 2);
+    ctx.arc(W / 2, hookY, 2, 0, Math.PI * 2);
     ctx.fill();
-
-    for (const f of fishes) {
-      const bobY = f.y + Math.sin(f.bob) * 5;
-      ctx.font = f.type.r * 2 + 'px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(f.type.emoji, f.x, bobY);
-    }
-
-    const remain = Math.max(0, Math.ceil((DURATION - (Date.now() - startTime)) / 1000));
-    ctx.fillStyle = '#ff6666';
-    ctx.font = 'bold 16px Arial';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText('⏱ ' + remain + 's', 12, 12);
-
-    if (catchMsg && Date.now() - catchMsg.t < 1200) {
-      ctx.fillStyle = catchMsg.color;
-      ctx.font = 'bold 20px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.globalAlpha = Math.max(0, 1 - (Date.now() - catchMsg.t) / 1200);
-      ctx.fillText(catchMsg.text, W / 2, 90);
-      ctx.globalAlpha = 1;
-    }
-
-    if (hookState === 'idle' && fishes.length === 0) {
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      ctx.font = 'bold 14px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('TAP CAST TO START', W / 2, H - 40);
-    }
   }
 
-  hookBtn.addEventListener('click', hookAction);
-  canvas.addEventListener('click', hookAction);
-  canvas.addEventListener('touchstart', e => { e.preventDefault(); hookAction(); }, { passive: false });
-  document.addEventListener('keydown', e => {
-    if (e.key === ' ' || e.key === 'ArrowUp') { e.preventDefault(); hookAction(); }
+  function cast() {
+    if (dead) { reset(); return; }
+    if (hookState === 'idle') hookState = 'down';
+    else if (hookState === 'down') hookState = 'up';
+  }
+
+  document.getElementById('castBtn').addEventListener('click', cast);
+  cv.addEventListener('click', cast);
+  cv.addEventListener('touchstart', function(e){ e.preventDefault(); cast(); }, { passive: false });
+  document.addEventListener('keydown', function(e){
+    if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') { e.preventDefault(); cast(); }
   });
-  restartBtn.addEventListener('click', reset);
+  document.getElementById('restart').addEventListener('click', reset);
 
   reset();
 })();

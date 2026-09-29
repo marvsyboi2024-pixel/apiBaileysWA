@@ -2,152 +2,165 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Block Blast — SUKUNA REALM</title>
+<title>Block Blast</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; background: #0a0000; color: #eee; font-family: -apple-system, Arial, sans-serif; overflow: hidden; }
-  body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px; }
-  h1 { color: #ff2222; font-size: 18px; letter-spacing: 3px; margin-bottom: 6px; font-weight: bold; }
-  #scorebar { display: flex; gap: 20px; margin-bottom: 8px; font-size: 13px; color: #ff6666; letter-spacing: 1px; }
-  #scorebar span b { color: #fff; }
-  #wrap { position: relative; width: 100%; max-width: 360px; }
-  canvas { width: 100%; background: #150000; border: 2px solid #440000; border-radius: 10px; display: block; touch-action: none; }
-  #overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; background: rgba(10,0,0,0.9); border-radius: 10px; text-align: center; padding: 20px; }
-  #overlay.show { display: flex; }
-  #overlay h2 { color: #ff2222; font-size: 22px; margin-bottom: 8px; letter-spacing: 3px; }
-  #overlay p { color: #ccc; font-size: 14px; margin-bottom: 16px; }
-  #overlay button { padding: 10px 24px; background: #aa0000; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; letter-spacing: 2px; cursor: pointer; }
-  #overlay button:active { background: #dd0000; }
-  #hint { margin-top: 8px; color: #ff6666; font-size: 11px; letter-spacing: 1px; text-align: center; }
+  body { background: transparent; font-family: Arial, sans-serif; padding: 18px 22px; color: #333; }
+  .app { display: flex; flex-direction: column; }
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 8px 2px; }
+  .title { font-size: 13px; font-weight: bold; color: #2a3a1a; letter-spacing: 0.5px; }
+  .best { background: rgba(180,190,140,0.35); color: #4a4a3a; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: bold; letter-spacing: 1px; border: 1px solid rgba(140,150,100,0.5); }
+  .divider { height: 1px; background: #3a4a2a; opacity: 0.4; margin-bottom: 8px; }
+  .card { background: #1a1f17; border-radius: 10px; padding: 8px 9px 10px 9px; box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+  .scorebar { display: flex; justify-content: space-between; font-family: monospace; font-size: 11px; color: #a8b400; letter-spacing: 1.5px; padding: 0 2px 6px 2px; text-transform: uppercase; }
+  .playfield { position: relative; border-radius: 4px; overflow: hidden; }
+  canvas { display: block; background: #c4cd9d; border-radius: 4px; width: 100%; height: auto; }
+  .gameover { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 96%; background: #283641; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.35); text-align: center; padding: 18px 12px 0 12px; display: none; }
+  .gameover h2 { color: #ffffff; font-size: 17px; font-weight: bold; margin-bottom: 6px; }
+  .gameover p { color: #b8c0c8; font-size: 11px; margin-bottom: 14px; }
+  .gameover .sect { border-top: 1px solid rgba(255,255,255,0.15); }
+  .gameover button { background: transparent; border: none; color: #a8b400; font-size: 14px; font-weight: bold; padding: 12px 0; width: 100%; cursor: pointer; font-family: inherit; }
+  .hint { text-align: center; color: #4a5a5a; font-size: 11px; font-weight: bold; letter-spacing: 0.3px; margin-top: 12px; padding-bottom: 2px; }
 </style>
-<meta property="og:title" content="Block Blast — SUKUNA REALM">
-<meta property="og:description" content="Place pieces. Clear lines. Score points.">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="SUKUNA REALM">
-<meta name="twitter:card" content="summary">
-<meta property="og:image" content="https://marvsyboi2024-pixel.github.io/apiBaileysWA/games/preview.jpg">
 </head>
 <body>
-<h1>BLOCK BLAST</h1>
-<div id="scorebar">
-  <span>SCORE <b id="score">0</b></span>
-  <span>BEST <b id="best">0</b></span>
-  <span>LINES <b id="lines">0</b></span>
-</div>
-<div id="wrap">
-  <canvas id="c" width="360" height="560"></canvas>
-  <div id="overlay">
-    <h2>GAME OVER</h2>
-    <p id="ovtext">Score: 0</p>
-    <button id="restart">RESTART</button>
+<div class="app">
+  <div class="header">
+    <div class="title">🧩 Block Blast</div>
+    <div class="best">🏆 BEST <span id="best">0000</span></div>
   </div>
+  <div class="divider"></div>
+  <div class="card">
+    <div class="scorebar">
+      <span>Score <span id="score">0000</span></span>
+      <span>Lines <span id="lines">0</span></span>
+    </div>
+    <div class="playfield">
+      <canvas id="c" width="336" height="240"></canvas>
+      <div class="gameover" id="overlay">
+        <h2>Game Over</h2>
+        <p id="overlayMsg">Your score: 0000.</p>
+        <div class="sect"><button id="restart">Play Again</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="hint">Tap a piece, then tap the grid to place it</div>
 </div>
-<div id="hint">Tap a piece, then tap the grid to place it</div>
+
 <script>
-(() => {
-  const canvas = document.getElementById('c');
-  const ctx = canvas.getContext('2d');
-  const scoreEl = document.getElementById('score');
-  const bestEl = document.getElementById('best');
-  const linesEl = document.getElementById('lines');
-  const overlay = document.getElementById('overlay');
-  const ovtext = document.getElementById('ovtext');
-  const restartBtn = document.getElementById('restart');
+(function(){
+  var cv = document.getElementById('c');
+  var ctx = cv.getContext('2d');
+  var W = cv.width, H = cv.height;
 
-  const COLS = 8;
-  const ROWS = 8;
-  const CELL = 40;
-  const BOARD_X = (360 - COLS * CELL) / 2;
-  const BOARD_Y = 40;
+  var COLS = 7;
+  var ROWS = 7;
+  var CELL = 26;
+  var BOARD_X = Math.floor((W - COLS * CELL) / 2);
+  var BOARD_Y = 6;
+  var TRAY_Y = BOARD_Y + ROWS * CELL + 14;
+  var TRAY_H = 40;
 
-  const SHAPES = [
-    { c: '#ff2222', s: [[1]] },
-    { c: '#ff6666', s: [[1,1]] },
-    { c: '#ff2222', s: [[1],[1]] },
-    { c: '#ffaa00', s: [[1,1],[1,1]] },
-    { c: '#ff4444', s: [[1,1,1]] },
-    { c: '#ff4444', s: [[1],[1],[1]] },
-    { c: '#cc0000', s: [[1,0],[1,1]] },
-    { c: '#cc0000', s: [[0,1],[1,1]] },
-    { c: '#ff8888', s: [[1,1,1],[0,1,0]] },
-    { c: '#aa0000', s: [[1,1],[1,0]] }
+  var PIECES = [
+    { c: '#1e3a1a', s: [[1]] },
+    { c: '#2a4a1a', s: [[1,1]] },
+    { c: '#1e3a1a', s: [[1],[1]] },
+    { c: '#3a5a2a', s: [[1,1],[1,1]] },
+    { c: '#2a4a1a', s: [[1,1,1]] },
+    { c: '#2a4a1a', s: [[1],[1],[1]] },
+    { c: '#3a5a2a', s: [[1,0],[1,1]] },
+    { c: '#3a5a2a', s: [[0,1],[1,1]] },
+    { c: '#4a6a3a', s: [[1,1,1],[0,1,0]] }
   ];
 
-  let board, score, best, lines, pieces, selected, dead;
+  var board, score, lines, pieces, selected, dead;
+  var best = parseInt(localStorage.getItem('block_best') || '0', 10);
+  var scoreEl = document.getElementById('score');
+  var linesEl = document.getElementById('lines');
+  var bestEl = document.getElementById('best');
+  var overlay = document.getElementById('overlay');
+  var overlayMsg = document.getElementById('overlayMsg');
 
-  best = parseInt(localStorage.getItem('blockblast_best') || '0', 10);
-  bestEl.textContent = best;
+  bestEl.textContent = pad(best);
+
+  function pad(n){ n = String(n); while (n.length < 4) n = '0' + n; return n; }
 
   function newPiece() {
-    const sh = SHAPES[Math.floor(Math.random() * SHAPES.length)];
-    return { color: sh.c, shape: sh.s, used: false };
+    var p = PIECES[Math.floor(Math.random() * PIECES.length)];
+    return { c: p.c, s: p.s, used: false };
   }
 
   function reset() {
-    board = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+    board = [];
+    for (var r = 0; r < ROWS; r++) {
+      var row = [];
+      for (var c = 0; c < COLS; c++) row.push(null);
+      board.push(row);
+    }
     score = 0;
     lines = 0;
-    dead = false;
     selected = null;
+    dead = false;
     pieces = [newPiece(), newPiece(), newPiece()];
-    scoreEl.textContent = '0';
+    scoreEl.textContent = pad(0);
     linesEl.textContent = '0';
-    overlay.classList.remove('show');
+    overlay.style.display = 'none';
     draw();
   }
 
-  function canPlace(shape, row, col) {
-    for (let r = 0; r < shape.length; r++) {
-      for (let c = 0; c < shape[r].length; c++) {
+  function canPlace(shape, r0, c0) {
+    for (var r = 0; r < shape.length; r++) {
+      for (var c = 0; c < shape[r].length; c++) {
         if (!shape[r][c]) continue;
-        const br = row + r;
-        const bc = col + c;
-        if (br < 0 || br >= ROWS || bc < 0 || bc >= COLS) return false;
-        if (board[br][bc]) return false;
+        var rr = r0 + r, cc = c0 + c;
+        if (rr < 0 || rr >= ROWS || cc < 0 || cc >= COLS) return false;
+        if (board[rr][cc]) return false;
       }
     }
     return true;
   }
 
-  function place(shape, color, row, col) {
-    for (let r = 0; r < shape.length; r++) {
-      for (let c = 0; c < shape[r].length; c++) {
-        if (shape[r][c]) board[row + r][col + c] = color;
+  function place(shape, color, r0, c0) {
+    for (var r = 0; r < shape.length; r++) {
+      for (var c = 0; c < shape[r].length; c++) {
+        if (shape[r][c]) board[r0 + r][c0 + c] = color;
       }
     }
   }
 
   function clearLines() {
-    let cleared = 0;
-    for (let r = 0; r < ROWS; r++) {
-      if (board[r].every(c => c)) {
-        board[r] = Array(COLS).fill(null);
+    var cleared = 0;
+    for (var r = 0; r < ROWS; r++) {
+      var full = true;
+      for (var c = 0; c < COLS; c++) if (!board[r][c]) { full = false; break; }
+      if (full) {
+        for (var c2 = 0; c2 < COLS; c2++) board[r][c2] = null;
         cleared++;
       }
     }
-    for (let c = 0; c < COLS; c++) {
-      let full = true;
-      for (let r = 0; r < ROWS; r++) if (!board[r][c]) { full = false; break; }
-      if (full) {
-        for (let r = 0; r < ROWS; r++) board[r][c] = null;
+    for (var c3 = 0; c3 < COLS; c3++) {
+      var full2 = true;
+      for (var r2 = 0; r2 < ROWS; r2++) if (!board[r2][c3]) { full2 = false; break; }
+      if (full2) {
+        for (var r3 = 0; r3 < ROWS; r3++) board[r3][c3] = null;
         cleared++;
       }
     }
     if (cleared > 0) {
       score += cleared * 100 + (cleared - 1) * 50;
       lines += cleared;
-      scoreEl.textContent = score;
+      scoreEl.textContent = pad(score);
       linesEl.textContent = lines;
     }
   }
 
   function anyMoveAvailable() {
-    for (const p of pieces) {
+    for (var i = 0; i < pieces.length; i++) {
+      var p = pieces[i];
       if (p.used) continue;
-      for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-          if (canPlace(p.shape, r, c)) return true;
+      for (var r = 0; r < ROWS; r++) {
+        for (var c = 0; c < COLS; c++) {
+          if (canPlace(p.s, r, c)) return true;
         }
       }
     }
@@ -155,95 +168,69 @@
   }
 
   function draw() {
-    ctx.clearRect(0, 0, 360, 560);
+    ctx.fillStyle = '#c4cd9d';
+    ctx.fillRect(0, 0, W, H);
 
-    ctx.fillStyle = '#0a0000';
-    ctx.fillRect(0, 0, 360, 560);
+    // Board background
+    ctx.fillStyle = '#a8b478';
+    ctx.fillRect(BOARD_X - 2, BOARD_Y - 2, COLS * CELL + 4, ROWS * CELL + 4);
 
-    ctx.fillStyle = '#1a0000';
-    ctx.fillRect(BOARD_X - 4, BOARD_Y - 4, COLS * CELL + 8, ROWS * CELL + 8);
-
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) {
-        const x = BOARD_X + c * CELL;
-        const y = BOARD_Y + r * CELL;
-        ctx.fillStyle = board[r][c] || '#220000';
+    for (var r = 0; r < ROWS; r++) {
+      for (var c = 0; c < COLS; c++) {
+        var x = BOARD_X + c * CELL;
+        var y = BOARD_Y + r * CELL;
+        ctx.fillStyle = board[r][c] || '#c4cd9d';
         ctx.fillRect(x + 1, y + 1, CELL - 2, CELL - 2);
-        if (board[r][c]) {
-          ctx.fillStyle = 'rgba(255,255,255,0.12)';
-          ctx.fillRect(x + 1, y + 1, CELL - 2, 6);
-        }
+        ctx.strokeStyle = '#b8c490';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, CELL - 1, CELL - 1);
       }
     }
 
-    const trayY = BOARD_Y + ROWS * CELL + 20;
-    const trayX = BOARD_X;
-    const slotW = (COLS * CELL) / 3;
-
-    for (let i = 0; i < pieces.length; i++) {
-      const p = pieces[i];
-      const px = trayX + i * slotW + slotW / 2;
-      const py = trayY + 30;
+    // Tray
+    var slotW = (COLS * CELL) / 3;
+    for (var i = 0; i < pieces.length; i++) {
+      var p = pieces[i];
       if (p.used) continue;
-      const shW = p.shape[0].length * 20;
-      const shH = p.shape.length * 20;
-      const ox = px - shW / 2;
-      const oy = py - shH / 2;
-      for (let r = 0; r < p.shape.length; r++) {
-        for (let c = 0; c < p.shape[r].length; c++) {
-          if (!p.shape[r][c]) continue;
-          ctx.fillStyle = p.color;
-          ctx.fillRect(ox + c * 20 + 1, oy + r * 20 + 1, 18, 18);
+      var cx = BOARD_X + i * slotW + slotW / 2;
+      var cy = TRAY_Y + TRAY_H / 2;
+      var shW = p.s[0].length * 14;
+      var shH = p.s.length * 14;
+      var ox = cx - shW / 2;
+      var oy = cy - shH / 2;
+      for (var rr = 0; rr < p.s.length; rr++) {
+        for (var cc = 0; cc < p.s[rr].length; cc++) {
+          if (!p.s[rr][cc]) continue;
+          ctx.fillStyle = p.c;
+          ctx.fillRect(ox + cc * 14 + 1, oy + rr * 14 + 1, 12, 12);
         }
       }
       if (selected === i) {
-        ctx.strokeStyle = '#ffff00';
+        ctx.strokeStyle = '#3a5a2a';
         ctx.lineWidth = 2;
-        ctx.strokeRect(px - slotW / 2 + 6, trayY + 4, slotW - 12, 52);
+        ctx.strokeRect(BOARD_X + i * slotW + 6, TRAY_Y, slotW - 12, TRAY_H);
       }
     }
-
-    const p = selected !== null ? pieces[selected] : null;
-    if (p && !p.used) {
-      const shW = p.shape[0].length * CELL;
-      const shH = p.shape.length * CELL;
-      ctx.globalAlpha = 0.15;
-      ctx.fillStyle = p.color;
-      ctx.fillRect(BOARD_X, BOARD_Y, COLS * CELL, ROWS * CELL);
-      ctx.globalAlpha = 1;
-    }
   }
 
-  function pickPiece(x, y) {
-    const trayY = BOARD_Y + ROWS * CELL + 20;
-    if (y < trayY || y > trayY + 60) return -1;
-    const trayX = BOARD_X;
-    const slotW = (COLS * CELL) / 3;
-    for (let i = 0; i < pieces.length; i++) {
-      const px = trayX + i * slotW;
-      if (x >= px && x < px + slotW) return i;
-    }
-    return -1;
-  }
-
-  function tryPlaceAt(x, y) {
-    if (selected === null) return false;
-    const p = pieces[selected];
-    if (!p || p.used) return false;
-    const col = Math.floor((x - BOARD_X) / CELL);
-    const row = Math.floor((y - BOARD_Y) / CELL);
-    if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return false;
-    const shW = p.shape[0].length;
-    const shH = p.shape.length;
-    const sc = Math.max(0, Math.min(COLS - shW, col));
-    const sr = Math.max(0, Math.min(ROWS - shH, row));
-    if (!canPlace(p.shape, sr, sc)) return false;
-    place(p.shape, p.color, sr, sc);
+  function tryPlace(x, y) {
+    if (selected === null) return;
+    var p = pieces[selected];
+    if (!p || p.used) return;
+    var col = Math.floor((x - BOARD_X) / CELL);
+    var row = Math.floor((y - BOARD_Y) / CELL);
+    if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
+    var sc = Math.max(0, Math.min(COLS - p.s[0].length, col));
+    var sr = Math.max(0, Math.min(ROWS - p.s.length, row));
+    if (!canPlace(p.s, sr, sc)) return;
+    place(p.s, p.c, sr, sc);
+    var cells = 0;
+    for (var r = 0; r < p.s.length; r++) for (var c = 0; c < p.s[r].length; c++) if (p.s[r][c]) cells++;
+    score += cells * 5;
+    scoreEl.textContent = pad(score);
     p.used = true;
-    score += p.shape.flat().filter(Boolean).length * 5;
-    scoreEl.textContent = score;
     clearLines();
-    if (pieces.every(pp => pp.used)) {
+    if (pieces.every(function(pp){ return pp.used; })) {
       pieces = [newPiece(), newPiece(), newPiece()];
     }
     selected = null;
@@ -252,40 +239,41 @@
       dead = true;
       if (score > best) {
         best = score;
-        localStorage.setItem('blockblast_best', best);
-        bestEl.textContent = best;
+        localStorage.setItem('block_best', best);
+        bestEl.textContent = pad(best);
       }
-      ovtext.textContent = 'Score: ' + score;
-      overlay.classList.add('show');
-    }
-    return true;
-  }
-
-  function handleTap(x, y) {
-    if (dead) return;
-    const trayY = BOARD_Y + ROWS * CELL + 20;
-    if (y < trayY - 10) {
-      tryPlaceAt(x, y);
-    } else {
-      const idx = pickPiece(x, y);
-      if (idx >= 0 && !pieces[idx].used) selected = idx;
-      else selected = null;
-      draw();
+      overlayMsg.textContent = 'Your score: ' + pad(score) + '.';
+      overlay.style.display = 'block';
     }
   }
 
   function getPos(e) {
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+    var rect = cv.getBoundingClientRect();
+    var sx = cv.width / rect.width;
+    var sy = cv.height / rect.height;
+    var cx = e.touches ? e.touches[0].clientX : e.clientX;
+    var cy = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: (cx - rect.left) * sx, y: (cy - rect.top) * sy };
   }
 
-  canvas.addEventListener('touchstart', e => { e.preventDefault(); const p = getPos(e); handleTap(p.x, p.y); }, { passive: false });
-  canvas.addEventListener('click', e => { const p = getPos(e); handleTap(p.x, p.y); });
-  restartBtn.addEventListener('click', reset);
+  function handleTap(x, y) {
+    if (dead) return;
+    if (y > TRAY_Y - 6) {
+      var slotW = (COLS * CELL) / 3;
+      for (var i = 0; i < pieces.length; i++) {
+        var sx = BOARD_X + i * slotW;
+        if (x >= sx && x < sx + slotW && !pieces[i].used) { selected = i; draw(); return; }
+      }
+      selected = null;
+      draw();
+    } else {
+      tryPlace(x, y);
+    }
+  }
+
+  cv.addEventListener('touchstart', function(e){ e.preventDefault(); var p = getPos(e); handleTap(p.x, p.y); }, { passive: false });
+  cv.addEventListener('click', function(e){ var p = getPos(e); handleTap(p.x, p.y); });
+  document.getElementById('restart').addEventListener('click', reset);
 
   reset();
 })();

@@ -2,235 +2,269 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Tic-Tac-Toe — SUKUNA REALM</title>
+<title>Tic-Tac-Toe</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; background: #0a0000; color: #eee; font-family: -apple-system, Arial, sans-serif; overflow: hidden; }
-  body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px; }
-  h1 { color: #ff2222; font-size: 20px; letter-spacing: 3px; margin-bottom: 8px; font-weight: bold; }
-  #modes { display: flex; gap: 6px; margin-bottom: 12px; }
-  #modes button { padding: 8px 16px; background: #220000; border: 1px solid #440000; color: #ff6666; font-size: 12px; border-radius: 5px; cursor: pointer; letter-spacing: 1px; font-weight: bold; }
-  #modes button.active { background: #aa0000; color: #fff; border-color: #ff2222; }
-  #scorebar { display: flex; gap: 16px; margin-bottom: 12px; font-size: 12px; color: #ff6666; letter-spacing: 1px; }
-  #scorebar span b { color: #fff; }
-  #status { margin-bottom: 12px; font-size: 15px; color: #ffaa88; letter-spacing: 2px; font-weight: bold; min-height: 22px; text-align: center; }
-  #board { display: grid; grid-template-columns: repeat(3, 90px); grid-template-rows: repeat(3, 90px); gap: 6px; background: #220000; padding: 6px; border-radius: 10px; }
-  .cell { background: #150000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 48px; font-weight: bold; cursor: pointer; }
-  .cell.x { color: #ff2222; }
-  .cell.o { color: #66ccff; }
-  .cell.win { background: #440000; animation: pulse 0.6s infinite alternate; }
-  @keyframes pulse { from { background: #440000; } to { background: #660000; } }
-  #restart { margin-top: 16px; padding: 10px 30px; background: #aa0000; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; letter-spacing: 2px; cursor: pointer; }
-  #restart:active { background: #dd0000; }
-  #diff { margin-top: 12px; display: flex; gap: 6px; }
-  #diff button { padding: 6px 14px; background: #220000; border: 1px solid #440000; color: #ff6666; font-size: 11px; border-radius: 5px; cursor: pointer; letter-spacing: 1px; }
-  #diff button.active { background: #aa0000; color: #fff; border-color: #ff2222; }
+  body { background: transparent; font-family: Arial, sans-serif; padding: 18px 22px; color: #333; }
+  .app { display: flex; flex-direction: column; }
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 8px 2px; }
+  .title { font-size: 13px; font-weight: bold; color: #2a3a1a; letter-spacing: 0.5px; }
+  .best { background: rgba(180,190,140,0.35); color: #4a4a3a; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: bold; letter-spacing: 1px; border: 1px solid rgba(140,150,100,0.5); }
+  .divider { height: 1px; background: #3a4a2a; opacity: 0.4; margin-bottom: 8px; }
+  .card { background: #1a1f17; border-radius: 10px; padding: 8px 9px 10px 9px; box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+  .scorebar { display: flex; justify-content: space-between; font-family: monospace; font-size: 11px; color: #a8b400; letter-spacing: 1.5px; padding: 0 2px 6px 2px; text-transform: uppercase; }
+  .playfield { position: relative; border-radius: 4px; overflow: hidden; }
+  canvas { display: block; background: #c4cd9d; border-radius: 4px; width: 100%; height: auto; }
+  .gameover { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 96%; background: #283641; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.35); text-align: center; padding: 18px 12px 0 12px; display: none; }
+  .gameover h2 { color: #ffffff; font-size: 17px; font-weight: bold; margin-bottom: 6px; }
+  .gameover p { color: #b8c0c8; font-size: 11px; margin-bottom: 14px; }
+  .gameover .sect { border-top: 1px solid rgba(255,255,255,0.15); }
+  .gameover button { background: transparent; border: none; color: #a8b400; font-size: 14px; font-weight: bold; padding: 12px 0; width: 100%; cursor: pointer; font-family: inherit; }
+  .modes { display: flex; gap: 8px; margin-top: 12px; }
+  .modes button { flex: 1; background: rgba(90,100,60,0.15); border: 1px solid #7a8a5a; border-radius: 10px; color: #3a4a1a; font-size: 12px; font-weight: bold; letter-spacing: 1px; padding: 10px 0; cursor: pointer; font-family: inherit; }
+  .modes button.active { background: rgba(90,100,60,0.45); color: #1a2a0a; border-color: #3a4a1a; }
+  .hint { text-align: center; color: #4a5a5a; font-size: 11px; font-weight: bold; letter-spacing: 0.3px; margin-top: 10px; padding-bottom: 2px; }
 </style>
-<meta property="og:title" content="Tic-Tac-Toe — SUKUNA REALM">
-<meta property="og:description" content="Play vs AI or 2-player. 4 difficulty levels.">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="SUKUNA REALM">
-<meta name="twitter:card" content="summary">
-<meta property="og:image" content="https://marvsyboi2024-pixel.github.io/apiBaileysWA/games/preview.jpg">
 </head>
 <body>
-<h1>SUKUNA TIC-TAC-TOE</h1>
-<div id="modes">
-  <button data-m="bot" class="active">VS BOT</button>
-  <button data-m="duo">2 PLAYERS</button>
+<div class="app">
+  <div class="header">
+    <div class="title">❌ Tic-Tac-Toe</div>
+    <div class="best">🏆 WINS <span id="best">0</span></div>
+  </div>
+  <div class="divider"></div>
+  <div class="card">
+    <div class="scorebar">
+      <span>X <span id="sx">0</span></span>
+      <span>Draw <span id="sd">0</span></span>
+      <span>O <span id="so">0</span></span>
+    </div>
+    <div class="playfield">
+      <canvas id="c" width="336" height="300"></canvas>
+      <div class="gameover" id="overlay">
+        <h2 id="ovTitle">Game Over</h2>
+        <p id="overlayMsg">Tap to play again.</p>
+        <div class="sect"><button id="restart">Play Again</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="modes">
+    <button id="modeBot" class="active">VS BOT</button>
+    <button id="modeDuo">2 PLAYERS</button>
+  </div>
+  <div class="hint">Tap a cell to play</div>
 </div>
-<div id="scorebar">
-  <span>X <b id="sX">0</b></span>
-  <span>DRAW <b id="sDraw">0</b></span>
-  <span>O <b id="sO">0</b></span>
-</div>
-<div id="status">Your turn — you are ❌</div>
-<div id="board"></div>
-<button id="restart">NEW GAME</button>
-<div id="diff">
-  <button data-d="easy">EASY</button>
-  <button data-d="medium" class="active">MEDIUM</button>
-  <button data-d="hard">HARD</button>
-</div>
-<script>
-(() => {
-  const boardEl = document.getElementById('board');
-  const statusEl = document.getElementById('status');
-  const restartBtn = document.getElementById('restart');
-  const sXEl = document.getElementById('sX');
-  const sDrawEl = document.getElementById('sDraw');
-  const sOEl = document.getElementById('sO');
-  const diffEl = document.getElementById('diff');
 
-  const WINS = [
+<script>
+(function(){
+  var cv = document.getElementById('c');
+  var ctx = cv.getContext('2d');
+  var W = cv.width, H = cv.height;
+
+  var GRID = 3;
+  var SIZE = 260;
+  var CELL = SIZE / GRID;
+  var OX = (W - SIZE) / 2;
+  var OY = (H - SIZE) / 2;
+
+  var sx = parseInt(localStorage.getItem('ttt_x') || '0', 10);
+  var so = parseInt(localStorage.getItem('ttt_o') || '0', 10);
+  var sd = parseInt(localStorage.getItem('ttt_d') || '0', 10);
+  var bestWins = parseInt(localStorage.getItem('ttt_best') || '0', 10);
+
+  var board, turn, gameOver, mode, winLine;
+
+  var sxEl = document.getElementById('sx');
+  var soEl = document.getElementById('so');
+  var sdEl = document.getElementById('sd');
+  var bestEl = document.getElementById('best');
+  var overlay = document.getElementById('overlay');
+  var ovTitle = document.getElementById('ovTitle');
+  var overlayMsg = document.getElementById('overlayMsg');
+  var btnBot = document.getElementById('modeBot');
+  var btnDuo = document.getElementById('modeDuo');
+
+  sxEl.textContent = sx;
+  soEl.textContent = so;
+  sdEl.textContent = sd;
+  bestEl.textContent = bestWins;
+
+  mode = 'bot';
+
+  var WINS = [
     [0,1,2],[3,4,5],[6,7,8],
     [0,3,6],[1,4,7],[2,5,8],
     [0,4,8],[2,4,6]
   ];
 
-  let board, gameOver, turn, mode, diff;
-  let scoreX = parseInt(localStorage.getItem('ttt_sX') || '0', 10);
-  let scoreO = parseInt(localStorage.getItem('ttt_sO') || '0', 10);
-  let scoreDraw = parseInt(localStorage.getItem('ttt_sDraw') || '0', 10);
-
-  mode = 'bot';
-  diff = 'medium';
-  updateScore();
-
-  function updateScore() {
-    sXEl.textContent = scoreX;
-    sOEl.textContent = scoreO;
-    sDrawEl.textContent = scoreDraw;
-  }
-
-  function saveScore() {
-    localStorage.setItem('ttt_sX', scoreX);
-    localStorage.setItem('ttt_sO', scoreO);
-    localStorage.setItem('ttt_sDraw', scoreDraw);
-  }
-
   function reset() {
-    board = Array(9).fill('');
-    gameOver = false;
+    board = ['','','','','','','','',''];
     turn = 'X';
-    if (mode === 'bot') {
-      statusEl.textContent = 'Your turn — you are ❌';
-      diffEl.style.display = 'flex';
-    } else {
-      statusEl.textContent = '❌ Player X — your turn';
-      diffEl.style.display = 'none';
-    }
-    render();
+    gameOver = false;
+    winLine = null;
+    overlay.style.display = 'none';
+    draw();
   }
 
-  function render(winLine) {
-    boardEl.innerHTML = '';
-    for (let i = 0; i < 9; i++) {
-      const d = document.createElement('div');
-      d.className = 'cell';
-      if (board[i] === 'X') d.classList.add('x');
-      if (board[i] === 'O') d.classList.add('o');
-      if (winLine && winLine.includes(i)) d.classList.add('win');
-      d.textContent = board[i] === 'X' ? '❌' : board[i] === 'O' ? '⭕' : '';
-      d.addEventListener('click', () => play(i));
-      boardEl.appendChild(d);
+  function checkWin() {
+    for (var i = 0; i < WINS.length; i++) {
+      var w = WINS[i];
+      if (board[w[0]] && board[w[0]] === board[w[1]] && board[w[0]] === board[w[2]]) {
+        return { who: board[w[0]], line: w };
+      }
     }
+    if (board.every(function(c){ return c; })) return { who: 'draw', line: null };
+    return null;
+  }
+
+  function bestMove() {
+    var me = 'O', opp = 'X';
+    for (var i = 0; i < WINS.length; i++) {
+      var l = WINS[i].map(function(idx){ return board[idx]; });
+      if (l.filter(function(x){ return x === me; }).length === 2) {
+        var e = l.indexOf('');
+        if (e >= 0) return WINS[i][e];
+      }
+    }
+    for (var j = 0; j < WINS.length; j++) {
+      var l2 = WINS[j].map(function(idx){ return board[idx]; });
+      if (l2.filter(function(x){ return x === opp; }).length === 2) {
+        var e2 = l2.indexOf('');
+        if (e2 >= 0) return WINS[j][e2];
+      }
+    }
+    if (!board[4]) return 4;
+    var corners = [0,2,6,8].filter(function(i){ return !board[i]; });
+    if (corners.length) return corners[Math.floor(Math.random()*corners.length)];
+    var sides = [1,3,5,7].filter(function(i){ return !board[i]; });
+    if (sides.length) return sides[Math.floor(Math.random()*sides.length)];
+    return -1;
   }
 
   function play(i) {
     if (gameOver || board[i]) return;
     if (mode === 'bot' && turn !== 'X') return;
     board[i] = turn;
-    const r = check();
+    var r = checkWin();
     if (r) return finish(r);
-    render();
     if (mode === 'bot') {
       turn = 'O';
-      statusEl.textContent = 'Bot thinking...';
-      setTimeout(botTurn, 350);
+      draw();
+      setTimeout(botTurn, 250);
     } else {
       turn = turn === 'X' ? 'O' : 'X';
-      statusEl.textContent = turn === 'X' ? '❌ Player X — your turn' : '⭕ Player O — your turn';
+      draw();
     }
   }
 
   function botTurn() {
     if (gameOver) return;
-    const move = botMove();
-    if (move !== null) board[move] = 'O';
-    const r = check();
+    var m = bestMove();
+    if (m >= 0) board[m] = 'O';
+    var r = checkWin();
     if (r) return finish(r);
     turn = 'X';
-    statusEl.textContent = 'Your turn — you are ❌';
-    render();
+    draw();
   }
 
   function finish(r) {
     gameOver = true;
-    if (r.winner === 'X') {
-      scoreX++;
-      statusEl.textContent = mode === 'bot' ? '🏆 You win!' : '🏆 Player X wins!';
-    } else if (r.winner === 'O') {
-      scoreO++;
-      statusEl.textContent = mode === 'bot' ? '💀 Bot wins' : '🏆 Player O wins!';
+    winLine = r.line;
+    if (r.who === 'X') {
+      sx++; sxEl.textContent = sx;
+      localStorage.setItem('ttt_x', sx);
+      ovTitle.textContent = mode === 'bot' ? 'You Win' : 'X Wins';
+    } else if (r.who === 'O') {
+      so++; soEl.textContent = so;
+      localStorage.setItem('ttt_o', so);
+      ovTitle.textContent = mode === 'bot' ? 'Bot Wins' : 'O Wins';
     } else {
-      scoreDraw++;
-      statusEl.textContent = '🤝 Draw';
+      sd++; sdEl.textContent = sd;
+      localStorage.setItem('ttt_d', sd);
+      ovTitle.textContent = 'Draw';
     }
-    updateScore();
-    saveScore();
-    render(r.line);
+    if (mode === 'bot' && sx > bestWins) {
+      bestWins = sx;
+      localStorage.setItem('ttt_best', bestWins);
+      bestEl.textContent = bestWins;
+    }
+    overlayMsg.textContent = 'Tap Play Again.';
+    draw();
+    overlay.style.display = 'block';
   }
 
-  function check() {
-    for (const w of WINS) {
-      const [a,b,c] = w;
-      if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-        return { winner: board[a], line: w };
+  function draw() {
+    ctx.fillStyle = '#c4cd9d';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.strokeStyle = '#1e3a1a';
+    ctx.lineWidth = 2;
+    for (var i = 1; i < GRID; i++) {
+      ctx.beginPath();
+      ctx.moveTo(OX + i * CELL, OY);
+      ctx.lineTo(OX + i * CELL, OY + SIZE);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(OX, OY + i * CELL);
+      ctx.lineTo(OX + SIZE, OY + i * CELL);
+      ctx.stroke();
+    }
+
+    for (var j = 0; j < 9; j++) {
+      if (!board[j]) continue;
+      var col = j % 3;
+      var row = Math.floor(j / 3);
+      var cx = OX + col * CELL + CELL / 2;
+      var cy = OY + row * CELL + CELL / 2;
+
+      if (winLine && winLine.indexOf(j) >= 0) {
+        ctx.fillStyle = 'rgba(168,180,0,0.35)';
+        ctx.fillRect(OX + col * CELL + 3, OY + row * CELL + 3, CELL - 6, CELL - 6);
+      }
+
+      if (board[j] === 'X') {
+        ctx.strokeStyle = '#1e3a1a';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        var s = CELL * 0.28;
+        ctx.beginPath();
+        ctx.moveTo(cx - s, cy - s); ctx.lineTo(cx + s, cy + s);
+        ctx.moveTo(cx + s, cy - s); ctx.lineTo(cx - s, cy + s);
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = '#4a6a3a';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(cx, cy, CELL * 0.28, 0, Math.PI * 2);
+        ctx.stroke();
       }
     }
-    if (board.every(c => c)) return { winner: 'draw' };
-    return null;
   }
 
-  function empty() { return board.map((v, i) => v ? -1 : i).filter(i => i >= 0); }
-
-  function botMove() {
-    const e = empty();
-    if (e.length === 0) return null;
-    if (diff === 'easy') return e[Math.floor(Math.random() * e.length)];
-    if (diff === 'medium') {
-      if (Math.random() < 0.5) {
-        const s = smartMove();
-        return s !== null ? s : e[Math.floor(Math.random() * e.length)];
-      }
-      return e[Math.floor(Math.random() * e.length)];
-    }
-    const s = smartMove();
-    return s !== null ? s : e[Math.floor(Math.random() * e.length)];
+  function getPos(e) {
+    var rect = cv.getBoundingClientRect();
+    var scx = cv.width / rect.width;
+    var scy = cv.height / rect.height;
+    var cx = e.touches ? e.touches[0].clientX : e.clientX;
+    var cy = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: (cx - rect.left) * scx, y: (cy - rect.top) * scy };
   }
 
-  function smartMove() {
-    for (const w of WINS) {
-      const line = w.map(i => board[i]);
-      if (line.filter(v => v === 'O').length === 2) {
-        const idx = line.indexOf('');
-        if (idx >= 0) return w[idx];
-      }
-    }
-    for (const w of WINS) {
-      const line = w.map(i => board[i]);
-      if (line.filter(v => v === 'X').length === 2) {
-        const idx = line.indexOf('');
-        if (idx >= 0) return w[idx];
-      }
-    }
-    if (board[4] === '') return 4;
-    const corners = [0, 2, 6, 8].filter(i => !board[i]);
-    if (corners.length) return corners[Math.floor(Math.random() * corners.length)];
-    const sides = [1, 3, 5, 7].filter(i => !board[i]);
-    if (sides.length) return sides[Math.floor(Math.random() * sides.length)];
-    return null;
+  function tap(x, y) {
+    if (gameOver) return;
+    var col = Math.floor((x - OX) / CELL);
+    var row = Math.floor((y - OY) / CELL);
+    if (col < 0 || col >= 3 || row < 0 || row >= 3) return;
+    play(row * 3 + col);
   }
 
-  restartBtn.addEventListener('click', reset);
-  document.querySelectorAll('#modes button').forEach(b => {
-    b.addEventListener('click', () => {
-      mode = b.dataset.m;
-      document.querySelectorAll('#modes button').forEach(x => x.classList.remove('active'));
-      b.classList.add('active');
-      reset();
-    });
-  });
-  document.querySelectorAll('#diff button').forEach(b => {
-    b.addEventListener('click', () => {
-      diff = b.dataset.d;
-      document.querySelectorAll('#diff button').forEach(x => x.classList.remove('active'));
-      b.classList.add('active');
-      reset();
-    });
-  });
+  cv.addEventListener('touchstart', function(e){ e.preventDefault(); var p = getPos(e); tap(p.x, p.y); }, { passive: false });
+  cv.addEventListener('click', function(e){ var p = getPos(e); tap(p.x, p.y); });
+
+  btnBot.addEventListener('click', function(){ mode = 'bot'; btnBot.classList.add('active'); btnDuo.classList.remove('active'); reset(); });
+  btnDuo.addEventListener('click', function(){ mode = 'duo'; btnDuo.classList.add('active'); btnBot.classList.remove('active'); reset(); });
+
+  document.getElementById('restart').addEventListener('click', reset);
 
   reset();
 })();

@@ -2,154 +2,211 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Piano — SUKUNA REALM</title>
+<title>Piano</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; background: #0a0000; color: #eee; font-family: -apple-system, Arial, sans-serif; overflow: hidden; }
-  body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; }
-  h1 { color: #ff2222; font-size: 20px; letter-spacing: 3px; margin-bottom: 10px; font-weight: bold; }
-  #display { font-size: 16px; color: #ffaa88; letter-spacing: 2px; margin-bottom: 12px; min-height: 22px; font-weight: bold; }
-  #piano { position: relative; width: 100%; max-width: 720px; height: 220px; }
-  .white-row { display: flex; width: 100%; height: 100%; }
-  .white { flex: 1; background: linear-gradient(to bottom, #f5f0e8 0%, #d8d0c4 100%); border: 1px solid #000; border-radius: 0 0 6px 6px; color: #333; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; font-size: 12px; font-weight: bold; cursor: pointer; }
-  .white.active { background: linear-gradient(to bottom, #ffcccc 0%, #ff9999 100%); }
-  .black-row { position: absolute; top: 0; left: 0; width: 100%; height: 60%; pointer-events: none; }
-  .black { position: absolute; width: 6.5%; height: 100%; background: linear-gradient(to bottom, #1a1a1a 0%, #000 100%); border-radius: 0 0 5px 5px; cursor: pointer; pointer-events: auto; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px; color: #666; font-size: 11px; font-weight: bold; }
-  .black.active { background: linear-gradient(to bottom, #660000 0%, #330000 100%); }
-  #octave { margin-top: 16px; display: flex; gap: 8px; align-items: center; font-size: 13px; color: #ff6666; letter-spacing: 1px; }
-  #octave button { padding: 6px 14px; background: #220000; border: 1px solid #440000; color: #ff6666; font-size: 14px; border-radius: 5px; cursor: pointer; font-weight: bold; }
-  #octave button:active { background: #440000; color: #fff; }
-  #octave b { color: #fff; font-size: 15px; min-width: 30px; text-align: center; }
+  body { background: transparent; font-family: Arial, sans-serif; padding: 18px 22px; color: #333; }
+  .app { display: flex; flex-direction: column; }
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 8px 2px; }
+  .title { font-size: 13px; font-weight: bold; color: #2a3a1a; letter-spacing: 0.5px; }
+  .best { background: rgba(180,190,140,0.35); color: #4a4a3a; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: bold; letter-spacing: 1px; border: 1px solid rgba(140,150,100,0.5); }
+  .divider { height: 1px; background: #3a4a2a; opacity: 0.4; margin-bottom: 8px; }
+  .card { background: #1a1f17; border-radius: 10px; padding: 8px 9px 10px 9px; box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+  .scorebar { display: flex; justify-content: space-between; font-family: monospace; font-size: 11px; color: #a8b400; letter-spacing: 1.5px; padding: 0 2px 6px 2px; text-transform: uppercase; }
+  .playfield { position: relative; border-radius: 4px; overflow: hidden; }
+  canvas { display: block; background: #c4cd9d; border-radius: 4px; width: 100%; height: auto; touch-action: none; }
+  .hint { text-align: center; color: #4a5a5a; font-size: 11px; font-weight: bold; letter-spacing: 0.3px; margin-top: 10px; padding-bottom: 2px; }
 </style>
-<meta property="og:title" content="Piano — SUKUNA REALM">
-<meta property="og:description" content="Tap keys to play music. 2 octaves.">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="SUKUNA REALM">
-<meta name="twitter:card" content="summary">
-<meta property="og:image" content="https://marvsyboi2024-pixel.github.io/apiBaileysWA/games/preview.jpg">
 </head>
 <body>
-<h1>SUKUNA PIANO</h1>
-<div id="display">Tap keys to play</div>
-<div id="piano">
-  <div class="white-row" id="whites"></div>
-  <div class="black-row" id="blacks"></div>
+<div class="app">
+  <div class="header">
+    <div class="title">🎹 Piano</div>
+    <div class="best">🎵 <span id="lastNote">—</span></div>
+  </div>
+  <div class="divider"></div>
+  <div class="card">
+    <div class="scorebar">
+      <span>Octave <span id="oct">4</span></span>
+      <span>Notes <span id="count">0</span></span>
+    </div>
+    <div class="playfield">
+      <canvas id="c" width="336" height="200"></canvas>
+    </div>
+  </div>
+  <div class="hint">Tap keys to play</div>
 </div>
-<div id="octave">
-  <button id="octDown">−</button>
-  <b id="octVal">4</b>
-  <button id="octUp">+</button>
-</div>
+
 <script>
-(() => {
-  const whiteRow = document.getElementById('whites');
-  const blackRow = document.getElementById('blacks');
-  const display = document.getElementById('display');
-  const octVal = document.getElementById('octVal');
-  const octUp = document.getElementById('octUp');
-  const octDown = document.getElementById('octDown');
+(function(){
+  var cv = document.getElementById('c');
+  var ctx = cv.getContext('2d');
+  var W = cv.width, H = cv.height;
 
-  const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-  const WHITE_IDX = [0, 2, 4, 5, 7, 9, 11];
-  const BLACK_IDX = [1, 3, 6, 8, 10];
-  const BLACK_POS = [10.7, 24.3, 54.5, 67.5, 81.5];
-  const NUM_WHITE = 14;
+  var WHITE_NOTES = ['C','D','E','F','G','A','B','C','D','E','F','G','A','B'];
+  var WHITE_OCT =   [ 4,  4,  4,  4,  4,  4,  4,  5,  5,  5,  5,  5,  5,  5 ];
+  var BLACK_AFTER = [ 0,  1,  3,  4,  5,  7,  8, 10, 11, 12 ];  // index of white key the black sits after
+  var BLACK_NOTES = ['C#','D#','F#','G#','A#','C#','D#','F#','G#','A#'];
+  var BLACK_OCT   = [ 4,   4,   4,   4,   4,   5,   5,   5,   5,   5  ];
 
-  let octave = 4;
-  let ctx = null;
-  let audioReady = false;
+  var lastNoteEl = document.getElementById('lastNote');
+  var octEl = document.getElementById('oct');
+  var countEl = document.getElementById('count');
+
+  var audioCtx = null;
+  var noteCount = 0;
+  var activeKeys = {};
+
+  var NUM_WHITE = 14;
+  var WHITE_W = W / NUM_WHITE;
+  var WHITE_H = H;
+  var BLACK_W = WHITE_W * 0.62;
+  var BLACK_H = H * 0.62;
 
   function initAudio() {
-    if (audioReady) return;
-    try {
-      ctx = new (window.AudioContext || window.webkitAudioContext)();
-      audioReady = true;
-    } catch (e) {
-      display.textContent = 'Audio not supported';
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (e) { audioCtx = null; }
     }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
   }
 
-  function freq(note, oct) {
-    const i = NOTES.indexOf(note);
-    const midi = (oct + 1) * 12 + i;
+  function noteFreq(note, oct) {
+    var idx = { 'C':0, 'C#':1, 'D':2, 'D#':3, 'E':4, 'F':5, 'F#':6, 'G':7, 'G#':8, 'A':9, 'A#':10, 'B':11 }[note];
+    var midi = (oct + 1) * 12 + idx;
     return 440 * Math.pow(2, (midi - 69) / 12);
   }
 
   function playNote(note, oct) {
     initAudio();
-    if (!ctx) return;
-    const f = freq(note, oct);
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.value = f;
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.2);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 1.3);
-    display.textContent = '♪ ' + note + oct;
+    if (!audioCtx) return;
+    var f = noteFreq(note, oct);
+    var t = audioCtx.currentTime;
+
+    var osc1 = audioCtx.createOscillator();
+    var osc2 = audioCtx.createOscillator();
+    var gain = audioCtx.createGain();
+    var filter = audioCtx.createBiquadFilter();
+
+    osc1.type = 'triangle';
+    osc2.type = 'sine';
+    osc1.frequency.value = f;
+    osc2.frequency.value = f * 2;
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(3200, t);
+    filter.frequency.exponentialRampToValueAtTime(1200, t + 0.8);
+
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.35, t + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.2);
+
+    var mix2 = audioCtx.createGain();
+    mix2.gain.value = 0.35;
+
+    osc1.connect(filter);
+    osc2.connect(mix2);
+    mix2.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc1.start(t);
+    osc2.start(t);
+    osc1.stop(t + 1.3);
+    osc2.stop(t + 1.3);
+
+    lastNoteEl.textContent = note + oct;
+    noteCount++;
+    countEl.textContent = noteCount;
   }
 
-  function buildKeyboard() {
-    whiteRow.innerHTML = '';
-    blackRow.innerHTML = '';
-    whiteRow.style.display = 'flex';
-    whiteRow.style.width = '100%';
-    whiteRow.style.height = '100%';
+  function drawKey(x, y, w, h, isBlack, pressed) {
+    if (isBlack) {
+      ctx.fillStyle = pressed ? '#3a4a2a' : '#1a1f17';
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = pressed ? '#6a8a4a' : '#3a4a2a';
+      ctx.fillRect(x + 1, y + 1, w - 2, 3);
+      ctx.strokeStyle = '#0a0f08';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    } else {
+      ctx.fillStyle = pressed ? '#d8e0b8' : '#f0f0e0';
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = pressed ? '#a8b878' : '#c4cd9d';
+      ctx.fillRect(x, y + h - 4, w, 4);
+      ctx.strokeStyle = '#8a9468';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    }
+  }
 
-    const totalWhite = NUM_WHITE;
-    const whiteW = 100 / totalWhite;
+  function draw() {
+    ctx.fillStyle = '#c4cd9d';
+    ctx.fillRect(0, 0, W, H);
 
-    for (let i = 0; i < totalWhite; i++) {
-      const noteIdx = i % 7;
-      const octOff = Math.floor(i / 7);
-      const note = ['C','D','E','F','G','A','B'][noteIdx];
-      const w = document.createElement('div');
-      w.className = 'white';
-      w.dataset.note = note;
-      w.dataset.oct = octave + octOff;
-      w.textContent = note + (octave + octOff);
-      w.addEventListener('pointerdown', e => {
-        e.preventDefault();
-        w.classList.add('active');
-        playNote(note, octave + octOff);
-      });
-      w.addEventListener('pointerup', () => w.classList.remove('active'));
-      w.addEventListener('pointerleave', () => w.classList.remove('active'));
-      whiteRow.appendChild(w);
+    var i;
+    for (i = 0; i < NUM_WHITE; i++) {
+      var x = i * WHITE_W;
+      drawKey(x, 0, WHITE_W, WHITE_H, false, activeKeys['w' + i]);
     }
 
-    // place black keys
-    for (let oct = 0; oct < 2; oct++) {
-      const base = oct * 7;
-      for (let k = 0; k < BLACK_POS.length; k++) {
-        const leftPct = (base * whiteW) + (BLACK_POS[k] * whiteW / 100);
-        const noteIdx = BLACK_IDX[k];
-        const note = NOTES[noteIdx];
-        const b = document.createElement('div');
-        b.className = 'black';
-        b.style.left = leftPct + '%';
-        b.textContent = note;
-        b.addEventListener('pointerdown', e => {
-          e.preventDefault();
-          b.classList.add('active');
-          playNote(note, octave + oct);
-        });
-        b.addEventListener('pointerup', () => b.classList.remove('active'));
-        b.addEventListener('pointerleave', () => b.classList.remove('active'));
-        blackRow.appendChild(b);
+    for (i = 0; i < BLACK_AFTER.length; i++) {
+      var after = BLACK_AFTER[i];
+      var bx = (after + 1) * WHITE_W - BLACK_W / 2;
+      drawKey(bx, 0, BLACK_W, BLACK_H, true, activeKeys['b' + i]);
+    }
+  }
+
+  function hitTest(x, y) {
+    var i;
+    for (i = 0; i < BLACK_AFTER.length; i++) {
+      var after = BLACK_AFTER[i];
+      var bx = (after + 1) * WHITE_W - BLACK_W / 2;
+      if (x >= bx && x <= bx + BLACK_W && y >= 0 && y <= BLACK_H) {
+        return { type: 'black', idx: i };
       }
     }
+    var wi = Math.floor(x / WHITE_W);
+    if (wi >= 0 && wi < NUM_WHITE) return { type: 'white', idx: wi };
+    return null;
   }
 
-  octUp.addEventListener('click', () => { if (octave < 7) { octave++; octVal.textContent = octave; buildKeyboard(); } });
-  octDown.addEventListener('click', () => { if (octave > 1) { octave--; octVal.textContent = octave; buildKeyboard(); } });
+  function getPos(e) {
+    var rect = cv.getBoundingClientRect();
+    var sx = cv.width / rect.width;
+    var sy = cv.height / rect.height;
+    var cx = e.touches ? e.touches[0].clientX : e.clientX;
+    var cy = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: (cx - rect.left) * sx, y: (cy - rect.top) * sy };
+  }
 
-  buildKeyboard();
+  function press(x, y) {
+    var hit = hitTest(x, y);
+    if (!hit) return;
+    var key = (hit.type === 'black' ? 'b' : 'w') + hit.idx;
+    activeKeys[key] = true;
+    var note, oct;
+    if (hit.type === 'white') { note = WHITE_NOTES[hit.idx]; oct = WHITE_OCT[hit.idx]; }
+    else { note = BLACK_NOTES[hit.idx]; oct = BLACK_OCT[hit.idx]; }
+    playNote(note, oct);
+    draw();
+  }
+
+  function release() {
+    activeKeys = {};
+    draw();
+  }
+
+  var isDown = false;
+  cv.addEventListener('touchstart', function(e){ e.preventDefault(); isDown = true; var p = getPos(e); press(p.x, p.y); }, { passive: false });
+  cv.addEventListener('touchmove', function(e){ if (!isDown) return; e.preventDefault(); var p = getPos(e); press(p.x, p.y); }, { passive: false });
+  cv.addEventListener('touchend', function(e){ e.preventDefault(); isDown = false; release(); }, { passive: false });
+  cv.addEventListener('mousedown', function(e){ isDown = true; var p = getPos(e); press(p.x, p.y); });
+  cv.addEventListener('mousemove', function(e){ if (!isDown) return; var p = getPos(e); press(p.x, p.y); });
+  cv.addEventListener('mouseup', function(e){ isDown = false; release(); });
+  cv.addEventListener('mouseleave', function(e){ isDown = false; release(); });
+
+  draw();
 })();
 </script>
 </body>
