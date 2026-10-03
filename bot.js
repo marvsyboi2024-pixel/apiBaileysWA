@@ -2408,9 +2408,9 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const text = args.slice(1).join(' ')
         if (!lang || !text) return reply(skError('Usage: ' + prefix + 'translate <lang> <text>'))
         try {
-            const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${encodeURIComponent(lang)}`
+            const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${encodeURIComponent(lang)}&dt=t&q=${encodeURIComponent(text)}`
             const data = await httpGetJson(url, 30000)
-            const translated = data?.responseData?.translatedText
+            const translated = Array.isArray(data) && Array.isArray(data[0]) ? data[0].map(function(x){return x[0]}).join('') : null
             if (!translated) return reply(skError('No translation returned.'))
             return reply(skInfo('🌐', 'TRANSLATE', [
                 ['FROM', 'en'],
@@ -3310,7 +3310,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             await sock.sendMessage(from, {
                 pin: {
-                    key: { remoteJid: from, id: ci.stanzaId, fromMe: false, participant: ci.participant || undefined },
+                    key: (function(){ var p = ci.participant; var fm = p ? isBotJid(sock, p) : true; return { remoteJid: from, id: ci.stanzaId, fromMe: fm, participant: fm ? undefined : p }; })(),
                     type: 1,
                     time: sec
                 }
@@ -3753,9 +3753,9 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!src) return reply(skError('Reply to a text message to translate it.'))
         const targetLang = args[0] || (ctx.userLang && ctx.userLang[cleanJid(sender)]) || 'en'
         try {
-            const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(src)}&langpair=autodetect|${encodeURIComponent(targetLang)}`
+            const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(src)}`
             const data = await httpGetJson(url, 15000)
-            const result = data?.responseData?.translatedText
+            const result = Array.isArray(data) && Array.isArray(data[0]) ? data[0].map(function(x){return x[0]}).join('') : null
             if (!result) return reply(skError('Translation failed.'))
             return reply(skInfo('🌐', 'AUTO TRANSLATE', [
                 ['TO', targetLang.toUpperCase()],
