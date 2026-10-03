@@ -520,6 +520,14 @@ function skGroup(emoji, title, fields) {
     return skInfo(emoji, title, fields)
 }
 
+function skAdminError(c){
+  return skInfo(String.fromCodePoint(0x1F451),'PERMISSION DENIED',[
+    ['COMMAND',c?'.'+c:'unknown'],
+    ['REQUIRES','ADMIN ROLE'],
+    ['BOT STATUS','MEMBER ONLY'],
+    ['SOLUTION','PROMOTE ME TO ADMIN']
+  ])
+}
 function getRandom(arr) { return arr[Math.floor(Math.random() * arr.length)] }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 function escapeHtml(s) {
@@ -2465,7 +2473,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ['INACTIVE 7D', String(inactive)],
                 ['TRACKED MSGS', String(totalMessages)]
             ]))
-        } catch (e) { return reply(skError('Failed to compute stats.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'realm') {
@@ -2480,7 +2488,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ['BOT', botAdmin ? '👑 ADMIN' : '🟢 MEMBER'],
                 ['MODE', ctx.cfg.mode]
             ]))
-        } catch (e) { return reply(skError('Failed to fetch realm status.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'throne') {
@@ -2519,7 +2527,40 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         ]))
     }
 
-    if (cmd === 'command') {
+    if (cmd === 'command' || cmd === 'cmds' || cmd === 'cmd') {
+        if (args.length === 0) {
+            if (!owner) return reply(skDenied('OWNER'))
+            const cats = [
+                ['GROUP', [
+                    ['pin <24h|7d|30d>', 'Pin message'],
+                    ['poll <Q> | <A> | <B>', 'Create poll']
+                ]],
+                ['FUN', [
+                    ['hbd <name> | <num> | <who>', 'Birthday msg'],
+                    ['edits <n> <text>', 'Edit story line']
+                ]],
+                ['UTILITY', [
+                    ['translate <lang> <text>', 'Translate text'],
+                    ['walink <num> | <msg>', 'WA chat link'],
+                    ['vcard <num> | <name>', 'Contact file']
+                ]],
+                ['OWNER', [
+                    ['delaytime <1-60>', 'Delay seconds'],
+                    ['slowmode <3-3600>', 'Slow down chat'],
+                    ['broadcast1 <num> | <text>', 'DM one number'],
+                    ['bg <group-jid> | <text>', 'Broadcast to group']
+                ]]
+            ]
+            let out = SK_HEADER + '\n\n' + String.fromCodePoint(0x1F4D6) + ' ' + mono('COMMAND USAGE') + '\n\n'
+            for (const pair of cats) {
+                out += String.fromCharCode(0x00BB) + ' ' + mono(pair[0]) + '\n'
+                for (const it of pair[1]) {
+                    out += '  ' + prefix + mono(it[0]) + '  ' + String.fromCharCode(0x2022) + '  ' + mono(it[1]) + '\n'
+                }
+                out += '\n'
+            }
+            return reply(withFooter(out.replace(/\n$/, '')))
+        }
         const target = (args[0] || '').replace(/^\./, '').toLowerCase()
         if (!target) return reply(skError('Usage: ' + prefix + 'command <name>'))
         const cmdMap = {
@@ -2784,7 +2825,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ['YOU ADMIN', youAdmin ? '🟢 YES' : '🔴 NO'],
                 ['GROUP MUTE', muted ? '🔒 LOCKED' : '🟢 OPEN']
             ]))
-        } catch (e) { return reply(skError('Failed to fetch permissions.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'warn') {
@@ -2802,7 +2843,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (count >= limit) {
             try {
                 const r = await participantsUpdate(sock, from, [target], 'remove')
-                if (!r.ok) return reply(skError('Could not remove them. Am I admin?'))
+                if (!r.ok) return reply(skAdminError(cmd))
                 delete ctx.warningCounts[from][key]
                 return sock.sendMessage(from, {
                     text: skInfo('🚫', 'KICKED', [
@@ -2811,7 +2852,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                     ]),
                     mentions: mentionJids(sock, [target], [realNum])
                 })
-            } catch (e) { return reply(skError('Failed to kick.')) }
+            } catch (e) { return reply(skAdminError(cmd)) }
         }
         return sock.sendMessage(from, {
             text: skInfo('⚠️', 'WARN', [
@@ -2925,7 +2966,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (filtered.length === 0) return reply(skError('No valid targets (bot/admins excluded).'))
         try {
             const r = await participantsUpdate(sock, from, filtered, 'remove')
-            if (!r.ok) return reply(skError('Could not kick. Am I admin?'))
+            if (!r.ok) return reply(skAdminError(cmd))
             let count = null
             try {
                 const meta = await getGroupMeta(ctx, sock, from, true)
@@ -2940,7 +2981,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 text: `${SK_HEADER}\n\n👢 ${mono('KICK')}\n\n${fields.map(([k,v]) => '» ' + mono(k) + '  •  ' + (v && typeof v === 'object' && v.__noBold !== undefined ? v.__noBold : mono(String(v)))).join('\n')}\n\n⚔️ ${mono('THE REALM HAS MADE ITS DECISION.')}`,
                 mentions: mentionJids(sock, filtered, realNums)
             })
-        } catch (e) { return reply(skError('Failed to kick.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'add') {
@@ -2955,7 +2996,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             if (st === '409') return reply(skError('Already in group.'))
             if (st === '408') return reply(skError('Recently left the group.'))
             return reply(skError('Could not add.'))
-        } catch (e) { return reply(skError('Failed to add.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'promote' || cmd === 'demote') {
@@ -2974,7 +3015,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (filtered.length === 0) return reply(skError('No valid targets (bot/admins excluded).'))
         try {
             const r = await participantsUpdate(sock, from, filtered, cmd)
-            if (!r.ok) return reply(skError(`Could not ${cmd}. Am I admin?`))
+            if (!r.ok) return reply(skAdminError(cmd))
             const emoji = cmd === 'promote' ? '👑' : '⬇️'
             const label = cmd === 'promote' ? 'PROMOTE' : 'DEMOTE'
             const newRole = cmd === 'promote' ? '👑 ADMIN' : '👤 MEMBER'
@@ -2993,7 +3034,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ]),
                 mentions: mentionJids(sock, filtered, realNums)
             })
-        } catch (e) { return reply(skError(`Failed to ${cmd}.`)) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'demoteall') {
@@ -3046,7 +3087,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                     fromMe: false
                 }
             })
-        } catch (e) { return reply(skError('Could not delete. Am I admin?')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
         return
     }
 
@@ -3082,7 +3123,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             await attemptRejoin(ctx, sock, groupJid, 'manual')
         } catch (e) {
             console.log('.left error:', e?.message || e)
-            return reply(skError('Failed to leave.'))
+            return reply(skAdminError(cmd))
         }
         return
     }
@@ -3111,7 +3152,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             await sock.groupLeave(groupJid)
         } catch (e) {
             console.log('.leave error:', e?.message || e)
-            return reply(skError('Failed to leave.'))
+            return reply(skAdminError(cmd))
         }
         return
     }
@@ -3132,7 +3173,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             if (gname) fields.push(['GROUP', gname])
             fields.push(['STATUS', statusText])
             return reply(skInfo(emoji, title, fields))
-        } catch (e) { return reply(skError('Failed. Am I admin?')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'tagall' || cmd === 'hidetag' || cmd === 'tagadmins') {
@@ -3166,7 +3207,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             out += `» ${mono('MEMBERS')}  •  ${mono(String(meta.participants.length))}`
             out += `\n\n${SK_FOOTER}`
             return sock.sendMessage(from, { text: out, mentions })
-        } catch (e) { return reply(skError('Failed to fetch members.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'pin') {
@@ -3200,7 +3241,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             ]))
         } catch (e) {
             console.log('.pin error:', e?.message || e)
-            return reply(skError('Pin failed.'))
+            return reply(skAdminError(cmd))
         }
     }
 
@@ -3214,7 +3255,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ['MEMBERS', String(meta.participants.length)],
                 ['ADMINS', String(meta.participants.filter(p => p.admin).length)]
             ]))
-        } catch (e) { return reply(skError('Failed to fetch group info.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'groupdesc') {
@@ -3222,7 +3263,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             const meta = await getGroupMeta(ctx, sock, from, true)
             return reply(skLine('📝', 'GROUP DESC', meta.desc || '(empty)'))
-        } catch (e) { return reply(skError('Failed to fetch description.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'invitelink' || cmd === 'link') {
@@ -3258,7 +3299,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ['GROUP', gname],
                 ['LINK', noBold(link)]
             ]))
-        } catch (e) { return reply(skError('Failed. Am I admin?')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'setinvite' || cmd === 'set') {
@@ -3310,7 +3351,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             await sock.groupRevokeInvite(from)
             return reply(skSuccess('REVOKE LINK', 'NEW LINK GENERATED'))
-        } catch (e) { return reply(skError('Failed. Am I admin?')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'admins') {
@@ -3320,7 +3361,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const admins = meta.participants.filter(p => p.admin)
             const lines = admins.map(a => `• ${bestNumber(a)}`).join('\n')
             return reply(skLine('👑', `GROUP ADMINS (${admins.length})`, lines))
-        } catch (e) { return reply(skError('Failed to fetch admins.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'members') {
@@ -3329,7 +3370,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const meta = await getGroupMeta(ctx, sock, from, true)
             const lines = meta.participants.map(p => `• ${bestNumber(p)}`).join('\n')
             return reply(skLine('👥', `MEMBERS (${meta.participants.length})`, lines))
-        } catch (e) { return reply(skError('Failed to fetch members.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
 
@@ -3345,7 +3386,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 lines.push(`• ${rn}  •  ${v.count || 0}`)
             }
             return reply(skLine('📊', 'TOP MEMBERS', lines.join('\n')))
-        } catch (e) { return reply(skError('Failed to compute.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'kickinactive') {
@@ -3369,7 +3410,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             if (!list || list.length === 0) return reply(skInfo('📋', 'REQUESTS', [['REQUESTS', 'none']]))
             const lines = list.map(r => `• ${cleanNumber(r.jid)}`).join('\n')
             return reply(skLine('📋', `JOIN REQUESTS (${list.length})`, lines))
-        } catch (e) { return reply(skError('Failed to fetch requests.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
     if (cmd === 'approveall') {
         if (!(await needManage())) return
@@ -3379,7 +3420,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const jids = list.map(r => r.jid)
             await sock.groupRequestParticipantsUpdate(from, jids, 'approve')
             return reply(skSuccess('APPROVE ALL', `${jids.length} request(s)`))
-        } catch (e) { return reply(skError('Failed to approve.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
     if (cmd === 'rejectall') {
         if (!(await needManage())) return
@@ -3389,7 +3430,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const jids = list.map(r => r.jid)
             await sock.groupRequestParticipantsUpdate(from, jids, 'reject')
             return reply(skSuccess('REJECT ALL', `${jids.length} request(s)`))
-        } catch (e) { return reply(skError('Failed to reject.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'setname') {
@@ -3399,7 +3440,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             await sock.groupUpdateSubject(from, txt)
             return reply(skInfo('📝', 'NAME CHANGED', [['NEW NAME', txt]]))
-        } catch (e) { return reply(skError('Failed. Am I admin?')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
     if (cmd === 'setdesc') {
         if (!(await needManage())) return
@@ -3408,7 +3449,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             await sock.groupUpdateDescription(from, txt)
             return reply(skSuccess('DESC UPDATED', 'SAVED'))
-        } catch (e) { return reply(skError('Failed. Am I admin?')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'events' || cmd === 'event') {
@@ -4218,7 +4259,7 @@ async function executeConfirmed(sock, ctx, msg, content, from, isGroup, sender, 
             })
         } catch (e) {
             console.log('demoteall error:', e?.message || e)
-            try { await sock.sendMessage(from, { text: skError('Failed to demote.') }) } catch (e2) {}
+            try { await sock.sendMessage(from, { text: skAdminError(cmd) }) } catch (e2) {}
         }
         return
     }
