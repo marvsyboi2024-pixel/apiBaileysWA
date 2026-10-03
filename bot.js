@@ -2288,6 +2288,43 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     // ── FUN ──
     if (cmd === 'joke') return reply(skLine('😄', 'JOKE', getRandom(jokes)))
     if (cmd === 'quote') return reply(skLine('💬', 'QUOTE', getRandom(quotes)))
+    if (cmd === 'newgc') {
+        if (!owner) return reply(skDenied(String.fromCodePoint(0x1F451) + ' ' + mono('OWNER')))
+        const raw = args.join(' ')
+        const sp = raw.indexOf('|')
+        if (sp === -1) return reply(skError('Usage: ' + prefix + 'newgc <name> | <num1>, <num2>'))
+        const gname = raw.slice(0, sp).trim()
+        const numsRaw = raw.slice(sp + 1).trim()
+        if (!gname) return reply(skError('Group name missing.'))
+        const nums = numsRaw.split(/[,\s]+/).map(function(x){return x.replace(/[^0-9]/g,'')}).filter(function(x){return x.length >= 7})
+        if (nums.length === 0) return reply(skError('Provide at least one valid number.'))
+        if (nums.length > 50) return reply(skError('Max 50 numbers.'))
+        try {
+            const participants = nums.map(function(n){return n + '@s.whatsapp.net'})
+            const result = await sock.groupCreate(gname, participants)
+            const newId = result.id
+            let link = null
+            try {
+                const code = await sock.groupInviteCode(newId)
+                link = 'https://chat.whatsapp.com/' + code
+            } catch (e) {}
+            try {
+                const wtxt = SK_HEADER + '\n\n' + String.fromCodePoint(0x1F479) + ' ' + mono('WELCOME') + '\n\n' + mono('The realm has been forged.') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('GROUP') + '  ' + String.fromCharCode(0x2022) + '  ' + mono(gname) + '\n' + String.fromCharCode(0x00BB) + ' ' + mono('BY') + '  ' + String.fromCharCode(0x2022) + '  ' + mono(ownerName(sock)) + '\n\n' + SK_FOOTER
+                await sock.sendMessage(newId, { text: wtxt })
+            } catch (e) {}
+            const fields = [
+                ['NAME', gname],
+                ['JID', noBold(newId)],
+                ['ADDED', String(participants.length)]
+            ]
+            if (link) fields.push(['LINK', noBold(link)])
+            return reply(skInfo(String.fromCodePoint(0x2705), 'GROUP CREATED', fields))
+        } catch (e) {
+            console.log('.newgc error:', e?.message || e)
+            return reply(skError('Failed to create group.'))
+        }
+    }
+
     if (cmd === 'insult' || cmd === 'yab') {
         const target = getTarget(content)
         if (!owner) {
@@ -2587,6 +2624,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                     ['vcard <num> | <name>', 'Contact file']
                 ]],
                 ['OWNER', [
+                    ['newgc <name> | <nums>', 'Create a group'],
                     ['delaytime <1-60>', 'Delay seconds'],
                     ['slowmode <3-3600>', 'Slow down chat'],
                     ['broadcast1 <num> | <text>', 'DM one number'],
@@ -4496,6 +4534,7 @@ function renderMenu(ctx, sock) {
         `» ${p}${mono('autoreact')}  •  ${mono('Auto react msgs')}\n` +
         `» ${p}${mono('statusreact')}  •  ${mono('React to statuses')}\n` +
         `» ${p}${mono('broadcast1')}  •  ${mono('DM one number')}\n` +
+        `» ${p}${mono('newgc')}  •  ${mono('Create a group')}\n` +
         `» ${p}${mono('restart')}  •  ${mono('Restart session')}\n` +
         `\n` +
         `🛠️ ${mono('UTILITY')}\n` +
