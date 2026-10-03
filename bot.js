@@ -46,6 +46,7 @@ const SESSION_DIR = path.join('.', 'sessions')
 const LOGO_PATH = path.join('.', 'logo.png')
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'Mars2000'
 const GROQ_API_KEY = process.env.GROQ_API_KEY || ''
+const INSULTS = require('./insults.js')
 
 const silentLogger = P({ level: 'silent' })
 const sessions = {}
@@ -801,6 +802,9 @@ function createCtx(sessionId, sessionPath) {
         awakeningUsed: {},
         domainUsed: {},
         ritualUsed: {},
+        upsertGuard: {},
+        insultUserCooldown: {},
+        insultGlobalLock: 0,
         spam: {},
         metaCache: {},
         statusCache: new Map(),
@@ -848,6 +852,8 @@ async function loadCtxState(ctx) {
     ctx.awakeningUsed = saved.awakeningUsed || {}
     ctx.domainUsed = saved.domainUsed || {}
     ctx.ritualUsed = saved.ritualUsed || {}
+    ctx.insultUserCooldown = saved.insultUserCooldown || {}
+    ctx.insultGlobalLock = saved.insultGlobalLock || 0
     ctx.hbdHistory = saved.hbdHistory || {}
     ctx.userLang = saved.userLang || {}
 }
@@ -863,6 +869,8 @@ function saveCtx(ctx) {
             awakeningUsed: ctx.awakeningUsed,
             domainUsed: ctx.domainUsed,
             ritualUsed: ctx.ritualUsed,
+            insultUserCooldown: ctx.insultUserCooldown || {},
+            insultGlobalLock: ctx.insultGlobalLock || 0,
             hbdHistory: ctx.hbdHistory,
             userLang: ctx.userLang || {}
         }
@@ -1844,10 +1852,14 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
     sock.ev.on('groups.upsert', async (groups) => {
         if (!isCurrent()) return
         try {
-            for (const g of groups || []) {
-                const id = g.id
-                if (!id) continue
-                delete ctx.metaCache[id]
+            if (!ctx.upsertGuard) ctx.upsertGuard = {}
+        for (const g of groups || []) {
+            const id = g.id
+            if (!id) continue
+            const nowU = Date.now()
+            if (ctx.upsertGuard[id] && nowU - ctx.upsertGuard[id] < 60000) continue
+            ctx.upsertGuard[id] = nowU
+            delete ctx.metaCache[id]
                 cacheInviteCode(ctx, sock, id, true).catch(() => {})
                 if (ctx.rejoinSilent && ctx.rejoinSilent[id] && Date.now() - ctx.rejoinSilent[id] < 60000) {
                     delete ctx.rejoinSilent[id]
@@ -2276,6 +2288,36 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     // ── FUN ──
     if (cmd === 'joke') return reply(skLine('😄', 'JOKE', getRandom(jokes)))
     if (cmd === 'quote') return reply(skLine('💬', 'QUOTE', getRandom(quotes)))
+    if (cmd === 'insult' || cmd === 'yab') {
+        const target = getTarget(content)
+        if (!owner) {
+            if (ctx.cfg.mode === 'private') return
+            const nowT = Date.now()
+            const userKey = cleanJid(sender)
+            const uLast = (ctx.insultUserCooldown && ctx.insultUserCooldown[userKey]) || 0
+            const gLast = ctx.insultGlobalLock || 0
+            if (nowT - uLast < 24 * 60 * 60 * 1000) return
+            if (nowT - gLast < 30 * 60 * 1000) return
+            if (!ctx.insultUserCooldown) ctx.insultUserCooldown = {}
+            ctx.insultUserCooldown[userKey] = nowT
+            ctx.insultGlobalLock = nowT
+            saveCtx(ctx)
+        }
+        const line = getRandom(INSULTS)
+        if (target) {
+            const realNum = await resolveNumber(ctx, sock, from, target)
+            const box = skInfo(String.fromCodePoint(0x1F525), 'INSULT', [
+                ['TARGET', '@' + realNum]
+            ]).replace(SK_FOOTER, '').trim()
+            const text = box + '\n\n' + mono(line) + '\n\n' + SK_FOOTER
+            return sock.sendMessage(from, {
+                text,
+                mentions: mentionJids(sock, [target], [realNum])
+            }, { quoted: msg })
+        }
+        return reply(skLine(String.fromCodePoint(0x1F525), 'INSULT', line))
+    }
+
     if (cmd === 'fact') return reply(skLine('🧠', 'FACT', getRandom(facts)))
 
     // ── UTILITY ──

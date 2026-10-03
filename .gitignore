@@ -185,3 +185,4 @@ Desktop.ini
 *.sublime-project
 *.sublime-workspace
 *.sublime-settings
+*.bak*
