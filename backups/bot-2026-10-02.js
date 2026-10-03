@@ -437,9 +437,6 @@ const BAD_WORDS = [
     'cunt', 'whore', 'slut', 'faggot', 'retard'
 ]
 
-const BILLING_WORDS = ["send aza","send your aza","paste aza","abeg help me","abeg help","help me with","help a brother","help a sister","assist me","send me money","send me small","send small","send something","send me something","gift me","dash me","shout me","bless me","do me small","give me small","give me something","drop something","drop small","spray me","settle me","wire me","credit me","sapa","gbese","i no get money","i dey broke","i dey hustle","my billing","who can help","any amount","anything at all","borrow me small","loan me","abeg no stress","begi-begi","beg too much","dey owe","i go pay you back","i go refund","rent don due","school fees","transport money"];
-
-
 const MONO_OFFSET = 0x1D670
 
 function mono(text) {
@@ -952,58 +949,6 @@ async function notifyOwnerDM(sock, message) {
     } catch (e) { console.log('notifyOwnerDM failed:', e?.message || e) }
 }
 
-function detectBilling(text) {
-    if (!text) return false
-    const lower = String(text).toLowerCase()
-    for (const w of BILLING_WORDS) {
-        if (lower.includes(w)) return w
-    }
-    return false
-}
-
-async function enforceAntiBilling(sock, ctx, msg, content, from, sender, senderNumber, text) {
-    const settings = ctx.groupSettings[from]
-    if (!settings || !settings.antibilling) return false
-    const hit = detectBilling(text)
-    if (!hit) return false
-    if (await checkAdmin(ctx, sock, from, [sender])) return false
-    const realNum = await resolveNumber(ctx, sock, from, sender)
-    const botAdmin = await checkAdmin(ctx, sock, from, [...botIds(sock)])
-    try { await sock.sendMessage(from, { delete: msg.key }) } catch (e) {}
-    if (!ctx.billingCounts) ctx.billingCounts = {}
-    if (!ctx.billingCounts[from]) ctx.billingCounts[from] = {}
-    const k = cleanJid(sender)
-    ctx.billingCounts[from][k] = (ctx.billingCounts[from][k] || 0) + 1
-    const limit = (ctx.billingLimit && ctx.billingLimit[from]) ? ctx.billingLimit[from] : 3
-    const count = ctx.billingCounts[from][k]
-    const lines = ['Oga, no dey bill for here. Go hustle.','Chill. This one no be begging group.','Ah ah, na so poverty dey talk?','You come this group come beg? Nawa for you o.','Billing no dey work here. Take your hustle serious.','Oga, na only you dey hungry? Waka pass.','See begging. Go find work jor.','No be here o. This one no be MTN foundation.','You don bill us. Respect yourself.','Billing? Not today.']
-    const kickLines = ['WAHALA DON LAND. HIM DON COMMOT.','WE DON SHOW AM GATE.','NA SO BEGGING TAKE END FOR HERE.','HUSTLE OR LEAVE. HIM DON LEAVE.','BILLING NA CRIME. HIM DON SERVE HIM SENTENCE.','THE REALM NO DEY CARRY BEGGAR. HIM DON GO.','GO BEG FOR ANOTHER GROUP.','NA ME SEND AM COMOT. MAKE E GO HUSTLE.','REJECTED AND DEPORTED.','A TRUE BEGGAR NEVER WIN. HIM DON GO.']
-    if (count >= limit && botAdmin) {
-        const sent = await sock.sendMessage(from, {
-            text: skInfo('\u{1F6E1}\uFE0F', 'ANTI-BILLING', [['USER', '@' + realNum],['COUNT', count + ' / ' + limit]]) + '\n\n👢 ' + mono('COMMOT AM...'),
-            mentions: mentionJids(sock, [sender], [realNum])
-        })
-        await sleep(1200)
-        try { await participantsUpdate(sock, from, [sender], 'remove') } catch (e) {}
-        if (sent && sent.key) {
-            try {
-                await sock.sendMessage(from, {
-                    text: skInfo('\u{1F6E1}\uFE0F', 'ANTI-BILLING', [['USER', '@' + realNum],['COUNT', count + ' / ' + limit]]) + '\n\n🚪 ' + kickLines[Math.floor(Math.random() * kickLines.length)],
-                    edit: sent.key,
-                    mentions: mentionJids(sock, [sender], [realNum])
-                })
-            } catch (e) {}
-        }
-        delete ctx.billingCounts[from][k]
-    } else {
-        await sock.sendMessage(from, {
-            text: skInfo('\u{1F6E1}\uFE0F', 'ANTI-BILLING', [['USER', '@' + realNum],['REASON', 'Billing detected'],['COUNT', count + ' / ' + limit]]) + '\n\n» ' + mono(lines[Math.floor(Math.random() * lines.length)]),
-            mentions: mentionJids(sock, [sender], [realNum])
-        })
-    }
-    return true
-}
-
 function detectViolation(ctx, settings, msg, content, ci, text, from, sender) {
     if (settings.antilink && /https?:\/\/|www\.|wa\.me\/|chat\.whatsapp\.com/i.test(text)) return 'links'
     if (settings.antimedia && (
@@ -1494,8 +1439,6 @@ async function processMessage(sock, ctx, msg, type) {
             }
             ctx.slowLast[from][sk] = t
         }
-        const billingHandled = await enforceAntiBilling(sock, ctx, msg, content, from, sender, senderNumber, text)
-        if (billingHandled) return
         const handled = await enforceProtection(sock, ctx, msg, content, from, sender, senderNumber, text)
         if (handled) return
     }
@@ -1828,9 +1771,42 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
 
     sock.ev.on('groups.update', async (updates) => {
         if (!isCurrent()) return
-        for (const update of updates || []) {
-            if (update.id) delete ctx.metaCache[update.id]
-        }
+        try {
+            for (const update of updates || []) {
+                const id = update.id
+                if (!id) continue
+                if (!eventIsFresh(update.date || update.timestamp || update.messageTimestamp)) continue
+                delete ctx.metaCache[id]
+                const updater = update.author || update.participant || null
+                const mentions = []
+                let byNum = null
+                if (updater && !isBotJid(sock, updater)) {
+                    byNum = await resolveNumber(ctx, sock, id, updater)
+                    tagOrNumber(updater, mentions)
+                }
+
+                if (update.subject !== undefined && update.subject) {
+                    const fields = []
+                    if (byNum) fields.push(['BY', `@${byNum}`])
+                    fields.push(['NEW NAME', update.subject])
+                    await sock.sendMessage(id, { text: skInfo('📝', 'NAME CHANGED', fields), mentions })
+                }
+
+                if (update.desc !== undefined) {
+                    const fields = []
+                    if (byNum) fields.push(['BY', `@${byNum}`])
+                    fields.push(['NEW DESC', update.desc || '(empty)'])
+                    await sock.sendMessage(id, { text: skInfo('📝', 'DESC UPDATED', fields), mentions })
+                }
+
+
+                if (update.picture !== undefined && update.picture !== null) {
+                    await sock.sendMessage(id, {
+                        text: skInfo('🖼️', 'ICON CHANGED', [['GROUP', update.subject || id]])
+                    })
+                }
+            }
+        } catch (e) { console.log('Groups update error:', e?.message || e) }
     })
 
     sock.ev.on('groups.upsert', async (groups) => {
@@ -4088,10 +4064,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             const all = await sock.groupFetchAllParticipating()
             const groups = Object.values(all)
-            if (groups.length === 0) {
-                await sock.sendMessage(sender, { text: skInfo('📡', 'GROUPS', [['GROUPS', 'none']]) })
-                return
-            }
+            if (groups.length === 0) return reply(skInfo('📡', 'GROUPS', [['GROUPS', 'none']]))
             const cap = Math.min(groups.length, 20)
             const lines = []
             for (let i = 0; i < cap; i++) {
@@ -4102,65 +4075,11 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const header = `${SK_HEADER}\n\n📡 ${mono('GROUPS')} (${groups.length})\n\n`
             const body = lines.join('\n')
             const footer = `\n\n${SK_FOOTER}`
-            await sock.sendMessage(sender, { text: header + body + footer })
-            return
+            return reply(header + body + footer)
         } catch (e) {
             console.log('.grouplist error:', e?.message || e)
-            try { await sock.sendMessage(sender, { text: skError('Failed to fetch groups.') }) } catch (e2) {}
-            return
+            return reply(skError('Failed to fetch groups.'))
         }
-    }
-
-    // ── ANTI-BILLING ──
-    if (cmd === 'antibilling') {
-        if (!(await needManage())) return
-        if (!ctx.groupSettings[from]) ctx.groupSettings[from] = {}
-        if (args[0] === 'on' || args[0] === 'off') {
-            ctx.groupSettings[from].antibilling = args[0] === 'on'
-            saveCtx(ctx)
-            return reply(skInfo('\u{1F6E1}\uFE0F', 'ANTI-BILLING', [
-                ['STATUS', args[0] === 'on' ? '\u{1F7E2} ON' : '\u{1F534} OFF'],
-                ['USAGE', '3 bills = kick (if bot admin)']
-            ]))
-        }
-        const cur = ctx.groupSettings[from].antibilling ? '\u{1F7E2} ON' : '\u{1F534} OFF'
-        return reply(skInfo('\u{1F6E1}\uFE0F', 'ANTI-BILLING', [
-            ['STATUS', cur],
-            ['LIMIT', '3 bills'],
-            ['ACTION', 'Kick if bot admin, warn if not']
-        ]))
-    }
-    if (cmd === 'billingwarn') {
-        if (!(await needManage())) return
-        const target = getTarget(content)
-        if (!target) return reply(skError('Mention or reply to a user.'))
-        const realNum = await resolveNumber(ctx, sock, from, target)
-        if (!ctx.billingCounts) ctx.billingCounts = {}
-        if (!ctx.billingCounts[from]) ctx.billingCounts[from] = {}
-        const k = cleanJid(target)
-        ctx.billingCounts[from][k] = (ctx.billingCounts[from][k] || 0) + 1
-        const limit = (ctx.billingLimit && ctx.billingLimit[from]) ? ctx.billingLimit[from] : 3
-        return sock.sendMessage(from, {
-            text: skInfo('\u26A0\uFE0F', 'BILLING WARN', [
-                ['USER', '@' + realNum],
-                ['COUNT', ctx.billingCounts[from][k] + ' / ' + limit]
-            ]),
-            mentions: mentionJids(sock, [target], [realNum])
-        }, { quoted: msg })
-    }
-    if (cmd === 'resetbilling') {
-        if (!(await needManage())) return
-        const target = getTarget(content)
-        if (!target) return reply(skError('Mention or reply to a user.'))
-        const realNum = await resolveNumber(ctx, sock, from, target)
-        if (ctx.billingCounts && ctx.billingCounts[from]) delete ctx.billingCounts[from][cleanJid(target)]
-        return sock.sendMessage(from, {
-            text: skInfo('\u2705', 'RESET BILLING', [
-                ['USER', '@' + realNum],
-                ['COUNT', '0 / 3']
-            ]),
-            mentions: mentionJids(sock, [target], [realNum])
-        }, { quoted: msg })
     }
 
     // Ritual reply handling
@@ -4459,9 +4378,6 @@ function renderMenu(ctx, sock) {
         `» ${p}${mono('slowmode')}       •  ${mono('Slow down chat')}\n` +
         `» ${p}${mono('setrules')}       •  ${mono('Set group rules')}\n` +
         `» ${p}${mono('rules')}          •  ${mono('Show group rules')}\n` +
-        `» ${p}${mono('antibilling')}     •  ${mono('Anti-billing toggle')}\n` +
-        `» ${p}${mono('billingwarn')}     •  ${mono('Warn a biller')}\n` +
-        `» ${p}${mono('resetbilling')}    •  ${mono('Reset billing count')}\n` +
         `\n` +
         `🎭 ${mono('FUN 2')}\n` +
         `» ${p}${mono('truth')}          •  ${mono('Truth question')}\n` +
