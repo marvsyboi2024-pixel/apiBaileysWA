@@ -186,3 +186,4 @@ Desktop.ini
 *.sublime-workspace
 *.sublime-settings
 *.bak*
+.env

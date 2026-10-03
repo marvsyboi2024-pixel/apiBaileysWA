@@ -46,7 +46,9 @@ const SESSION_DIR = path.join('.', 'sessions')
 const LOGO_PATH = path.join('.', 'logo.png')
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'Mars2000'
 const GROQ_API_KEY = process.env.GROQ_API_KEY || ''
+const PEXELS_API_KEY = process.env.PEXELS_API_KEY || ''
 const INSULTS = require('./insults.js')
+const MENU2 = require('./menu2.js')
 
 const silentLogger = P({ level: 'silent' })
 const sessions = {}
@@ -464,6 +466,15 @@ function italic(text) {
     })
 }
 
+function boldItalic(text) {
+    return String(text).replace(/[A-Za-z]/g, (ch) => {
+        const u = ch.charCodeAt(0)
+        if (u >= 65 && u <= 90) return String.fromCodePoint(0x1D468 + (u - 65))
+        if (u >= 97 && u <= 122) return String.fromCodePoint(0x1D482 + (u - 97))
+        return ch
+    })
+}
+
 function sansBold(text) {
     return String(text).replace(/[A-Za-z]/g, (ch) => {
         const u = ch.charCodeAt(0)
@@ -719,16 +730,17 @@ function safeCalc(input) {
 }
 
 // ─────────────────────────── http helpers (keyless APIs) ───────────────────────────
-function httpGetBuffer(url, timeoutMs = 15000, depth = 0) {
+function httpGetBuffer(url, timeoutMs = 15000, depth = 0, extraHeaders = null) {
     return new Promise((resolve, reject) => {
-        const req = https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+        const hdrs = Object.assign({ 'User-Agent': 'Mozilla/5.0' }, extraHeaders || {})
+        const req = https.get(url, { headers: hdrs }, (res) => {
             const code = res.statusCode || 0
             if (code >= 300 && code < 400 && res.headers.location && depth < 5) {
                 res.resume()
                 const next = res.headers.location.startsWith('http')
                     ? res.headers.location
                     : new URL(res.headers.location, url).toString()
-                return httpGetBuffer(next, timeoutMs, depth + 1).then(resolve, reject)
+                return httpGetBuffer(next, timeoutMs, depth + 1, extraHeaders).then(resolve, reject)
             }
             if (code >= 400) { res.resume(); reject(new Error(`HTTP ${code}`)); return }
             const chunks = []
@@ -804,6 +816,15 @@ function createCtx(sessionId, sessionPath) {
         ritualUsed: {},
         upsertGuard: {},
         insultUserCooldown: {},
+        imagineCooldown: {},
+        songCooldown: {},
+        lyricsCooldown: {},
+        memeCooldown: {},
+        guessGames: {},
+        imgCooldown: {},
+        debts: {},
+        mp4Cooldown: {},
+        mp4Pending: {},
         insultGlobalLock: 0,
         spam: {},
         metaCache: {},
@@ -853,6 +874,13 @@ async function loadCtxState(ctx) {
     ctx.domainUsed = saved.domainUsed || {}
     ctx.ritualUsed = saved.ritualUsed || {}
     ctx.insultUserCooldown = saved.insultUserCooldown || {}
+    ctx.imagineCooldown = saved.imagineCooldown || {}
+    ctx.songCooldown = saved.songCooldown || {}
+    ctx.lyricsCooldown = saved.lyricsCooldown || {}
+    ctx.imgCooldown = saved.imgCooldown || {}
+    ctx.debts = saved.debts || {}
+    ctx.mp4Cooldown = saved.mp4Cooldown || {}
+    ctx.memeCooldown = saved.memeCooldown || {}
     ctx.insultGlobalLock = saved.insultGlobalLock || 0
     ctx.hbdHistory = saved.hbdHistory || {}
     ctx.userLang = saved.userLang || {}
@@ -870,6 +898,13 @@ function saveCtx(ctx) {
             domainUsed: ctx.domainUsed,
             ritualUsed: ctx.ritualUsed,
             insultUserCooldown: ctx.insultUserCooldown || {},
+            imagineCooldown: ctx.imagineCooldown || {},
+            songCooldown: ctx.songCooldown || {},
+            lyricsCooldown: ctx.lyricsCooldown || {},
+            imgCooldown: ctx.imgCooldown || {},
+            debts: ctx.debts || {},
+            mp4Cooldown: ctx.mp4Cooldown || {},
+            memeCooldown: ctx.memeCooldown || {},
             insultGlobalLock: ctx.insultGlobalLock || 0,
             hbdHistory: ctx.hbdHistory,
             userLang: ctx.userLang || {}
@@ -1212,7 +1247,7 @@ async function handleSave(sock, ctx, msg, content, from, sender) {
     await cleanup()
 }
 
-async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind) {
+async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind, noDelete) {
     const prefix = ctx.cfg.prefix
     const silent = kind === 'hmm'
     const selfJid = getBotJid(sock)
@@ -1258,7 +1293,7 @@ async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind) {
         console.log(`.${kind} error:`, e?.message || e)
         await say(skError('Failed to get that view-once. WhatsApp may have deleted it.'))
     }
-    if (silent && msg.key.fromMe) {
+    if (silent && !noDelete && msg.key.fromMe) {
         try { await sock.sendMessage(from, { delete: msg.key }) } catch (e) {}
     }
 }
@@ -1312,6 +1347,18 @@ async function processMessage(sock, ctx, msg, type) {
     }
 
     const content = unwrap(msg.message)
+
+    // .menu2 interactive response
+    const m2id = MENU2.getResponse(content)
+    if (m2id && typeof m2id === 'string' && m2id.startsWith('menu2:')) {
+        try {
+            if (m2id.startsWith('menu2:cat:')) {
+                const cat = m2id.slice('menu2:cat:'.length)
+                await MENU2.sendCategory(sock, from, cat, ctx.cfg.prefix)
+            }
+        } catch (e) { console.log('menu2 response err:', e?.message || e) }
+        return
+    }
 
     // .hbd pending reply — user replied to a probe DM
     let hbdKey = null
@@ -1479,6 +1526,11 @@ async function processMessage(sock, ctx, msg, type) {
     const isCmd = text.startsWith(prefix)
 
     await handleMessageAutoReact(sock, ctx, msg, isGroup, fromMe, isCmd)
+
+    if (text === '🌚') {
+        await handleViewOnceCmd(sock, ctx, msg, content, from, sender, 'hmm', true)
+        return
+    }
 
     if (isCmd) {
         const cmdForFlash = lowerText.slice(prefix.length).split(/\s+/)[0]
@@ -2364,6 +2416,443 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         catch (e) { return reply(skError('Invalid math.')) }
     }
 
+    if (cmd === 'mp4') {
+        if (!ctx.mp4Pending) ctx.mp4Pending = {}
+        if (!ctx.mp4Pending[from]) ctx.mp4Pending[from] = {}
+        const uKey = cleanJid(sender)
+        const arg = (args[0] || '').trim()
+        const pend = ctx.mp4Pending[from][uKey]
+
+        if (pend && pend.step === 'pick' && /^\d+$/.test(arg)) {
+            const n = parseInt(arg)
+            if (n < 1 || n > pend.results.length) return reply(skError('Pick 1-' + pend.results.length))
+            pend.selected = pend.results[n - 1]
+            pend.step = 'quality'
+            const qText = mp4QualityBox(pend.selected)
+            try { await sock.sendMessage(from, { text: qText, edit: pend.msgKey }) } catch (e) {}
+            return
+        }
+
+        if (pend && pend.step === 'quality' && (arg === '360' || arg === '720')) {
+            const quality = parseInt(arg)
+            const sel = pend.selected
+            delete ctx.mp4Pending[from][uKey]
+            return await mp4DownloadAndSend(sock, ctx, msg, from, sender, sel, quality, pend.msgKey)
+        }
+
+        if (!owner) {
+            if (ctx.cfg.mode === 'private') return
+            const now = Date.now()
+            const last = (ctx.mp4Cooldown && ctx.mp4Cooldown[uKey]) || 0
+            if (now - last < 30 * 60 * 1000) return
+            if (!ctx.mp4Cooldown) ctx.mp4Cooldown = {}
+            ctx.mp4Cooldown[uKey] = now
+            saveCtx(ctx)
+        }
+
+        const query = args.join(' ').trim()
+        if (!query) return reply(skError('Usage: ' + prefix + 'mp4 <query or url>'))
+
+        const isUrl = /^https?:\/\//i.test(query)
+        if (isUrl) {
+            const sent = await reply(mp4QualityBox({ title: query, url: query }))
+            ctx.mp4Pending[from][uKey] = {
+                step: 'quality',
+                selected: { title: query, url: query, source: 'URL' },
+                msgKey: sent && sent.key
+            }
+            return
+        }
+
+        const sent = await reply(mp4SearchingBox(query))
+        const results = await runYtDlpSearch(query, 5)
+        if (!results || results.length === 0) {
+            return reply(skError('No results found.'))
+        }
+        const mapped = results.slice(0, 5).map(function(r){
+            return {
+                title: r.title || 'Unknown',
+                url: r.webpage_url || r.url || ('https://www.youtube.com/watch?v=' + r.id),
+                duration: r.duration || 0,
+                source: 'YouTube'
+            }
+        })
+        ctx.mp4Pending[from][uKey] = { step: 'pick', results: mapped, msgKey: sent && sent.key }
+        const listText = mp4ListBox(mapped)
+        try { await sock.sendMessage(from, { text: listText, edit: sent.key }) } catch (e) { await reply(listText) }
+        return
+    }
+
+    if (cmd === 'debt' || cmd === 'debtor' || cmd === 'iou' || cmd === 'creditor' || cmd === 'owed') {
+        const headLine = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+        if (!ctx.debts) ctx.debts = {}
+        if (!ctx.debts[from]) ctx.debts[from] = []
+        const list0 = ctx.debts[from]
+        let subRaw = (args[0] || '').toLowerCase()
+        let direction = 'sender'
+        if (cmd === 'creditor' || cmd === 'owed') direction = 'target'
+        if (subRaw === 'i') { direction = 'sender'; args.shift(); subRaw = (args[0] || '').toLowerCase() }
+        else if (subRaw === 't') { direction = 'target'; args.shift(); subRaw = (args[0] || '').toLowerCase() }
+        const sub = subRaw
+        if (sub === 'list') {
+            const active = list0.filter(function(d){ return !d.paid })
+            if (active.length === 0) {
+                return reply(headLine + '\n' + String.fromCodePoint(0x1F480) + ' ' + mono('BLOOD LEDGER') + '\n\n' + mono('No debts bound to this realm.') + '\n\n' + String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726))
+            }
+            let out = headLine + '\n' + String.fromCodePoint(0x1F480) + ' ' + mono('BLOOD LEDGER') + '\n'
+            const numList = []
+            for (const d of active) {
+                const fromNum = await resolveNumber(ctx, sock, from, d.from)
+                const toNum = await resolveNumber(ctx, sock, from, d.to)
+                if (fromNum) numList.push(fromNum)
+                if (toNum) numList.push(toNum)
+                out += '\n' + String.fromCodePoint(0x26E9) + ' #' + d.id + '\n'
+                out += '@' + fromNum + ' ' + mono('owes') + ' @' + toNum + '\n'
+                out += String.fromCharCode(0x2514) + String.fromCharCode(0x2500) + ' ' + String.fromCharCode(0x20A6) + ' ' + d.amount + (d.reason ? ' ' + String.fromCharCode(0x2014) + ' ' + d.reason : '') + '\n'
+                out += String.fromCharCode(0x2514) + String.fromCharCode(0x2500) + ' ' + prefix + 'debt pay ' + d.id + '\n'
+            }
+            out += '\n' + String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726) + '\n'
+            return sock.sendMessage(from, { text: out, mentions: mentionJids(sock, [], numList) }, { quoted: msg })
+        }
+
+        if (sub === 'pay') {
+            const num = parseInt(args[1])
+            if (!num) return reply(skError('Usage: ' + prefix + 'debt pay <#id>'))
+            const d = list0.find(function(x){ return x.id === num })
+            if (!d) return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Debt not found.') + '\n\n' + String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726))
+            if (!jidsMatch(d.from, sender)) return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Only the lender can mark paid.') + '\n\n' + String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726))
+            d.paid = true
+            d.paidAt = Date.now()
+            saveCtx(ctx)
+            const fromNum = await resolveNumber(ctx, sock, from, d.from)
+            const toNum = await resolveNumber(ctx, sock, from, d.to)
+            let out = headLine + '\n\n' + String.fromCodePoint(0x2705) + ' ' + mono('DEBT PAID') + '\n\n'
+            out += '#' + d.id + ' @' + fromNum + ' \u2192 @' + toNum + '  ' + String.fromCharCode(0x20A6) + ' ' + d.amount + '\n\n'
+            out += String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726)
+            return sock.sendMessage(from, { text: out, mentions: mentionJids(sock, [], [fromNum, toNum]) }, { quoted: msg })
+        }
+        if (sub === 'clear') {
+            if (!isGroup) return reply(skError('Group only.'))
+            if (!(await needManage())) return
+            ctx.debts[from] = []
+            saveCtx(ctx)
+            return reply(headLine + '\n\n' + String.fromCodePoint(0x1F5D1) + String.fromCodePoint(0xFE0F) + ' ' + mono('DEBTS CLEARED') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('STATUS') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('all cleared') + '\n\n' + String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726))
+        }
+        const target = getTarget(content)
+        const cleaned = args.filter(function(a){ return !a.startsWith('@') })
+        const amount = parseInt(cleaned[0])
+        if (!target || !amount) return reply(skError('Usage: ' + prefix + 'debt @user <amount> [reason]'))
+        if (amount <= 0 || amount > 100000000) return reply(skError('Amount must be 1 - 100,000,000.'))
+        if (jidsMatch(target, sender)) return reply(skError('Cannot owe yourself.'))
+        const reason = cleaned.slice(1).join(' ').trim()
+        const nextId = list0.reduce(function(m, d){ return Math.max(m, d.id || 0) }, 0) + 1
+        const fromJid = direction === 'sender' ? cleanJid(sender) : cleanJid(target)
+        const toJid = direction === 'sender' ? cleanJid(target) : cleanJid(sender)
+        const newDebt = { id: nextId, from: fromJid, to: toJid, amount: amount, reason: reason, ts: Date.now(), paid: false }
+        list0.push(newDebt)
+        saveCtx(ctx)
+        const fromNum = await resolveNumber(ctx, sock, from, sender)
+        const toNum = await resolveNumber(ctx, sock, from, target)
+        let out = headLine + '\n\n' + String.fromCodePoint(0x1F4B8) + ' ' + mono('DEBT RECORDED') + '\n\n'
+        out += '#' + nextId + '\n'
+        out += String.fromCharCode(0x00BB) + ' ' + mono('FROM') + '  ' + String.fromCharCode(0x2022) + '  @' + fromNum + '\n'
+        out += String.fromCharCode(0x00BB) + ' ' + mono('TO') + '  ' + String.fromCharCode(0x2022) + '  @' + toNum + '\n'
+        out += String.fromCharCode(0x00BB) + ' ' + mono('AMOUNT') + '  ' + String.fromCharCode(0x2022) + '  ' + String.fromCharCode(0x20A6) + ' ' + amount + '\n'
+        if (reason) out += String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + reason + '\n'
+        out += '\n' + String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726)
+        return sock.sendMessage(from, { text: out, mentions: mentionJids(sock, [], [fromNum, toNum]) }, { quoted: msg })
+    }
+
+    if (cmd === 'img') {
+        let raw = args.slice()
+        let count = 1
+        if (raw.length > 1 && /^\d+$/.test(raw[raw.length - 1])) {
+            count = Math.max(1, Math.min(10, parseInt(raw.pop())))
+        }
+        const query = raw.join(' ').trim()
+        if (!query) return reply(skError('Usage: ' + prefix + 'img <search or url> [count]'))
+        if (!owner) {
+            if (ctx.cfg.mode === 'private') return
+            const uKey = cleanJid(sender)
+            const nowT = Date.now()
+            const last = (ctx.imgCooldown && ctx.imgCooldown[uKey]) || 0
+            if (nowT - last < 15000) return
+            if (!ctx.imgCooldown) ctx.imgCooldown = {}
+            ctx.imgCooldown[uKey] = nowT
+            saveCtx(ctx)
+        }
+        const headLine = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+        const realNum = await resolveNumber(ctx, sock, from, sender)
+        const isUrl = isImageUrl(query)
+        let source = isUrl ? 'URL' : 'PEXELS'
+        try {
+            let images = []
+            if (isUrl) {
+                const tmpDir = path.join(os.tmpdir(), 'img_' + crypto.randomBytes(6).toString('hex'))
+                fs.mkdirSync(tmpDir, { recursive: true })
+                try {
+                    await runGalleryDl(query, tmpDir)
+                    const files = fs.readdirSync(tmpDir).filter(function(f){ return /\.(jpg|jpeg|png|webp|gif)$/i.test(f) })
+                    for (const f of files.slice(0, count)) images.push(fs.readFileSync(path.join(tmpDir, f)))
+                } finally {
+                    try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch (e) {}
+                }
+                if (images.length === 0) {
+                    const buf = await httpGetBuffer(query, 30000)
+                    if (buf && buf.length > 500) images.push(buf)
+                }
+            } else {
+                const urls = await pexelsSearch(query, count * 2)
+                for (const u of urls) {
+                    if (images.length >= count) break
+                    try {
+                        const b = await httpGetBuffer(u, 20000)
+                        if (b && b.length > 2000) images.push(b)
+                    } catch (e) {}
+                }
+            }
+            if (images.length === 0) return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('No image found.'))
+            let cap = headLine + '\n\n' + String.fromCodePoint(0x1F5BC) + String.fromCodePoint(0xFE0F) + ' ' + mono('IMAGE') + '\n\n'
+            cap += String.fromCharCode(0x00BB) + ' ' + mono('SOURCE') + '  ' + String.fromCharCode(0x2022) + '  ' + boldItalic(source) + '\n'
+            cap += String.fromCharCode(0x00BB) + ' ' + mono('QUERY') + '  ' + String.fromCharCode(0x2022) + '  ' + boldItalic(query.slice(0, 80)) + '\n'
+            cap += String.fromCharCode(0x00BB) + ' ' + mono('COUNT') + '  ' + String.fromCharCode(0x2022) + '  ' + images.length + '\n'
+            cap += String.fromCharCode(0x00BB) + ' ' + mono('BY') + '  ' + String.fromCharCode(0x2022) + '  @' + realNum
+            const mentions = mentionJids(sock, [sender], [realNum])
+            for (let i = 0; i < images.length; i++) {
+                const first = i === 0
+                await sock.sendMessage(from, {
+                    image: images[i],
+                    caption: first ? cap : '',
+                    mentions: first ? mentions : undefined
+                }, first ? { quoted: msg } : undefined).catch(function(e){ console.log('.img send err:', e && e.message) })
+                if (i < images.length - 1) await sleep(900)
+            }
+        } catch (e) {
+            console.log('.img err:', e?.message || e)
+            return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Failed to fetch image.'))
+        }
+        return
+    }
+
+    if (cmd === 'guess') {
+        if (!ctx.guessGames) ctx.guessGames = {}
+        const headLine = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+        const arg = args[0]
+        const game = ctx.guessGames[from]
+        if (!arg) {
+            if (!owner) return
+            if (game) return
+            const num = Math.floor(Math.random() * 100) + 1
+            let out = headLine + '\n\n' + String.fromCodePoint(0x1F3AF) + ' ' + mono('GUESS') + '\n\n'
+            out += String.fromCharCode(0x00BB) + ' ' + mono('RANGE') + '  ' + String.fromCharCode(0x2022) + '  1 - 100\n'
+            out += String.fromCharCode(0x00BB) + ' ' + mono('TRIES') + '  ' + String.fromCharCode(0x2022) + '  0\n\n'
+            out += boldItalic('The realm is thinking of a number.') + '\n'
+            out += boldItalic('Guess with .guess <number>') + '\n\n'
+            out += String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726)
+            const sent = await reply(out)
+            ctx.guessGames[from] = { number: num, tries: 0, msgKey: sent && sent.key, last: null }
+            return
+        }
+        if (!game) return
+        const n = parseInt(arg)
+        if (isNaN(n) || n < 1 || n > 100) return
+        game.tries++
+        const realNum = await resolveNumber(ctx, sock, from, sender)
+        if (n === game.number) {
+            let out = headLine + '\n\n' + String.fromCodePoint(0x1F3AF) + ' ' + mono('GUESS') + '\n\n'
+            out += String.fromCharCode(0x00BB) + ' ' + mono('RANGE') + '  ' + String.fromCharCode(0x2022) + '  1 - 100\n'
+            out += String.fromCharCode(0x00BB) + ' ' + mono('ANSWER') + '  ' + String.fromCharCode(0x2022) + '  ' + game.number + '\n'
+            out += String.fromCharCode(0x00BB) + ' ' + mono('TRIES') + '  ' + String.fromCharCode(0x2022) + '  ' + game.tries + '\n'
+            out += String.fromCharCode(0x00BB) + ' ' + mono('WINNER') + '  ' + String.fromCharCode(0x2022) + '  @' + realNum + '\n\n'
+            out += String.fromCodePoint(0x2705) + ' ' + boldItalic('The realm has chosen.') + ' ' + String.fromCodePoint(0x2726)
+            try {
+                await sock.sendMessage(from, { text: out, edit: game.msgKey, mentions: mentionJids(sock, [sender], [realNum]) })
+            } catch (e) {}
+            delete ctx.guessGames[from]
+            return
+        }
+        const hint = n < game.number ? (String.fromCodePoint(0x1F4C8) + ' TOO LOW') : (String.fromCodePoint(0x1F4C9) + ' TOO HIGH')
+        game.last = { num: n, user: realNum }
+        let out2 = headLine + '\n\n' + String.fromCodePoint(0x1F3AF) + ' ' + mono('GUESS') + '\n\n'
+        out2 += String.fromCharCode(0x00BB) + ' ' + mono('RANGE') + '  ' + String.fromCharCode(0x2022) + '  1 - 100\n'
+        out2 += String.fromCharCode(0x00BB) + ' ' + mono('TRIES') + '  ' + String.fromCharCode(0x2022) + '  ' + game.tries + '\n'
+        out2 += String.fromCharCode(0x00BB) + ' ' + mono('LAST') + '  ' + String.fromCharCode(0x2022) + '  @' + realNum + ' \u2014 ' + n + '\n'
+        out2 += String.fromCharCode(0x00BB) + ' ' + mono('HINT') + '  ' + String.fromCharCode(0x2022) + '  ' + hint + '\n\n'
+        out2 += String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726)
+        try {
+            await sock.sendMessage(from, { text: out2, edit: game.msgKey, mentions: mentionJids(sock, [sender], [realNum]) })
+        } catch (e) { console.log('.guess edit err:', e && e.message) }
+        return
+    }
+
+    if (cmd === 'meme') {
+        if (!owner) {
+            if (ctx.cfg.mode === 'private') return
+            const uKey = cleanJid(sender)
+            const nowT = Date.now()
+            const last = (ctx.memeCooldown && ctx.memeCooldown[uKey]) || 0
+            if (nowT - last < 15000) return
+            if (!ctx.memeCooldown) ctx.memeCooldown = {}
+            ctx.memeCooldown[uKey] = nowT
+            saveCtx(ctx)
+        }
+        const headLine = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+        try {
+            const meta = await httpGetJson('https://meme-api.com/gimme', 20000)
+            if (!meta || !meta.url) return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Failed to fetch meme.'))
+            const img = await httpGetBuffer(meta.url, 30000)
+            const realNum = await resolveNumber(ctx, sock, from, sender)
+            let cap = headLine + '\n\n' + String.fromCodePoint(0x1F602) + ' ' + mono('MEME') + '\n\n'
+            if (meta.title) cap += String.fromCharCode(0x00BB) + ' ' + mono('TITLE') + '  ' + String.fromCharCode(0x2022) + '  ' + boldItalic(String(meta.title).slice(0, 120)) + '\n'
+            if (meta.subreddit) cap += String.fromCharCode(0x00BB) + ' ' + mono('SUB') + '  ' + String.fromCharCode(0x2022) + '  ' + boldItalic('r/' + meta.subreddit) + '\n'
+            cap += String.fromCharCode(0x00BB) + ' ' + mono('BY') + '  ' + String.fromCharCode(0x2022) + '  @' + realNum
+            await sock.sendMessage(from, { image: img, caption: cap, mentions: mentionJids(sock, [sender], [realNum]) }, { quoted: msg })
+        } catch (e) {
+            console.log('.meme err:', e?.message || e)
+            return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Failed to fetch meme.'))
+        }
+        return
+    }
+
+    if (cmd === 'advice') {
+        if (!owner && ctx.cfg.mode === 'private') return
+        const headLine = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+        try {
+            const r = await httpGetJson('https://api.adviceslip.com/advice', 15000)
+            const adv = r && r.slip && r.slip.advice ? String(r.slip.advice).trim() : ''
+            if (!adv) return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('No advice returned.'))
+            const out = headLine + '\n\n' + String.fromCodePoint(0x1F4A1) + ' ' + mono('ADVICE') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('ADVICE') + '  ' + String.fromCharCode(0x2022) + '  ' + boldItalic(adv) + '\n\n' + String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726)
+            return reply(out)
+        } catch (e) {
+            console.log('.advice err:', e?.message || e)
+            return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Failed to fetch advice.'))
+        }
+    }
+
+    if (cmd === 'lyrics') {
+        const query = args.join(' ').trim()
+        if (!query) return reply(skError('Usage: ' + prefix + 'lyrics <song>'))
+        if (!owner) {
+            if (ctx.cfg.mode === 'private') return
+            const uKey = cleanJid(sender)
+            const nowT = Date.now()
+            const last = (ctx.lyricsCooldown && ctx.lyricsCooldown[uKey]) || 0
+            if (nowT - last < 30000) return
+            if (!ctx.lyricsCooldown) ctx.lyricsCooldown = {}
+            ctx.lyricsCooldown[uKey] = nowT
+            saveCtx(ctx)
+        }
+        const headLine = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+        try {
+            const parts = query.split(/\s+-\s+/)
+            let artist = ''
+            let title = query
+            if (parts.length >= 2) { artist = parts[0].trim(); title = parts.slice(1).join(' ').trim() }
+            const headers = { 'User-Agent': 'Mozilla/5.0' }
+            const searchUrl = 'https://lrclib.net/api/search?q=' + encodeURIComponent(query)
+            const searchRes = await httpGetBuffer(searchUrl, 45000)
+            const searchJson = JSON.parse(searchRes.toString('utf-8'))
+            const hit = Array.isArray(searchJson) && searchJson.length > 0 ? searchJson[0] : null
+            if (!hit) return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Lyrics not found.'))
+            artist = hit.artistName || artist
+            title = hit.trackName || title
+            const lyrics = hit.plainLyrics ? String(hit.plainLyrics).trim() : ''
+            if (!lyrics) return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Lyrics not found.'))
+            const trimmed = boldItalic(lyrics)
+            let out = headLine + '\n\n' + String.fromCodePoint(0x1F4DD) + ' ' + mono('LYRICS') + '\n\n'
+            out += String.fromCharCode(0x00BB) + ' ' + mono('SONG') + '  ' + String.fromCharCode(0x2022) + '  ' + boldItalic(title) + '\n'
+            out += String.fromCharCode(0x00BB) + ' ' + mono('ARTIST') + '  ' + String.fromCharCode(0x2022) + '  ' + boldItalic(artist) + '\n\n'
+            out += trimmed + '\n\n' + String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726)
+            return reply(out)
+        } catch (e) {
+            console.log('.lyrics err:', e?.message || e)
+            return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Lyrics not found.'))
+        }
+    }
+
+    if (cmd === 'song') {
+        const query = args.join(' ').trim()
+        if (!query) return reply(skError('Usage: ' + prefix + 'song <name or url>'))
+        if (!YTDLP_AVAILABLE) return reply(skError('yt-dlp not installed on server.'))
+        if (!owner) {
+            if (ctx.cfg.mode === 'private') return
+            const uKey = cleanJid(sender)
+            const nowT = Date.now()
+            const last = (ctx.songCooldown && ctx.songCooldown[uKey]) || 0
+            if (nowT - last < 60000) return
+            if (!ctx.songCooldown) ctx.songCooldown = {}
+            ctx.songCooldown[uKey] = nowT
+            saveCtx(ctx)
+        }
+        const headLine = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+        const downText = headLine + '\n\n' + String.fromCodePoint(0x23F3) + ' ' + mono('DOWNLOADING') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('SONG') + '  ' + String.fromCharCode(0x2022) + '  ' + query.slice(0, 100)
+        let noticeKey = null
+        try { const n = await sock.sendMessage(from, { text: downText }, { quoted: msg }); noticeKey = n && n.key } catch (e) {}
+        const outPath = path.join(os.tmpdir(), 'song_' + crypto.randomBytes(6).toString('hex') + '.mp3')
+        try {
+            const src = isTikTokUrl(query) || /^https?:\/\//i.test(query) ? query : 'ytsearch1:' + query
+            await new Promise(function(resolve, reject){
+                execFile('yt-dlp', ['-x', '--audio-format', 'mp3', '--max-filesize', '30M', '--match-filter', 'duration < 300', '-o', outPath, '--no-playlist', '--', src], { timeout: 120000, maxBuffer: 20*1024*1024 }, function(err){ if (err) reject(err); else resolve() })
+            })
+            if (!fs.existsSync(outPath)) throw new Error('no output')
+            const buf = fs.readFileSync(outPath)
+            const sizeMB = (buf.length / 1024 / 1024).toFixed(1)
+            await sock.sendMessage(from, { audio: buf, mimetype: 'audio/mpeg', ptt: true }, { quoted: msg })
+            if (noticeKey) {
+                try {
+                    const doneText = headLine + '\n\n' + String.fromCodePoint(0x2705) + ' ' + mono('DOWNLOADED') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('SONG') + '  ' + String.fromCharCode(0x2022) + '  ' + query.slice(0, 80) + '\n' + String.fromCharCode(0x00BB) + ' ' + mono('SIZE') + '  ' + String.fromCharCode(0x2022) + '  ' + sizeMB + ' MB'
+                    await sock.sendMessage(from, { text: doneText, edit: noticeKey })
+                } catch (e) {}
+            }
+        } catch (e) {
+            console.log('.song err:', e?.message || e)
+            if (noticeKey) {
+                try { await sock.sendMessage(from, { text: headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Download failed.'), edit: noticeKey }) } catch (e2) {}
+            }
+        } finally {
+            try { fs.unlinkSync(outPath) } catch (e) {}
+        }
+        return
+    }
+
+    if (cmd === 'imagine') {
+        const prompt = args.join(' ').trim()
+        if (!prompt) return reply(skError('Usage: ' + prefix + 'imagine <prompt>'))
+        if (prompt.length > 300) return reply(skError('Prompt max 300 chars.'))
+        if (!owner) {
+            if (ctx.cfg.mode === 'private') return
+            const key = cleanJid(sender)
+            const now = Date.now()
+            const last = (ctx.imagineCooldown && ctx.imagineCooldown[key]) || 0
+            if (now - last < 30000) return
+            if (!ctx.imagineCooldown) ctx.imagineCooldown = {}
+            ctx.imagineCooldown[key] = now
+            saveCtx(ctx)
+        }
+        const genHead = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+        let genNoticeKey = null
+        try { const gn = await sock.sendMessage(from, { text: genHead + '\n\n' + String.fromCodePoint(0x23F3) + ' ' + mono('GENERATING...') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('PROMPT') + '  ' + String.fromCharCode(0x2022) + '  ' + prompt.slice(0, 100) }, { quoted: msg }); genNoticeKey = gn && gn.key } catch (e) {}
+        try {
+            const url = 'https://image.pollinations.ai/prompt/' + encodeURIComponent(prompt) + '?width=1024&height=1024&nologo=true'
+            const buf = await httpGetBuffer(url, 90000)
+            if (!buf || buf.length < 1000) return reply(skError('Image generation failed.'))
+            const realNum = await resolveNumber(ctx, sock, from, sender)
+            const headLine = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+            const caption = headLine + '\n\n' + String.fromCodePoint(0x1F3A8) + ' ' + mono('IMAGINE') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('PROMPT') + '  ' + String.fromCharCode(0x2022) + '  ' + prompt.slice(0, 120) + '\n' + String.fromCharCode(0x00BB) + ' ' + mono('BY') + '  ' + String.fromCharCode(0x2022) + '  @' + realNum
+            await sock.sendMessage(from, { image: buf, caption: caption, mentions: mentionJids(sock, [sender], [realNum]) }, { quoted: msg })
+            if (genNoticeKey) {
+                try {
+                    const doneText = genHead + '\n\n' + String.fromCodePoint(0x2705) + ' ' + mono('GENERATED') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('PROMPT') + '  ' + String.fromCharCode(0x2022) + '  ' + prompt.slice(0, 100)
+                    await sock.sendMessage(from, { text: doneText, edit: genNoticeKey })
+                } catch (e) {}
+            }
+        } catch (e) {
+            console.log('.imagine err:', e?.message || e)
+            return reply(skError('Image generation failed.'))
+        }
+        return
+    }
+
     if (cmd === 'qr') {
         if (!QRCode) return reply(skError('qrcode package not installed.'))
         const text = args.join(' ')
@@ -2604,6 +3093,16 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             ['UPTIME', formatUptime(process.uptime())],
             ['MONGO', mongoClient ? '🟢 CONNECTED' : '🔴 OFFLINE']
         ]))
+    }
+
+    if (cmd === 'menu2') {
+        try {
+            await MENU2.sendMain(sock, from)
+        } catch (e) {
+            console.log('.menu2 err:', e?.message || e)
+            return reply(skError('Menu failed to open.'))
+        }
+        return
     }
 
     if (cmd === 'command' || cmd === 'cmds' || cmd === 'cmd') {
@@ -2901,9 +3400,8 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const youAdmin = await checkAdmin(ctx, sock, from, [sender])
             const muted = !!meta.announce
             return reply(skInfo('🔐', 'GROUP PERMISSIONS', [
-                ['BOT ADMIN', botAdmin ? '🟢 YES' : '🔴 NO'],
-                ['YOU ADMIN', youAdmin ? '🟢 YES' : '🔴 NO'],
-                ['GROUP MUTE', muted ? '🔒 LOCKED' : '🟢 OPEN']
+                ['ADMIN', botAdmin ? '🟢 YES' : '🔴 NO'],
+                    ['GROUP MUTE', muted ? '🔒 LOCKED' : '🟢 OPEN']
             ]))
         } catch (e) { return reply(skAdminError(cmd)) }
     }
@@ -3308,17 +3806,12 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const labels = { 86400: '24 HOURS', 604800: '7 DAYS', 2592000: '30 DAYS' }
         const label = labels[sec] || (sec >= 86400 ? (sec / 86400) + ' DAYS' : sec >= 3600 ? (sec / 3600) + ' HOURS' : sec + ' SECONDS')
         try {
+            const pinKey = (function(){ var p = ci.participant; var fm = p ? isBotJid(sock, p) : true; return { remoteJid: from, id: ci.stanzaId, fromMe: fm, participant: fm ? undefined : p }; })()
             await sock.sendMessage(from, {
-                pin: {
-                    key: (function(){ var p = ci.participant; var fm = p ? isBotJid(sock, p) : true; return { remoteJid: from, id: ci.stanzaId, fromMe: fm, participant: fm ? undefined : p }; })(),
-                    type: 1,
-                    time: sec
-                }
+                pin: pinKey,
+                type: 1
             })
-            return reply(skInfo('✅', 'PIN', [
-                ['STATUS', '🟢 PINNED'],
-                ['DURATION', label]
-            ]))
+            return
         } catch (e) {
             console.log('.pin error:', e?.message || e)
             return reply(skAdminError(cmd))
@@ -4766,6 +5259,181 @@ function checkYtDlp() {
         YTDLP_AVAILABLE = !err
         if (err) console.log('[TT] yt-dlp not found. Install with: pip install yt-dlp')
     })
+}
+
+function isImageUrl(url) {
+    try {
+        const u = new URL(url)
+        return ['http:','https:'].includes(u.protocol)
+    } catch (e) { return false }
+}
+async function pexelsSearch(query, count) {
+    const urls = []
+    if (!PEXELS_API_KEY) return urls
+    try {
+        const perPage = Math.min(Math.max(count * 2, 5), 80)
+        const api = 'https://api.pexels.com/v1/search?query=' + encodeURIComponent(query) + '&per_page=' + perPage + '&orientation=all'
+        const hdrs = { 'Authorization': PEXELS_API_KEY, 'Accept': 'application/json' }
+        const res = await httpGetBuffer(api, 20000, 0, hdrs)
+        const data = JSON.parse(res.toString('utf-8'))
+        if (data && Array.isArray(data.photos)) {
+            for (const p of data.photos) {
+                const u = p && p.src && (p.src.large || p.src.large2x || p.src.original)
+                if (u && u.startsWith('http') && !urls.includes(u)) urls.push(u)
+                if (urls.length >= count) break
+            }
+        }
+    } catch (e) { console.log('pexelsSearch err:', e && e.message) }
+    return urls
+}
+
+function runGalleryDl(url, outDir) {
+    return new Promise(function(resolve, reject){
+        execFile('gallery-dl', ['-D', outDir, '--no-mtime', '-o', 'skip=false', url], { timeout: 120000, maxBuffer: 20*1024*1024 }, function(err){
+            if (err) reject(err); else resolve()
+        })
+    })
+}
+
+function mp4Head() {
+    const hd = String.fromCodePoint(0x2726)
+    const bar = String.fromCharCode(0x2500)
+    return hd + bar + bar + bar + ' ' + mono('SUKUNA REALM') + ' ' + bar + bar + bar + hd
+}
+
+function mp4SearchingBox(query) {
+    const hg = String.fromCodePoint(0x23F3)
+    const sep = String.fromCharCode(0x00BB)
+    const dot = String.fromCharCode(0x2022)
+    const hd = String.fromCodePoint(0x2726)
+    return mp4Head() + '\n\n' + hg + ' ' + mono('SEARCHING') + '\n\n' +
+        sep + ' ' + mono('QUERY') + '  ' + dot + '  ' + query.slice(0, 80) + '\n\n' +
+        hd + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + hd
+}
+
+function mp4ListBox(results) {
+    const mv = String.fromCodePoint(0x1F3AC)
+    const sep = String.fromCharCode(0x00BB)
+    const dot = String.fromCharCode(0x2022)
+    const hd = String.fromCodePoint(0x2726)
+    let out = mp4Head() + '\n\n' + mv + ' ' + mono('SEARCH RESULTS') + '\n\n'
+    for (let i = 0; i < results.length; i++) {
+        const r = results[i]
+        let dur = ''
+        if (r.duration) {
+            const m = Math.floor(r.duration / 60)
+            const s = String(Math.floor(r.duration % 60)).padStart(2, '0')
+            dur = ' (' + m + ':' + s + ')'
+        }
+        out += '[' + (i + 1) + '] ' + String(r.title).slice(0, 60) + dur + '\n'
+    }
+    out += '\n' + sep + ' ' + mono('REPLY') + '  ' + dot + '  ' + mono('.mp4 <number>') + '\n\n'
+    out += hd + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + hd
+    return out
+}
+
+function mp4QualityBox(item) {
+    const mv = String.fromCodePoint(0x1F3AC)
+    const sep = String.fromCharCode(0x00BB)
+    const dot = String.fromCharCode(0x2022)
+    const hd = String.fromCodePoint(0x2726)
+    let out = mp4Head() + '\n\n' + mv + ' ' + mono('CHOOSE QUALITY') + '\n\n'
+    out += sep + ' ' + mono('TITLE') + '  ' + dot + '  ' + String(item.title || '').slice(0, 60) + '\n\n'
+    out += '  [360]  ' + dot + '  ' + mono('LOW') + '\n'
+    out += '  [720]  ' + dot + '  ' + mono('HD') + '\n\n'
+    out += sep + ' ' + mono('REPLY') + '  ' + dot + '  ' + mono('.mp4 360') + ' or ' + mono('.mp4 720') + '\n\n'
+    out += hd + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + hd
+    return out
+}
+
+function runYtDlpSearch(query, count) {
+    return new Promise(function(resolve){
+        execFile('yt-dlp', [
+            '--dump-json', '--no-warnings', '--ignore-errors',
+            '--flat-playlist',
+            'ytsearch' + count + ':' + query
+        ], { timeout: 90000, maxBuffer: 30 * 1024 * 1024 }, function(err, stdout){
+            if (!stdout) { resolve([]); return }
+            const lines = String(stdout).trim().split('\n').filter(Boolean)
+            const out = []
+            for (const ln of lines) {
+                try { out.push(JSON.parse(ln)) } catch (e) {}
+            }
+            resolve(out)
+        })
+    })
+}
+
+function runYtDlpVideo(url, outPath, quality) {
+    return new Promise(function(resolve, reject){
+        const q = quality >= 720 ? 720 : 360
+        const fmt = 'bv*[height<=' + q + ']+ba/b[height<=' + q + ']/b'
+        execFile('yt-dlp', [
+            '-f', fmt,
+            '--merge-output-format', 'mp4',
+            '--no-playlist',
+            '--max-filesize', '500M',
+            '-o', outPath,
+            '--', url
+        ], { timeout: 600000, maxBuffer: 50 * 1024 * 1024 }, function(err, stdout, stderr){
+            if (err) { reject(new Error(String(stderr || err.message).slice(0, 200))); return }
+            resolve()
+        })
+    })
+}
+
+async function mp4DownloadAndSend(sock, ctx, msg, from, sender, item, quality, noticeKey) {
+    const hg = String.fromCodePoint(0x23F3)
+    const ck = String.fromCodePoint(0x2705)
+    const er = String.fromCodePoint(0x274C)
+    const sep = String.fromCharCode(0x00BB)
+    const dot = String.fromCharCode(0x2022)
+    const hd = String.fromCodePoint(0x2726)
+    const outPath = path.join(os.tmpdir(), 'mp4_' + crypto.randomBytes(6).toString('hex') + '.mp4')
+    const titleSafe = String(item.title || 'video').slice(0, 60)
+
+    const dlText = mp4Head() + '\n\n' + hg + ' ' + mono('DOWNLOADING') + '\n\n' +
+        sep + ' ' + mono('TITLE') + '  ' + dot + '  ' + titleSafe + '\n' +
+        sep + ' ' + mono('QUALITY') + '  ' + dot + '  ' + quality + 'p\n\n' +
+        hd + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + hd
+    if (noticeKey) {
+        try { await sock.sendMessage(from, { text: dlText, edit: noticeKey }) } catch (e) {}
+    }
+
+    try {
+        await runYtDlpVideo(item.url, outPath, quality)
+        if (!fs.existsSync(outPath)) throw new Error('no output')
+        const stat = fs.statSync(outPath)
+        const sizeMB = (stat.size / 1024 / 1024).toFixed(1)
+        const buf = fs.readFileSync(outPath)
+        let payload
+        if (stat.size <= 100 * 1024 * 1024) {
+            payload = { video: buf, mimetype: 'video/mp4' }
+        } else {
+            const fn = titleSafe.replace(/[^a-z0-9._-]/gi, '_') + '.mp4'
+            payload = { document: buf, mimetype: 'video/mp4', fileName: fn }
+        }
+        await sock.sendMessage(from, payload, { quoted: msg })
+
+        const doneText = mp4Head() + '\n\n' + ck + ' ' + mono('DOWNLOADED') + '\n\n' +
+            sep + ' ' + mono('TITLE') + '  ' + dot + '  ' + titleSafe + '\n' +
+            sep + ' ' + mono('QUALITY') + '  ' + dot + '  ' + quality + 'p\n' +
+            sep + ' ' + mono('SIZE') + '  ' + dot + '  ' + sizeMB + ' MB\n\n' +
+            hd + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + hd
+        if (noticeKey) {
+            try { await sock.sendMessage(from, { text: doneText, edit: noticeKey }) } catch (e) {}
+        }
+    } catch (e) {
+        console.log('.mp4 err:', e && e.message)
+        if (noticeKey) {
+            const errText = mp4Head() + '\n\n' + er + ' ' + mono('ERROR') + '\n\n' +
+                sep + ' ' + mono('REASON') + '  ' + dot + '  ' + mono('Download failed.') + '\n\n' +
+                hd + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + hd
+            try { await sock.sendMessage(from, { text: errText, edit: noticeKey }) } catch (e2) {}
+        }
+    } finally {
+        try { fs.unlinkSync(outPath) } catch (e) {}
+    }
 }
 
 function isTikTokUrl(str) {
