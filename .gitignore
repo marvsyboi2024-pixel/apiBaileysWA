@@ -187,3 +187,4 @@ Desktop.ini
 *.sublime-settings
 *.bak*
 .env
+backups/
