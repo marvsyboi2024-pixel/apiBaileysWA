@@ -4,6 +4,7 @@ const CATS = [
     ['fun', '🎮 Fun', 'Fun commands'],
     ['group', '👥 Group', 'Group tools'],
     ['utility', '🛠️ Utility', 'Utilities'],
+    ['media', '🎥 Media', 'Song / video / lyrics'],
     ['ai', '🤖 AI', 'AI features'],
     ['games', '🎲 Games', 'Play games'],
     ['dl', '📥 Downloader', 'Download tools'],
@@ -53,6 +54,9 @@ const CMDS = {
         ['rate', 'Rate a thing'],
         ['ship', 'Compatibility'],
         ['insult', 'Yab someone'],
+        ['meme', 'Random meme'],
+        ['advice', 'Random advice'],
+        ['guess', 'Number guessing game'],
         ['wyr', 'Would you rather'],
         ['story', 'Start a story'],
         ['riddle', 'Start riddle'],
@@ -101,7 +105,12 @@ const CMDS = {
         ['antibadword', 'Block bad words'],
         ['antibilling', 'Anti-billing'],
         ['slowmode', 'Slow chat'],
-        ['votekick', 'Vote to kick']
+        ['votekick', 'Vote to kick'],
+        ['debtor', 'I owe someone'],
+        ['creditor', 'They owe me'],
+        ['debt list', 'Show all debts'],
+        ['debt pay', 'Mark a debt paid'],
+        ['debt clear', 'Clear all debts']
     ],
     utility: [
         ['calc', 'Calculate math'],
@@ -120,6 +129,13 @@ const CMDS = {
         ['afk', 'Mark away'],
         ['back', 'Mark back'],
         ['profile', 'User profile']
+    ],
+    media: [
+        ['song', 'Song download'],
+        ['lyrics', 'Song lyrics'],
+        ['mp4', 'Video / Movie download'],
+        ['imagine', 'AI image'],
+        ['img', 'Image search']
     ],
     ai: [
         ['ai', 'Ask Groq AI']

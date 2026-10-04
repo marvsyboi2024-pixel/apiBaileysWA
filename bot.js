@@ -46,6 +46,8 @@ const SESSION_DIR = path.join('.', 'sessions')
 const LOGO_PATH = path.join('.', 'logo.png')
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'Mars2000'
 const GROQ_API_KEY = process.env.GROQ_API_KEY || ''
+const TMDB_API_KEY = process.env.TMDB_API_KEY || ''
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || ''
 const PEXELS_API_KEY = process.env.PEXELS_API_KEY || ''
 const INSULTS = require('./insults.js')
 const MENU2 = require('./menu2.js')
@@ -1360,6 +1362,19 @@ async function processMessage(sock, ctx, msg, type) {
         return
     }
 
+    // .mp4 bare-number reply
+    {
+        const t = (content.conversation || content.extendedTextMessage?.text || '').trim()
+        if (/^\d+$/.test(t) && ctx.mp4Pending && ctx.mp4Pending[from]) {
+            const uk = cleanJid(sender)
+            const p = ctx.mp4Pending[from][uk]
+            if (p) {
+                await handleCommand(sock, ctx, msg, content, from, isGroup, sender, senderNumber, true, 'mp4', [t])
+                return
+            }
+        }
+    }
+
     // .hbd pending reply — user replied to a probe DM
     let hbdKey = null
     if (ctx.hbdPending) {
@@ -2423,21 +2438,54 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const arg = (args[0] || '').trim()
         const pend = ctx.mp4Pending[from][uKey]
 
-        if (pend && pend.step === 'pick' && /^\d+$/.test(arg)) {
-            const n = parseInt(arg)
-            if (n < 1 || n > pend.results.length) return reply(skError('Pick 1-' + pend.results.length))
-            pend.selected = pend.results[n - 1]
-            pend.step = 'quality'
-            const qText = mp4QualityBox(pend.selected)
-            try { await sock.sendMessage(from, { text: qText, edit: pend.msgKey }) } catch (e) {}
+        if (pend && pend.step === 'tv-season' && /^\d+$/.test(arg)) {
+            const sn = parseInt(arg)
+            if (sn < 1 || sn > 30) return reply(skError('Season 1-30.'))
+            pend.season = sn
+            pend.step = 'tv-episode'
+            const t = mp4TVEpisodeBox(pend.selected, sn)
+            try { await sock.sendMessage(from, { text: t, edit: pend.msgKey }) } catch (e) {}
             return
         }
 
-        if (pend && pend.step === 'quality' && (arg === '360' || arg === '720')) {
-            const quality = parseInt(arg)
+        if (pend && pend.step === 'tv-episode' && /^\d+$/.test(arg)) {
+            const ep = parseInt(arg)
+            if (ep < 1 || ep > 200) return reply(skError('Episode 1-200.'))
+            pend.episode = ep
+            pend.step = 'quality'
+            const t = mp4QualityBox(pend.selected)
+            try { await sock.sendMessage(from, { text: t, edit: pend.msgKey }) } catch (e) {}
+            return
+        }
+
+        if (pend && pend.step === 'pick' && /^\d+$/.test(arg)) {
+            const n = parseInt(arg)
+            if (n < 1 || n > pend.results.length) return reply(skError('Pick 1-' + pend.results.length))
+            const sel = pend.results[n - 1]
+            pend.selected = sel
+            if (sel.type === 'tv') {
+                pend.step = 'tv-season'
+                const t = mp4TVSeasonBox(sel)
+                try { await sock.sendMessage(from, { text: t, edit: pend.msgKey }) } catch (e) {}
+            } else {
+                pend.step = 'quality'
+                const t = mp4QualityBox(sel)
+                try { await sock.sendMessage(from, { text: t, edit: pend.msgKey }) } catch (e) {}
+            }
+            return
+        }
+
+        if (pend && pend.step === 'quality' && /^\d+$/.test(arg)) {
+            const idx = parseInt(arg)
+            const map = { 1: 360, 2: 720, 3: 1080 }
+            const q = map[idx]
+            if (!q) return
+            if (pend.selected.type === 'yt' && q === 1080) return
             const sel = pend.selected
+            const season = pend.season
+            const episode = pend.episode
             delete ctx.mp4Pending[from][uKey]
-            return await mp4DownloadAndSend(sock, ctx, msg, from, sender, sel, quality, pend.msgKey)
+            return await mp4DownloadAndSend(sock, ctx, msg, from, sender, sel, q, pend.msgKey, season, episode)
         }
 
         if (!owner) {
@@ -2455,28 +2503,34 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
 
         const isUrl = /^https?:\/\//i.test(query)
         if (isUrl) {
-            const sent = await reply(mp4QualityBox({ title: query, url: query }))
+            const sent = await reply(mp4QualityBox({ title: query, type: 'yt' }))
             ctx.mp4Pending[from][uKey] = {
                 step: 'quality',
-                selected: { title: query, url: query, source: 'URL' },
+                selected: { title: query, url: query, type: 'yt' },
                 msgKey: sent && sent.key
             }
             return
         }
 
         const sent = await reply(mp4SearchingBox(query))
-        const results = await runYtDlpSearch(query, 5)
-        if (!results || results.length === 0) {
-            return reply(skError('No results found.'))
+        const ytResults = await youtubeSearch(query, 10)
+        const tmdbRaw = await searchTMDB(query, 5)
+
+        const mapped = []
+        for (const r of ytResults) {
+            mapped.push(r)
         }
-        const mapped = results.slice(0, 5).map(function(r){
-            return {
-                title: r.title || 'Unknown',
-                url: r.webpage_url || r.url || ('https://www.youtube.com/watch?v=' + r.id),
-                duration: r.duration || 0,
-                source: 'YouTube'
-            }
-        })
+        for (const r of tmdbRaw.slice(0, 5)) {
+            mapped.push({
+                title: r.title,
+                year: r.year,
+                type: r.type,
+                tmdbId: r.tmdbId
+            })
+        }
+
+        if (mapped.length === 0) return reply(skError('No results found.'))
+
         ctx.mp4Pending[from][uKey] = { step: 'pick', results: mapped, msgKey: sent && sent.key }
         const listText = mp4ListBox(mapped)
         try { await sock.sendMessage(from, { text: listText, edit: sent.key }) } catch (e) { await reply(listText) }
@@ -3111,7 +3165,12 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const cats = [
                 ['GROUP', [
                     ['pin <24h|7d|30d>', 'Pin message'],
-                    ['poll <Q> | <A> | <B>', 'Create poll']
+                    ['poll <Q> | <A> | <B>', 'Create poll'],
+                    ['debt <@user> <amount> [reason]', 'I owe them'],
+                    ['debtor <@user> <amount> [reason]', 'I owe them'],
+                    ['creditor <@user> <amount> [reason]', 'They owe me'],
+                    ['iou <@user> <amount> [reason]', 'I owe them'],
+                    ['owed <@user> <amount> [reason]', 'They owe me']
                 ]],
                 ['FUN', [
                     ['hbd <name> | <num> | <who>', 'Birthday msg'],
@@ -3120,10 +3179,10 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ['UTILITY', [
                     ['translate <lang> <text>', 'Translate text'],
                     ['walink <num> | <msg>', 'WA chat link'],
-                    ['vcard <num> | <name>', 'Contact file']
+                    ['vcard <num> | <name>', 'Contact file'],
+                    ['img <query> [count]', 'Image search']
                 ]],
                 ['OWNER', [
-                    ['newgc <name> | <nums>', 'Create a group'],
                     ['delaytime <1-60>', 'Delay seconds'],
                     ['slowmode <3-3600>', 'Slow down chat'],
                     ['broadcast1 <num> | <text>', 'DM one number'],
@@ -4951,6 +5010,12 @@ function renderGroupCommandsBox(p) {
         `» ${p}${mono('poll')}  •  ${mono('Create poll')}\n` +
         `» ${p}${mono('vote')}  •  ${mono('Vote')}\n` +
         `» ${p}${mono('endpoll')}  •  ${mono('End poll')}`
+        `\n` +
+        `» ${p}${mono('debtor')}  •  ${mono('I owe someone')}\n` +
+        `» ${p}${mono('creditor')}  •  ${mono('They owe me')}\n` +
+        `» ${p}${mono('debt list')}  •  ${mono('Show all')}\n` +
+        `» ${p}${mono('debt pay <n>')}  •  ${mono('Mark paid')}\n` +
+        `» ${p}${mono('debt clear')}  •  ${mono('Clear all')}`
     )
 }
 
@@ -4997,6 +5062,7 @@ function renderMenu(ctx, sock) {
         `» ${p}${mono('menu')}  •  ${mono('This menu')}\n` +
         `» ${p}${mono('mode')}  •  ${mono('public/private')}\n` +
         `» ${p}${mono('prefix')}  •  ${mono('Change prefix')}\n` +
+        `» ${p}${mono('menu2')}  •  ${mono('Interactive menu')}\n` +
         `\n` +
         `🎪 ${mono('FUN')}\n` +
         `» ${p}${mono('joke')}  •  ${mono('Random joke')}\n` +
@@ -5011,6 +5077,10 @@ function renderMenu(ctx, sock) {
         `» ${p}${mono('8ball')}  •  ${mono('Magic 8-ball')}\n` +
         `» ${p}${mono('rate')}  •  ${mono('Rate a thing')}\n` +
         `» ${p}${mono('ship')}  •  ${mono('Compatibility')}\n` +
+        `» ${p}${mono('insult')}  •  ${mono('Yab someone')}\n` +
+        `» ${p}${mono('meme')}  •  ${mono('Random meme')}\n` +
+        `» ${p}${mono('advice')}  •  ${mono('Random advice')}\n` +
+        `» ${p}${mono('guess')}  •  ${mono('Number game')}\n` +
         `» ${p}${mono('afk')}  •  ${mono('Mark away')}\n` +
         `» ${p}${mono('back')}  •  ${mono('Mark back')}\n` +
         `» ${p}${mono('profile')}  •  ${mono('User profile')}\n` +
@@ -5035,6 +5105,8 @@ function renderMenu(ctx, sock) {
         `» ${p}${mono('sticker')}  •  ${mono('Make sticker')}\n` +
         `» ${p}${mono('toimg')}  •  ${mono('Sticker to image')}\n` +
         `» ${p}${mono('qr')}  •  ${mono('Generate QR code')}\n` +
+        `» ${p}${mono('imagine')}  •  ${mono('AI image')}\n` +
+        `» ${p}${mono('img')}  •  ${mono('Image search')}\n` +
         `» ${p}${mono('weather')}  •  ${mono('Weather lookup')}\n` +
         `» ${p}${mono('translate')}  •  ${mono('Translate text')}\n` +
         `» ${p}${mono('shorten')}  •  ${mono('Shorten URL')}\n` +
@@ -5043,7 +5115,12 @@ function renderMenu(ctx, sock) {
         `» ${p}${mono('walink')}  •  ${mono('WA chat link')}\n` +
         `» ${p}${mono('vcard')}  •  ${mono('Contact file')}\n` +
         `\n` +
-        `🤖 ${mono('AI')}\n` +
+        `🎥 ${mono('MEDIA')}\n` +
+        `» ${p}${mono('song')}  •  ${mono('Song download')}\n` +
+        `» ${p}${mono('lyrics')}  •  ${mono('Song lyrics')}\n` +
+        `» ${p}${mono('mp4')}  •  ${mono('Video / Movie')}\n` +
+        `\n` +
+`🤖 ${mono('AI')}\n` +
         `» ${p}${mono('ai')}  •  ${mono('Ask Groq')}\n` +
         `\n` +
         `🎮 ${mono('GAMES')}\n` +
@@ -5319,15 +5396,24 @@ function mp4ListBox(results) {
     let out = mp4Head() + '\n\n' + mv + ' ' + mono('SEARCH RESULTS') + '\n\n'
     for (let i = 0; i < results.length; i++) {
         const r = results[i]
-        let dur = ''
-        if (r.duration) {
-            const m = Math.floor(r.duration / 60)
-            const s = String(Math.floor(r.duration % 60)).padStart(2, '0')
-            dur = ' (' + m + ':' + s + ')'
+        let tag = ''
+        if (r.type === 'yt') {
+            let dur = ''
+            if (r.duration) {
+                const m = Math.floor(r.duration / 60)
+                const sec = String(Math.floor(r.duration % 60)).padStart(2, '0')
+                dur = ' (' + m + ':' + sec + ')'
+            }
+            tag = ' \u2014 ' + mono('YouTube') + dur
+        } else if (r.type === 'movie') {
+            tag = ' (' + (r.year || '?') + ') \u2014 ' + mono('movie')
+        } else if (r.type === 'tv') {
+            tag = ' (' + (r.year || '?') + ') \u2014 ' + mono('TV')
         }
-        out += '[' + (i + 1) + '] ' + String(r.title).slice(0, 60) + dur + '\n'
+        const titleStr = boldItalic(String(r.title).slice(0, 45))
+        out += '[' + (i + 1) + '] ' + titleStr + tag + '\n'
     }
-    out += '\n' + sep + ' ' + mono('REPLY') + '  ' + dot + '  ' + mono('.mp4 <number>') + '\n\n'
+    out += '\n' + sep + ' ' + mono('REPLY') + '  ' + dot + '  ' + mono('with a number') + '\n\n'
     out += hd + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + hd
     return out
 }
@@ -5338,11 +5424,75 @@ function mp4QualityBox(item) {
     const dot = String.fromCharCode(0x2022)
     const hd = String.fromCodePoint(0x2726)
     let out = mp4Head() + '\n\n' + mv + ' ' + mono('CHOOSE QUALITY') + '\n\n'
-    out += sep + ' ' + mono('TITLE') + '  ' + dot + '  ' + String(item.title || '').slice(0, 60) + '\n\n'
-    out += '  [360]  ' + dot + '  ' + mono('LOW') + '\n'
-    out += '  [720]  ' + dot + '  ' + mono('HD') + '\n\n'
-    out += sep + ' ' + mono('REPLY') + '  ' + dot + '  ' + mono('.mp4 360') + ' or ' + mono('.mp4 720') + '\n\n'
+    out += sep + ' ' + mono('TITLE') + '  ' + dot + '  ' + String(item.title || '').slice(0, 45) + '\n\n'
+    out += '  [1]  ' + dot + '  ' + mono('LOW') + ' (360p)\n'
+    out += '  [2]  ' + dot + '  ' + mono('HD') + ' (720p)\n'
+    if (item.type === 'movie' || item.type === 'tv') {
+        out += '  [3]  ' + dot + '  ' + mono('FULL HD') + ' (1080p)\n'
+    }
+    out += '\n' + sep + ' ' + mono('REPLY') + '  ' + dot + '  ' + mono('with a number') + '\n\n'
     out += hd + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + hd
+    return out
+}
+
+function mp4TVSeasonBox(item) {
+    const mv = String.fromCodePoint(0x1F3AC)
+    const sep = String.fromCharCode(0x00BB)
+    const dot = String.fromCharCode(0x2022)
+    const hd = String.fromCodePoint(0x2726)
+    return mp4Head() + '\n\n' + mv + ' ' + mono('CHOOSE SEASON') + '\n\n' +
+        sep + ' ' + mono('SHOW') + '  ' + dot + '  ' + String(item.title || '').slice(0, 50) + '\n\n' +
+        sep + ' ' + mono('REPLY') + '  ' + dot + '  ' + mono('.mp4 <season number>') + '\n\n' +
+        hd + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + hd
+}
+
+function mp4TVEpisodeBox(item, season) {
+    const mv = String.fromCodePoint(0x1F3AC)
+    const sep = String.fromCharCode(0x00BB)
+    const dot = String.fromCharCode(0x2022)
+    const hd = String.fromCodePoint(0x2726)
+    return mp4Head() + '\n\n' + mv + ' ' + mono('CHOOSE EPISODE') + '\n\n' +
+        sep + ' ' + mono('SHOW') + '  ' + dot + '  ' + String(item.title || '').slice(0, 50) + '\n' +
+        sep + ' ' + mono('SEASON') + '  ' + dot + '  ' + season + '\n\n' +
+        sep + ' ' + mono('REPLY') + '  ' + dot + '  ' + mono('.mp4 <episode number>') + '\n\n' +
+        hd + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + hd
+}
+
+async function youtubeSearch(query, count) {
+    const out = []
+    if (YOUTUBE_API_KEY) {
+        try {
+            const url = 'https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=' + count + '&q=' + encodeURIComponent(query) + '&key=' + YOUTUBE_API_KEY
+            const res = await httpGetBuffer(url, 30000)
+            const data = JSON.parse(res.toString('utf-8'))
+            if (data && Array.isArray(data.items)) {
+                for (const it of data.items) {
+                    const vid = it.id && it.id.videoId
+                    if (!vid) continue
+                    const rawT = (it.snippet && it.snippet.title) || 'Unknown'
+                    const decT = String(rawT).replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
+                    out.push({
+                        title: decT,
+                        url: 'https://www.youtube.com/watch?v=' + vid,
+                        duration: 0,
+                        type: 'yt'
+                    })
+                }
+            }
+            if (out.length > 0) {
+                return out
+            }
+        } catch (e) { console.log('YouTube API err:', e && e.message) }
+    }
+    const raw = await runYtDlpSearch(query, count)
+    for (const r of raw) {
+        out.push({
+            title: String(r.title || 'Unknown').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' '),
+            url: r.webpage_url || r.url || ('https://www.youtube.com/watch?v=' + r.id),
+            duration: r.duration || 0,
+            type: 'yt'
+        })
+    }
     return out
 }
 
@@ -5352,7 +5502,9 @@ function runYtDlpSearch(query, count) {
             '--dump-json', '--no-warnings', '--ignore-errors',
             '--flat-playlist',
             'ytsearch' + count + ':' + query
-        ], { timeout: 90000, maxBuffer: 30 * 1024 * 1024 }, function(err, stdout){
+        ], { timeout: 90000, maxBuffer: 30 * 1024 * 1024 }, function(err, stdout, stderr){
+            if (stderr) console.log('[YTDBG] STDERR:', String(stderr).slice(0, 500))
+            if (stdout) console.log('[YTDBG] STDOUT head:', String(stdout).slice(0, 300))
             if (!stdout) { resolve([]); return }
             const lines = String(stdout).trim().split('\n').filter(Boolean)
             const out = []
@@ -5362,6 +5514,28 @@ function runYtDlpSearch(query, count) {
             resolve(out)
         })
     })
+}
+
+async function searchTMDB(query, count) {
+    if (!TMDB_API_KEY) return []
+    try {
+        const url = 'https://api.themoviedb.org/3/search/multi?api_key=' + TMDB_API_KEY + '&query=' + encodeURIComponent(query) + '&page=1'
+        const res = await httpGetBuffer(url, 20000)
+        const data = JSON.parse(res.toString('utf-8'))
+        if (!data || !Array.isArray(data.results)) return []
+        const out = []
+        for (const r of data.results) {
+            if (r.media_type !== 'movie' && r.media_type !== 'tv') continue
+            out.push({
+                title: r.title || r.name || 'Unknown',
+                year: (r.release_date || r.first_air_date || '').slice(0, 4),
+                type: r.media_type,
+                tmdbId: r.id
+            })
+            if (out.length >= count) break
+        }
+        return out
+    } catch (e) { console.log('tmdb err:', e && e.message); return [] }
 }
 
 function runYtDlpVideo(url, outPath, quality) {
@@ -5375,34 +5549,68 @@ function runYtDlpVideo(url, outPath, quality) {
             '--max-filesize', '500M',
             '-o', outPath,
             '--', url
-        ], { timeout: 600000, maxBuffer: 50 * 1024 * 1024 }, function(err, stdout, stderr){
+        ], { timeout: 900000, maxBuffer: 50 * 1024 * 1024 }, function(err, stdout, stderr){
             if (err) { reject(new Error(String(stderr || err.message).slice(0, 200))); return }
             resolve()
         })
     })
 }
 
-async function mp4DownloadAndSend(sock, ctx, msg, from, sender, item, quality, noticeKey) {
+function runVidsrc(title, year, season, episode, quality, outDir) {
+    return new Promise(function(resolve, reject){
+        const args = ['--no-confirm', '--quality', quality + 'p']
+        if (season && episode) {
+            args.push('--type', 'tv', '--season', String(season), '--episode', String(episode), '--tv-dir', outDir)
+        } else {
+            args.push('--type', 'movie', '--movies-dir', outDir)
+        }
+        if (year) args.push('--year', String(year))
+        args.push(title)
+        execFile('vidsrc-dlp', args, { timeout: 900000, maxBuffer: 50 * 1024 * 1024 }, function(err, stdout, stderr){
+            if (err) { reject(new Error(String(stderr || err.message).slice(0, 200))); return }
+            try {
+                const files = fs.readdirSync(outDir).filter(function(f){ return /\.(mp4|mkv|webm)$/i.test(f) })
+                if (files.length === 0) { reject(new Error('no output file')); return }
+                let best = null, bestSize = 0
+                for (const f of files) {
+                    const st = fs.statSync(path.join(outDir, f))
+                    if (st.size > bestSize) { best = f; bestSize = st.size }
+                }
+                resolve(path.join(outDir, best))
+            } catch (e) { reject(e) }
+        })
+    })
+}
+
+async function mp4DownloadAndSend(sock, ctx, msg, from, sender, item, quality, noticeKey, season, episode) {
     const hg = String.fromCodePoint(0x23F3)
     const ck = String.fromCodePoint(0x2705)
     const er = String.fromCodePoint(0x274C)
     const sep = String.fromCharCode(0x00BB)
     const dot = String.fromCharCode(0x2022)
     const hd = String.fromCodePoint(0x2726)
-    const outPath = path.join(os.tmpdir(), 'mp4_' + crypto.randomBytes(6).toString('hex') + '.mp4')
+    const outDir = path.join(os.tmpdir(), 'mp4_' + crypto.randomBytes(6).toString('hex'))
+    fs.mkdirSync(outDir, { recursive: true })
     const titleSafe = String(item.title || 'video').slice(0, 60)
+    const qualityLabel = quality + 'p' + (season && episode ? ' S' + season + 'E' + episode : '')
 
     const dlText = mp4Head() + '\n\n' + hg + ' ' + mono('DOWNLOADING') + '\n\n' +
         sep + ' ' + mono('TITLE') + '  ' + dot + '  ' + titleSafe + '\n' +
-        sep + ' ' + mono('QUALITY') + '  ' + dot + '  ' + quality + 'p\n\n' +
+        sep + ' ' + mono('QUALITY') + '  ' + dot + '  ' + qualityLabel + '\n\n' +
         hd + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + hd
-    if (noticeKey) {
-        try { await sock.sendMessage(from, { text: dlText, edit: noticeKey }) } catch (e) {}
-    }
+    if (noticeKey) { try { await sock.sendMessage(from, { text: dlText, edit: noticeKey }) } catch (e) {} }
 
+    let outPath = null
     try {
-        await runYtDlpVideo(item.url, outPath, quality)
-        if (!fs.existsSync(outPath)) throw new Error('no output')
+        if (item.type === 'yt') {
+            outPath = path.join(outDir, 'v.mp4')
+            await runYtDlpVideo(item.url, outPath, quality)
+        } else if (item.type === 'movie') {
+            outPath = await runVidsrc(item.title, item.year, null, null, quality, outDir)
+        } else if (item.type === 'tv') {
+            outPath = await runVidsrc(item.title, item.year, season, episode, quality, outDir)
+        }
+        if (!outPath || !fs.existsSync(outPath)) throw new Error('no output')
         const stat = fs.statSync(outPath)
         const sizeMB = (stat.size / 1024 / 1024).toFixed(1)
         const buf = fs.readFileSync(outPath)
@@ -5417,12 +5625,10 @@ async function mp4DownloadAndSend(sock, ctx, msg, from, sender, item, quality, n
 
         const doneText = mp4Head() + '\n\n' + ck + ' ' + mono('DOWNLOADED') + '\n\n' +
             sep + ' ' + mono('TITLE') + '  ' + dot + '  ' + titleSafe + '\n' +
-            sep + ' ' + mono('QUALITY') + '  ' + dot + '  ' + quality + 'p\n' +
+            sep + ' ' + mono('QUALITY') + '  ' + dot + '  ' + qualityLabel + '\n' +
             sep + ' ' + mono('SIZE') + '  ' + dot + '  ' + sizeMB + ' MB\n\n' +
             hd + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + hd
-        if (noticeKey) {
-            try { await sock.sendMessage(from, { text: doneText, edit: noticeKey }) } catch (e) {}
-        }
+        if (noticeKey) { try { await sock.sendMessage(from, { text: doneText, edit: noticeKey }) } catch (e) {} }
     } catch (e) {
         console.log('.mp4 err:', e && e.message)
         if (noticeKey) {
@@ -5432,7 +5638,7 @@ async function mp4DownloadAndSend(sock, ctx, msg, from, sender, item, quality, n
             try { await sock.sendMessage(from, { text: errText, edit: noticeKey }) } catch (e2) {}
         }
     } finally {
-        try { fs.unlinkSync(outPath) } catch (e) {}
+        try { fs.rmSync(outDir, { recursive: true, force: true }) } catch (e) {}
     }
 }
 
