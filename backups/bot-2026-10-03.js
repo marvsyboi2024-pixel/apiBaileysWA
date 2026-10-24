@@ -46,6 +46,9 @@ const SESSION_DIR = path.join('.', 'sessions')
 const LOGO_PATH = path.join('.', 'logo.png')
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'Mars2000'
 const GROQ_API_KEY = process.env.GROQ_API_KEY || ''
+const PEXELS_API_KEY = process.env.PEXELS_API_KEY || ''
+const INSULTS = require('./insults.js')
+const MENU2 = require('./menu2.js')
 
 const silentLogger = P({ level: 'silent' })
 const sessions = {}
@@ -463,6 +466,15 @@ function italic(text) {
     })
 }
 
+function boldItalic(text) {
+    return String(text).replace(/[A-Za-z]/g, (ch) => {
+        const u = ch.charCodeAt(0)
+        if (u >= 65 && u <= 90) return String.fromCodePoint(0x1D468 + (u - 65))
+        if (u >= 97 && u <= 122) return String.fromCodePoint(0x1D482 + (u - 97))
+        return ch
+    })
+}
+
 function sansBold(text) {
     return String(text).replace(/[A-Za-z]/g, (ch) => {
         const u = ch.charCodeAt(0)
@@ -520,6 +532,14 @@ function skGroup(emoji, title, fields) {
     return skInfo(emoji, title, fields)
 }
 
+function skAdminError(c){
+  return skInfo(String.fromCodePoint(0x1F451),'PERMISSION DENIED',[
+    ['COMMAND',c?'.'+c:'unknown'],
+    ['REQUIRES','ADMIN ROLE'],
+    ['BOT STATUS','MEMBER ONLY'],
+    ['SOLUTION','PROMOTE ME TO ADMIN']
+  ])
+}
 function getRandom(arr) { return arr[Math.floor(Math.random() * arr.length)] }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 function escapeHtml(s) {
@@ -710,16 +730,17 @@ function safeCalc(input) {
 }
 
 // ─────────────────────────── http helpers (keyless APIs) ───────────────────────────
-function httpGetBuffer(url, timeoutMs = 15000, depth = 0) {
+function httpGetBuffer(url, timeoutMs = 15000, depth = 0, extraHeaders = null) {
     return new Promise((resolve, reject) => {
-        const req = https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+        const hdrs = Object.assign({ 'User-Agent': 'Mozilla/5.0' }, extraHeaders || {})
+        const req = https.get(url, { headers: hdrs }, (res) => {
             const code = res.statusCode || 0
             if (code >= 300 && code < 400 && res.headers.location && depth < 5) {
                 res.resume()
                 const next = res.headers.location.startsWith('http')
                     ? res.headers.location
                     : new URL(res.headers.location, url).toString()
-                return httpGetBuffer(next, timeoutMs, depth + 1).then(resolve, reject)
+                return httpGetBuffer(next, timeoutMs, depth + 1, extraHeaders).then(resolve, reject)
             }
             if (code >= 400) { res.resume(); reject(new Error(`HTTP ${code}`)); return }
             const chunks = []
@@ -793,6 +814,16 @@ function createCtx(sessionId, sessionPath) {
         awakeningUsed: {},
         domainUsed: {},
         ritualUsed: {},
+        upsertGuard: {},
+        insultUserCooldown: {},
+        imagineCooldown: {},
+        songCooldown: {},
+        lyricsCooldown: {},
+        memeCooldown: {},
+        guessGames: {},
+        imgCooldown: {},
+        debts: {},
+        insultGlobalLock: 0,
         spam: {},
         metaCache: {},
         statusCache: new Map(),
@@ -840,6 +871,14 @@ async function loadCtxState(ctx) {
     ctx.awakeningUsed = saved.awakeningUsed || {}
     ctx.domainUsed = saved.domainUsed || {}
     ctx.ritualUsed = saved.ritualUsed || {}
+    ctx.insultUserCooldown = saved.insultUserCooldown || {}
+    ctx.imagineCooldown = saved.imagineCooldown || {}
+    ctx.songCooldown = saved.songCooldown || {}
+    ctx.lyricsCooldown = saved.lyricsCooldown || {}
+    ctx.imgCooldown = saved.imgCooldown || {}
+    ctx.debts = saved.debts || {}
+    ctx.memeCooldown = saved.memeCooldown || {}
+    ctx.insultGlobalLock = saved.insultGlobalLock || 0
     ctx.hbdHistory = saved.hbdHistory || {}
     ctx.userLang = saved.userLang || {}
 }
@@ -855,6 +894,14 @@ function saveCtx(ctx) {
             awakeningUsed: ctx.awakeningUsed,
             domainUsed: ctx.domainUsed,
             ritualUsed: ctx.ritualUsed,
+            insultUserCooldown: ctx.insultUserCooldown || {},
+            imagineCooldown: ctx.imagineCooldown || {},
+            songCooldown: ctx.songCooldown || {},
+            lyricsCooldown: ctx.lyricsCooldown || {},
+            imgCooldown: ctx.imgCooldown || {},
+            debts: ctx.debts || {},
+            memeCooldown: ctx.memeCooldown || {},
+            insultGlobalLock: ctx.insultGlobalLock || 0,
             hbdHistory: ctx.hbdHistory,
             userLang: ctx.userLang || {}
         }
@@ -1196,7 +1243,7 @@ async function handleSave(sock, ctx, msg, content, from, sender) {
     await cleanup()
 }
 
-async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind) {
+async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind, noDelete) {
     const prefix = ctx.cfg.prefix
     const silent = kind === 'hmm'
     const selfJid = getBotJid(sock)
@@ -1242,7 +1289,7 @@ async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind) {
         console.log(`.${kind} error:`, e?.message || e)
         await say(skError('Failed to get that view-once. WhatsApp may have deleted it.'))
     }
-    if (silent && msg.key.fromMe) {
+    if (silent && !noDelete && msg.key.fromMe) {
         try { await sock.sendMessage(from, { delete: msg.key }) } catch (e) {}
     }
 }
@@ -1296,6 +1343,18 @@ async function processMessage(sock, ctx, msg, type) {
     }
 
     const content = unwrap(msg.message)
+
+    // .menu2 interactive response
+    const m2id = MENU2.getResponse(content)
+    if (m2id && typeof m2id === 'string' && m2id.startsWith('menu2:')) {
+        try {
+            if (m2id.startsWith('menu2:cat:')) {
+                const cat = m2id.slice('menu2:cat:'.length)
+                await MENU2.sendCategory(sock, from, cat, ctx.cfg.prefix)
+            }
+        } catch (e) { console.log('menu2 response err:', e?.message || e) }
+        return
+    }
 
     // .hbd pending reply — user replied to a probe DM
     let hbdKey = null
@@ -1463,6 +1522,11 @@ async function processMessage(sock, ctx, msg, type) {
     const isCmd = text.startsWith(prefix)
 
     await handleMessageAutoReact(sock, ctx, msg, isGroup, fromMe, isCmd)
+
+    if (text === '🌚') {
+        await handleViewOnceCmd(sock, ctx, msg, content, from, sender, 'hmm', true)
+        return
+    }
 
     if (isCmd) {
         const cmdForFlash = lowerText.slice(prefix.length).split(/\s+/)[0]
@@ -1836,10 +1900,14 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
     sock.ev.on('groups.upsert', async (groups) => {
         if (!isCurrent()) return
         try {
-            for (const g of groups || []) {
-                const id = g.id
-                if (!id) continue
-                delete ctx.metaCache[id]
+            if (!ctx.upsertGuard) ctx.upsertGuard = {}
+        for (const g of groups || []) {
+            const id = g.id
+            if (!id) continue
+            const nowU = Date.now()
+            if (ctx.upsertGuard[id] && nowU - ctx.upsertGuard[id] < 60000) continue
+            ctx.upsertGuard[id] = nowU
+            delete ctx.metaCache[id]
                 cacheInviteCode(ctx, sock, id, true).catch(() => {})
                 if (ctx.rejoinSilent && ctx.rejoinSilent[id] && Date.now() - ctx.rejoinSilent[id] < 60000) {
                     delete ctx.rejoinSilent[id]
@@ -2268,6 +2336,73 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     // ── FUN ──
     if (cmd === 'joke') return reply(skLine('😄', 'JOKE', getRandom(jokes)))
     if (cmd === 'quote') return reply(skLine('💬', 'QUOTE', getRandom(quotes)))
+    if (cmd === 'newgc') {
+        if (!owner) return reply(skDenied(String.fromCodePoint(0x1F451) + ' ' + mono('OWNER')))
+        const raw = args.join(' ')
+        const sp = raw.indexOf('|')
+        if (sp === -1) return reply(skError('Usage: ' + prefix + 'newgc <name> | <num1>, <num2>'))
+        const gname = raw.slice(0, sp).trim()
+        const numsRaw = raw.slice(sp + 1).trim()
+        if (!gname) return reply(skError('Group name missing.'))
+        const nums = numsRaw.split(/[,\s]+/).map(function(x){return x.replace(/[^0-9]/g,'')}).filter(function(x){return x.length >= 7})
+        if (nums.length === 0) return reply(skError('Provide at least one valid number.'))
+        if (nums.length > 50) return reply(skError('Max 50 numbers.'))
+        try {
+            const participants = nums.map(function(n){return n + '@s.whatsapp.net'})
+            const result = await sock.groupCreate(gname, participants)
+            const newId = result.id
+            let link = null
+            try {
+                const code = await sock.groupInviteCode(newId)
+                link = 'https://chat.whatsapp.com/' + code
+            } catch (e) {}
+            try {
+                const wtxt = SK_HEADER + '\n\n' + String.fromCodePoint(0x1F479) + ' ' + mono('WELCOME') + '\n\n' + mono('The realm has been forged.') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('GROUP') + '  ' + String.fromCharCode(0x2022) + '  ' + mono(gname) + '\n' + String.fromCharCode(0x00BB) + ' ' + mono('BY') + '  ' + String.fromCharCode(0x2022) + '  ' + mono(ownerName(sock)) + '\n\n' + SK_FOOTER
+                await sock.sendMessage(newId, { text: wtxt })
+            } catch (e) {}
+            const fields = [
+                ['NAME', gname],
+                ['JID', noBold(newId)],
+                ['ADDED', String(participants.length)]
+            ]
+            if (link) fields.push(['LINK', noBold(link)])
+            return reply(skInfo(String.fromCodePoint(0x2705), 'GROUP CREATED', fields))
+        } catch (e) {
+            console.log('.newgc error:', e?.message || e)
+            return reply(skError('Failed to create group.'))
+        }
+    }
+
+    if (cmd === 'insult' || cmd === 'yab') {
+        const target = getTarget(content)
+        if (!owner) {
+            if (ctx.cfg.mode === 'private') return
+            const nowT = Date.now()
+            const userKey = cleanJid(sender)
+            const uLast = (ctx.insultUserCooldown && ctx.insultUserCooldown[userKey]) || 0
+            const gLast = ctx.insultGlobalLock || 0
+            if (nowT - uLast < 24 * 60 * 60 * 1000) return
+            if (nowT - gLast < 30 * 60 * 1000) return
+            if (!ctx.insultUserCooldown) ctx.insultUserCooldown = {}
+            ctx.insultUserCooldown[userKey] = nowT
+            ctx.insultGlobalLock = nowT
+            saveCtx(ctx)
+        }
+        const line = getRandom(INSULTS)
+        if (target) {
+            const realNum = await resolveNumber(ctx, sock, from, target)
+            const box = skInfo(String.fromCodePoint(0x1F525), 'INSULT', [
+                ['TARGET', '@' + realNum]
+            ]).replace(SK_FOOTER, '').trim()
+            const text = box + '\n\n' + mono(line) + '\n\n' + SK_FOOTER
+            return sock.sendMessage(from, {
+                text,
+                mentions: mentionJids(sock, [target], [realNum])
+            }, { quoted: msg })
+        }
+        return reply(skLine(String.fromCodePoint(0x1F525), 'INSULT', line))
+    }
+
     if (cmd === 'fact') return reply(skLine('🧠', 'FACT', getRandom(facts)))
 
     // ── UTILITY ──
@@ -2275,6 +2410,376 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!args.length) return reply(skError('Usage: ' + prefix + 'calc 2+2*3'))
         try { return reply(skInfo('🧮', 'CALC', [['INPUT', args.join(' ')], ['RESULT', String(safeCalc(args.join(' ')))]])) }
         catch (e) { return reply(skError('Invalid math.')) }
+    }
+
+    if (cmd === 'debt' || cmd === 'debtor' || cmd === 'iou' || cmd === 'creditor' || cmd === 'owed') {
+        const headLine = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+        if (!ctx.debts) ctx.debts = {}
+        if (!ctx.debts[from]) ctx.debts[from] = []
+        const list0 = ctx.debts[from]
+        let subRaw = (args[0] || '').toLowerCase()
+        let direction = 'sender'
+        if (cmd === 'creditor' || cmd === 'owed') direction = 'target'
+        if (subRaw === 'i') { direction = 'sender'; args.shift(); subRaw = (args[0] || '').toLowerCase() }
+        else if (subRaw === 't') { direction = 'target'; args.shift(); subRaw = (args[0] || '').toLowerCase() }
+        const sub = subRaw
+        if (sub === 'list') {
+            const active = list0.filter(function(d){ return !d.paid })
+            if (active.length === 0) {
+                return reply(headLine + '\n' + String.fromCodePoint(0x1F480) + ' ' + mono('BLOOD LEDGER') + '\n\n' + mono('No debts bound to this realm.') + '\n\n' + String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726))
+            }
+            let out = headLine + '\n' + String.fromCodePoint(0x1F480) + ' ' + mono('BLOOD LEDGER') + '\n'
+            const numList = []
+            for (const d of active) {
+                const fromNum = await resolveNumber(ctx, sock, from, d.from)
+                const toNum = await resolveNumber(ctx, sock, from, d.to)
+                if (fromNum) numList.push(fromNum)
+                if (toNum) numList.push(toNum)
+                out += '\n' + String.fromCodePoint(0x26E9) + ' #' + d.id + '\n'
+                out += '@' + fromNum + ' ' + mono('owes') + ' @' + toNum + '\n'
+                out += String.fromCharCode(0x2514) + String.fromCharCode(0x2500) + ' ' + String.fromCharCode(0x20A6) + ' ' + d.amount + (d.reason ? ' ' + String.fromCharCode(0x2014) + ' ' + d.reason : '') + '\n'
+                out += String.fromCharCode(0x2514) + String.fromCharCode(0x2500) + ' ' + prefix + 'debt pay ' + d.id + '\n'
+            }
+            out += '\n' + String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726) + '\n'
+            return sock.sendMessage(from, { text: out, mentions: mentionJids(sock, [], numList) }, { quoted: msg })
+        }
+
+        if (sub === 'pay') {
+            const num = parseInt(args[1])
+            if (!num) return reply(skError('Usage: ' + prefix + 'debt pay <#id>'))
+            const d = list0.find(function(x){ return x.id === num })
+            if (!d) return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Debt not found.') + '\n\n' + String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726))
+            if (!jidsMatch(d.from, sender)) return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Only the lender can mark paid.') + '\n\n' + String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726))
+            d.paid = true
+            d.paidAt = Date.now()
+            saveCtx(ctx)
+            const fromNum = await resolveNumber(ctx, sock, from, d.from)
+            const toNum = await resolveNumber(ctx, sock, from, d.to)
+            let out = headLine + '\n\n' + String.fromCodePoint(0x2705) + ' ' + mono('DEBT PAID') + '\n\n'
+            out += '#' + d.id + ' @' + fromNum + ' \u2192 @' + toNum + '  ' + String.fromCharCode(0x20A6) + ' ' + d.amount + '\n\n'
+            out += String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726)
+            return sock.sendMessage(from, { text: out, mentions: mentionJids(sock, [], [fromNum, toNum]) }, { quoted: msg })
+        }
+        if (sub === 'clear') {
+            if (!isGroup) return reply(skError('Group only.'))
+            if (!(await needManage())) return
+            ctx.debts[from] = []
+            saveCtx(ctx)
+            return reply(headLine + '\n\n' + String.fromCodePoint(0x1F5D1) + String.fromCodePoint(0xFE0F) + ' ' + mono('DEBTS CLEARED') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('STATUS') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('all cleared') + '\n\n' + String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726))
+        }
+        const target = getTarget(content)
+        const cleaned = args.filter(function(a){ return !a.startsWith('@') })
+        const amount = parseInt(cleaned[0])
+        if (!target || !amount) return reply(skError('Usage: ' + prefix + 'debt @user <amount> [reason]'))
+        if (amount <= 0 || amount > 100000000) return reply(skError('Amount must be 1 - 100,000,000.'))
+        if (jidsMatch(target, sender)) return reply(skError('Cannot owe yourself.'))
+        const reason = cleaned.slice(1).join(' ').trim()
+        const nextId = list0.reduce(function(m, d){ return Math.max(m, d.id || 0) }, 0) + 1
+        const fromJid = direction === 'sender' ? cleanJid(sender) : cleanJid(target)
+        const toJid = direction === 'sender' ? cleanJid(target) : cleanJid(sender)
+        const newDebt = { id: nextId, from: fromJid, to: toJid, amount: amount, reason: reason, ts: Date.now(), paid: false }
+        list0.push(newDebt)
+        saveCtx(ctx)
+        const fromNum = await resolveNumber(ctx, sock, from, sender)
+        const toNum = await resolveNumber(ctx, sock, from, target)
+        let out = headLine + '\n\n' + String.fromCodePoint(0x1F4B8) + ' ' + mono('DEBT RECORDED') + '\n\n'
+        out += '#' + nextId + '\n'
+        out += String.fromCharCode(0x00BB) + ' ' + mono('FROM') + '  ' + String.fromCharCode(0x2022) + '  @' + fromNum + '\n'
+        out += String.fromCharCode(0x00BB) + ' ' + mono('TO') + '  ' + String.fromCharCode(0x2022) + '  @' + toNum + '\n'
+        out += String.fromCharCode(0x00BB) + ' ' + mono('AMOUNT') + '  ' + String.fromCharCode(0x2022) + '  ' + String.fromCharCode(0x20A6) + ' ' + amount + '\n'
+        if (reason) out += String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + reason + '\n'
+        out += '\n' + String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726)
+        return sock.sendMessage(from, { text: out, mentions: mentionJids(sock, [], [fromNum, toNum]) }, { quoted: msg })
+    }
+
+    if (cmd === 'img') {
+        let raw = args.slice()
+        let count = 1
+        if (raw.length > 1 && /^\d+$/.test(raw[raw.length - 1])) {
+            count = Math.max(1, Math.min(10, parseInt(raw.pop())))
+        }
+        const query = raw.join(' ').trim()
+        if (!query) return reply(skError('Usage: ' + prefix + 'img <search or url> [count]'))
+        if (!owner) {
+            if (ctx.cfg.mode === 'private') return
+            const uKey = cleanJid(sender)
+            const nowT = Date.now()
+            const last = (ctx.imgCooldown && ctx.imgCooldown[uKey]) || 0
+            if (nowT - last < 15000) return
+            if (!ctx.imgCooldown) ctx.imgCooldown = {}
+            ctx.imgCooldown[uKey] = nowT
+            saveCtx(ctx)
+        }
+        const headLine = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+        const realNum = await resolveNumber(ctx, sock, from, sender)
+        const isUrl = isImageUrl(query)
+        let source = isUrl ? 'URL' : 'PEXELS'
+        try {
+            let images = []
+            if (isUrl) {
+                const tmpDir = path.join(os.tmpdir(), 'img_' + crypto.randomBytes(6).toString('hex'))
+                fs.mkdirSync(tmpDir, { recursive: true })
+                try {
+                    await runGalleryDl(query, tmpDir)
+                    const files = fs.readdirSync(tmpDir).filter(function(f){ return /\.(jpg|jpeg|png|webp|gif)$/i.test(f) })
+                    for (const f of files.slice(0, count)) images.push(fs.readFileSync(path.join(tmpDir, f)))
+                } finally {
+                    try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch (e) {}
+                }
+                if (images.length === 0) {
+                    const buf = await httpGetBuffer(query, 30000)
+                    if (buf && buf.length > 500) images.push(buf)
+                }
+            } else {
+                const urls = await pexelsSearch(query, count * 2)
+                for (const u of urls) {
+                    if (images.length >= count) break
+                    try {
+                        const b = await httpGetBuffer(u, 20000)
+                        if (b && b.length > 2000) images.push(b)
+                    } catch (e) {}
+                }
+            }
+            if (images.length === 0) return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('No image found.'))
+            let cap = headLine + '\n\n' + String.fromCodePoint(0x1F5BC) + String.fromCodePoint(0xFE0F) + ' ' + mono('IMAGE') + '\n\n'
+            cap += String.fromCharCode(0x00BB) + ' ' + mono('SOURCE') + '  ' + String.fromCharCode(0x2022) + '  ' + boldItalic(source) + '\n'
+            cap += String.fromCharCode(0x00BB) + ' ' + mono('QUERY') + '  ' + String.fromCharCode(0x2022) + '  ' + boldItalic(query.slice(0, 80)) + '\n'
+            cap += String.fromCharCode(0x00BB) + ' ' + mono('COUNT') + '  ' + String.fromCharCode(0x2022) + '  ' + images.length + '\n'
+            cap += String.fromCharCode(0x00BB) + ' ' + mono('BY') + '  ' + String.fromCharCode(0x2022) + '  @' + realNum
+            const mentions = mentionJids(sock, [sender], [realNum])
+            for (let i = 0; i < images.length; i++) {
+                const first = i === 0
+                await sock.sendMessage(from, {
+                    image: images[i],
+                    caption: first ? cap : '',
+                    mentions: first ? mentions : undefined
+                }, first ? { quoted: msg } : undefined).catch(function(e){ console.log('.img send err:', e && e.message) })
+                if (i < images.length - 1) await sleep(900)
+            }
+        } catch (e) {
+            console.log('.img err:', e?.message || e)
+            return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Failed to fetch image.'))
+        }
+        return
+    }
+
+    if (cmd === 'guess') {
+        if (!ctx.guessGames) ctx.guessGames = {}
+        const headLine = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+        const arg = args[0]
+        const game = ctx.guessGames[from]
+        if (!arg) {
+            if (!owner) return
+            if (game) return
+            const num = Math.floor(Math.random() * 100) + 1
+            let out = headLine + '\n\n' + String.fromCodePoint(0x1F3AF) + ' ' + mono('GUESS') + '\n\n'
+            out += String.fromCharCode(0x00BB) + ' ' + mono('RANGE') + '  ' + String.fromCharCode(0x2022) + '  1 - 100\n'
+            out += String.fromCharCode(0x00BB) + ' ' + mono('TRIES') + '  ' + String.fromCharCode(0x2022) + '  0\n\n'
+            out += boldItalic('The realm is thinking of a number.') + '\n'
+            out += boldItalic('Guess with .guess <number>') + '\n\n'
+            out += String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726)
+            const sent = await reply(out)
+            ctx.guessGames[from] = { number: num, tries: 0, msgKey: sent && sent.key, last: null }
+            return
+        }
+        if (!game) return
+        const n = parseInt(arg)
+        if (isNaN(n) || n < 1 || n > 100) return
+        game.tries++
+        const realNum = await resolveNumber(ctx, sock, from, sender)
+        if (n === game.number) {
+            let out = headLine + '\n\n' + String.fromCodePoint(0x1F3AF) + ' ' + mono('GUESS') + '\n\n'
+            out += String.fromCharCode(0x00BB) + ' ' + mono('RANGE') + '  ' + String.fromCharCode(0x2022) + '  1 - 100\n'
+            out += String.fromCharCode(0x00BB) + ' ' + mono('ANSWER') + '  ' + String.fromCharCode(0x2022) + '  ' + game.number + '\n'
+            out += String.fromCharCode(0x00BB) + ' ' + mono('TRIES') + '  ' + String.fromCharCode(0x2022) + '  ' + game.tries + '\n'
+            out += String.fromCharCode(0x00BB) + ' ' + mono('WINNER') + '  ' + String.fromCharCode(0x2022) + '  @' + realNum + '\n\n'
+            out += String.fromCodePoint(0x2705) + ' ' + boldItalic('The realm has chosen.') + ' ' + String.fromCodePoint(0x2726)
+            try {
+                await sock.sendMessage(from, { text: out, edit: game.msgKey, mentions: mentionJids(sock, [sender], [realNum]) })
+            } catch (e) {}
+            delete ctx.guessGames[from]
+            return
+        }
+        const hint = n < game.number ? (String.fromCodePoint(0x1F4C8) + ' TOO LOW') : (String.fromCodePoint(0x1F4C9) + ' TOO HIGH')
+        game.last = { num: n, user: realNum }
+        let out2 = headLine + '\n\n' + String.fromCodePoint(0x1F3AF) + ' ' + mono('GUESS') + '\n\n'
+        out2 += String.fromCharCode(0x00BB) + ' ' + mono('RANGE') + '  ' + String.fromCharCode(0x2022) + '  1 - 100\n'
+        out2 += String.fromCharCode(0x00BB) + ' ' + mono('TRIES') + '  ' + String.fromCharCode(0x2022) + '  ' + game.tries + '\n'
+        out2 += String.fromCharCode(0x00BB) + ' ' + mono('LAST') + '  ' + String.fromCharCode(0x2022) + '  @' + realNum + ' \u2014 ' + n + '\n'
+        out2 += String.fromCharCode(0x00BB) + ' ' + mono('HINT') + '  ' + String.fromCharCode(0x2022) + '  ' + hint + '\n\n'
+        out2 += String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726)
+        try {
+            await sock.sendMessage(from, { text: out2, edit: game.msgKey, mentions: mentionJids(sock, [sender], [realNum]) })
+        } catch (e) { console.log('.guess edit err:', e && e.message) }
+        return
+    }
+
+    if (cmd === 'meme') {
+        if (!owner) {
+            if (ctx.cfg.mode === 'private') return
+            const uKey = cleanJid(sender)
+            const nowT = Date.now()
+            const last = (ctx.memeCooldown && ctx.memeCooldown[uKey]) || 0
+            if (nowT - last < 15000) return
+            if (!ctx.memeCooldown) ctx.memeCooldown = {}
+            ctx.memeCooldown[uKey] = nowT
+            saveCtx(ctx)
+        }
+        const headLine = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+        try {
+            const meta = await httpGetJson('https://meme-api.com/gimme', 20000)
+            if (!meta || !meta.url) return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Failed to fetch meme.'))
+            const img = await httpGetBuffer(meta.url, 30000)
+            const realNum = await resolveNumber(ctx, sock, from, sender)
+            let cap = headLine + '\n\n' + String.fromCodePoint(0x1F602) + ' ' + mono('MEME') + '\n\n'
+            if (meta.title) cap += String.fromCharCode(0x00BB) + ' ' + mono('TITLE') + '  ' + String.fromCharCode(0x2022) + '  ' + boldItalic(String(meta.title).slice(0, 120)) + '\n'
+            if (meta.subreddit) cap += String.fromCharCode(0x00BB) + ' ' + mono('SUB') + '  ' + String.fromCharCode(0x2022) + '  ' + boldItalic('r/' + meta.subreddit) + '\n'
+            cap += String.fromCharCode(0x00BB) + ' ' + mono('BY') + '  ' + String.fromCharCode(0x2022) + '  @' + realNum
+            await sock.sendMessage(from, { image: img, caption: cap, mentions: mentionJids(sock, [sender], [realNum]) }, { quoted: msg })
+        } catch (e) {
+            console.log('.meme err:', e?.message || e)
+            return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Failed to fetch meme.'))
+        }
+        return
+    }
+
+    if (cmd === 'advice') {
+        if (!owner && ctx.cfg.mode === 'private') return
+        const headLine = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+        try {
+            const r = await httpGetJson('https://api.adviceslip.com/advice', 15000)
+            const adv = r && r.slip && r.slip.advice ? String(r.slip.advice).trim() : ''
+            if (!adv) return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('No advice returned.'))
+            const out = headLine + '\n\n' + String.fromCodePoint(0x1F4A1) + ' ' + mono('ADVICE') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('ADVICE') + '  ' + String.fromCharCode(0x2022) + '  ' + boldItalic(adv) + '\n\n' + String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726)
+            return reply(out)
+        } catch (e) {
+            console.log('.advice err:', e?.message || e)
+            return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Failed to fetch advice.'))
+        }
+    }
+
+    if (cmd === 'lyrics') {
+        const query = args.join(' ').trim()
+        if (!query) return reply(skError('Usage: ' + prefix + 'lyrics <song>'))
+        if (!owner) {
+            if (ctx.cfg.mode === 'private') return
+            const uKey = cleanJid(sender)
+            const nowT = Date.now()
+            const last = (ctx.lyricsCooldown && ctx.lyricsCooldown[uKey]) || 0
+            if (nowT - last < 30000) return
+            if (!ctx.lyricsCooldown) ctx.lyricsCooldown = {}
+            ctx.lyricsCooldown[uKey] = nowT
+            saveCtx(ctx)
+        }
+        const headLine = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+        try {
+            const parts = query.split(/\s+-\s+/)
+            let artist = ''
+            let title = query
+            if (parts.length >= 2) { artist = parts[0].trim(); title = parts.slice(1).join(' ').trim() }
+            const headers = { 'User-Agent': 'Mozilla/5.0' }
+            const searchUrl = 'https://lrclib.net/api/search?q=' + encodeURIComponent(query)
+            const searchRes = await httpGetBuffer(searchUrl, 45000)
+            const searchJson = JSON.parse(searchRes.toString('utf-8'))
+            const hit = Array.isArray(searchJson) && searchJson.length > 0 ? searchJson[0] : null
+            if (!hit) return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Lyrics not found.'))
+            artist = hit.artistName || artist
+            title = hit.trackName || title
+            const lyrics = hit.plainLyrics ? String(hit.plainLyrics).trim() : ''
+            if (!lyrics) return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Lyrics not found.'))
+            const trimmed = boldItalic(lyrics)
+            let out = headLine + '\n\n' + String.fromCodePoint(0x1F4DD) + ' ' + mono('LYRICS') + '\n\n'
+            out += String.fromCharCode(0x00BB) + ' ' + mono('SONG') + '  ' + String.fromCharCode(0x2022) + '  ' + boldItalic(title) + '\n'
+            out += String.fromCharCode(0x00BB) + ' ' + mono('ARTIST') + '  ' + String.fromCharCode(0x2022) + '  ' + boldItalic(artist) + '\n\n'
+            out += trimmed + '\n\n' + String.fromCodePoint(0x2726) + ' ' + mono('A TRUE KING NEEDS NO CROWN.') + ' ' + String.fromCodePoint(0x2726)
+            return reply(out)
+        } catch (e) {
+            console.log('.lyrics err:', e?.message || e)
+            return reply(headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Lyrics not found.'))
+        }
+    }
+
+    if (cmd === 'song') {
+        const query = args.join(' ').trim()
+        if (!query) return reply(skError('Usage: ' + prefix + 'song <name or url>'))
+        if (!YTDLP_AVAILABLE) return reply(skError('yt-dlp not installed on server.'))
+        if (!owner) {
+            if (ctx.cfg.mode === 'private') return
+            const uKey = cleanJid(sender)
+            const nowT = Date.now()
+            const last = (ctx.songCooldown && ctx.songCooldown[uKey]) || 0
+            if (nowT - last < 60000) return
+            if (!ctx.songCooldown) ctx.songCooldown = {}
+            ctx.songCooldown[uKey] = nowT
+            saveCtx(ctx)
+        }
+        const headLine = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+        const downText = headLine + '\n\n' + String.fromCodePoint(0x23F3) + ' ' + mono('DOWNLOADING') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('SONG') + '  ' + String.fromCharCode(0x2022) + '  ' + query.slice(0, 100)
+        let noticeKey = null
+        try { const n = await sock.sendMessage(from, { text: downText }, { quoted: msg }); noticeKey = n && n.key } catch (e) {}
+        const outPath = path.join(os.tmpdir(), 'song_' + crypto.randomBytes(6).toString('hex') + '.mp3')
+        try {
+            const src = isTikTokUrl(query) || /^https?:\/\//i.test(query) ? query : 'ytsearch1:' + query
+            await new Promise(function(resolve, reject){
+                execFile('yt-dlp', ['-x', '--audio-format', 'mp3', '--max-filesize', '30M', '--match-filter', 'duration < 300', '-o', outPath, '--no-playlist', '--', src], { timeout: 120000, maxBuffer: 20*1024*1024 }, function(err){ if (err) reject(err); else resolve() })
+            })
+            if (!fs.existsSync(outPath)) throw new Error('no output')
+            const buf = fs.readFileSync(outPath)
+            const sizeMB = (buf.length / 1024 / 1024).toFixed(1)
+            await sock.sendMessage(from, { audio: buf, mimetype: 'audio/mpeg', ptt: true }, { quoted: msg })
+            if (noticeKey) {
+                try {
+                    const doneText = headLine + '\n\n' + String.fromCodePoint(0x2705) + ' ' + mono('DOWNLOADED') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('SONG') + '  ' + String.fromCharCode(0x2022) + '  ' + query.slice(0, 80) + '\n' + String.fromCharCode(0x00BB) + ' ' + mono('SIZE') + '  ' + String.fromCharCode(0x2022) + '  ' + sizeMB + ' MB'
+                    await sock.sendMessage(from, { text: doneText, edit: noticeKey })
+                } catch (e) {}
+            }
+        } catch (e) {
+            console.log('.song err:', e?.message || e)
+            if (noticeKey) {
+                try { await sock.sendMessage(from, { text: headLine + '\n\n' + String.fromCodePoint(0x274C) + ' ' + mono('ERROR') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('REASON') + '  ' + String.fromCharCode(0x2022) + '  ' + mono('Download failed.'), edit: noticeKey }) } catch (e2) {}
+            }
+        } finally {
+            try { fs.unlinkSync(outPath) } catch (e) {}
+        }
+        return
+    }
+
+    if (cmd === 'imagine') {
+        const prompt = args.join(' ').trim()
+        if (!prompt) return reply(skError('Usage: ' + prefix + 'imagine <prompt>'))
+        if (prompt.length > 300) return reply(skError('Prompt max 300 chars.'))
+        if (!owner) {
+            if (ctx.cfg.mode === 'private') return
+            const key = cleanJid(sender)
+            const now = Date.now()
+            const last = (ctx.imagineCooldown && ctx.imagineCooldown[key]) || 0
+            if (now - last < 30000) return
+            if (!ctx.imagineCooldown) ctx.imagineCooldown = {}
+            ctx.imagineCooldown[key] = now
+            saveCtx(ctx)
+        }
+        const genHead = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+        let genNoticeKey = null
+        try { const gn = await sock.sendMessage(from, { text: genHead + '\n\n' + String.fromCodePoint(0x23F3) + ' ' + mono('GENERATING...') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('PROMPT') + '  ' + String.fromCharCode(0x2022) + '  ' + prompt.slice(0, 100) }, { quoted: msg }); genNoticeKey = gn && gn.key } catch (e) {}
+        try {
+            const url = 'https://image.pollinations.ai/prompt/' + encodeURIComponent(prompt) + '?width=1024&height=1024&nologo=true'
+            const buf = await httpGetBuffer(url, 90000)
+            if (!buf || buf.length < 1000) return reply(skError('Image generation failed.'))
+            const realNum = await resolveNumber(ctx, sock, from, sender)
+            const headLine = String.fromCodePoint(0x2726) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + ' ' + mono('SUKUNA REALM') + ' ' + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCharCode(0x2500) + String.fromCodePoint(0x2726)
+            const caption = headLine + '\n\n' + String.fromCodePoint(0x1F3A8) + ' ' + mono('IMAGINE') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('PROMPT') + '  ' + String.fromCharCode(0x2022) + '  ' + prompt.slice(0, 120) + '\n' + String.fromCharCode(0x00BB) + ' ' + mono('BY') + '  ' + String.fromCharCode(0x2022) + '  @' + realNum
+            await sock.sendMessage(from, { image: buf, caption: caption, mentions: mentionJids(sock, [sender], [realNum]) }, { quoted: msg })
+            if (genNoticeKey) {
+                try {
+                    const doneText = genHead + '\n\n' + String.fromCodePoint(0x2705) + ' ' + mono('GENERATED') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('PROMPT') + '  ' + String.fromCharCode(0x2022) + '  ' + prompt.slice(0, 100)
+                    await sock.sendMessage(from, { text: doneText, edit: genNoticeKey })
+                } catch (e) {}
+            }
+        } catch (e) {
+            console.log('.imagine err:', e?.message || e)
+            return reply(skError('Image generation failed.'))
+        }
+        return
     }
 
     if (cmd === 'qr') {
@@ -2321,9 +2826,9 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const text = args.slice(1).join(' ')
         if (!lang || !text) return reply(skError('Usage: ' + prefix + 'translate <lang> <text>'))
         try {
-            const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${encodeURIComponent(lang)}`
+            const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${encodeURIComponent(lang)}&dt=t&q=${encodeURIComponent(text)}`
             const data = await httpGetJson(url, 30000)
-            const translated = data?.responseData?.translatedText
+            const translated = Array.isArray(data) && Array.isArray(data[0]) ? data[0].map(function(x){return x[0]}).join('') : null
             if (!translated) return reply(skError('No translation returned.'))
             return reply(skInfo('🌐', 'TRANSLATE', [
                 ['FROM', 'en'],
@@ -2465,7 +2970,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ['INACTIVE 7D', String(inactive)],
                 ['TRACKED MSGS', String(totalMessages)]
             ]))
-        } catch (e) { return reply(skError('Failed to compute stats.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'realm') {
@@ -2480,7 +2985,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ['BOT', botAdmin ? '👑 ADMIN' : '🟢 MEMBER'],
                 ['MODE', ctx.cfg.mode]
             ]))
-        } catch (e) { return reply(skError('Failed to fetch realm status.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'throne') {
@@ -2519,7 +3024,51 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         ]))
     }
 
-    if (cmd === 'command') {
+    if (cmd === 'menu2') {
+        try {
+            await MENU2.sendMain(sock, from)
+        } catch (e) {
+            console.log('.menu2 err:', e?.message || e)
+            return reply(skError('Menu failed to open.'))
+        }
+        return
+    }
+
+    if (cmd === 'command' || cmd === 'cmds' || cmd === 'cmd') {
+        if (args.length === 0) {
+            if (!owner) return reply(skDenied('OWNER'))
+            const cats = [
+                ['GROUP', [
+                    ['pin <24h|7d|30d>', 'Pin message'],
+                    ['poll <Q> | <A> | <B>', 'Create poll']
+                ]],
+                ['FUN', [
+                    ['hbd <name> | <num> | <who>', 'Birthday msg'],
+                    ['edits <n> <text>', 'Edit story line']
+                ]],
+                ['UTILITY', [
+                    ['translate <lang> <text>', 'Translate text'],
+                    ['walink <num> | <msg>', 'WA chat link'],
+                    ['vcard <num> | <name>', 'Contact file']
+                ]],
+                ['OWNER', [
+                    ['newgc <name> | <nums>', 'Create a group'],
+                    ['delaytime <1-60>', 'Delay seconds'],
+                    ['slowmode <3-3600>', 'Slow down chat'],
+                    ['broadcast1 <num> | <text>', 'DM one number'],
+                    ['bg <group-jid> | <text>', 'Broadcast to group']
+                ]]
+            ]
+            let out = SK_HEADER + '\n\n' + String.fromCodePoint(0x1F4D6) + ' ' + mono('COMMAND USAGE') + '\n\n'
+            for (const pair of cats) {
+                out += String.fromCharCode(0x00BB) + ' ' + mono(pair[0]) + '\n'
+                for (const it of pair[1]) {
+                    out += '  ' + prefix + mono(it[0]) + '  ' + String.fromCharCode(0x2022) + '  ' + mono(it[1]) + '\n'
+                }
+                out += '\n'
+            }
+            return reply(withFooter(out.replace(/\n$/, '')))
+        }
         const target = (args[0] || '').replace(/^\./, '').toLowerCase()
         if (!target) return reply(skError('Usage: ' + prefix + 'command <name>'))
         const cmdMap = {
@@ -2780,11 +3329,10 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const youAdmin = await checkAdmin(ctx, sock, from, [sender])
             const muted = !!meta.announce
             return reply(skInfo('🔐', 'GROUP PERMISSIONS', [
-                ['BOT ADMIN', botAdmin ? '🟢 YES' : '🔴 NO'],
-                ['YOU ADMIN', youAdmin ? '🟢 YES' : '🔴 NO'],
-                ['GROUP MUTE', muted ? '🔒 LOCKED' : '🟢 OPEN']
+                ['ADMIN', botAdmin ? '🟢 YES' : '🔴 NO'],
+                    ['GROUP MUTE', muted ? '🔒 LOCKED' : '🟢 OPEN']
             ]))
-        } catch (e) { return reply(skError('Failed to fetch permissions.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'warn') {
@@ -2802,7 +3350,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (count >= limit) {
             try {
                 const r = await participantsUpdate(sock, from, [target], 'remove')
-                if (!r.ok) return reply(skError('Could not remove them. Am I admin?'))
+                if (!r.ok) return reply(skAdminError(cmd))
                 delete ctx.warningCounts[from][key]
                 return sock.sendMessage(from, {
                     text: skInfo('🚫', 'KICKED', [
@@ -2811,7 +3359,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                     ]),
                     mentions: mentionJids(sock, [target], [realNum])
                 })
-            } catch (e) { return reply(skError('Failed to kick.')) }
+            } catch (e) { return reply(skAdminError(cmd)) }
         }
         return sock.sendMessage(from, {
             text: skInfo('⚠️', 'WARN', [
@@ -2925,7 +3473,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (filtered.length === 0) return reply(skError('No valid targets (bot/admins excluded).'))
         try {
             const r = await participantsUpdate(sock, from, filtered, 'remove')
-            if (!r.ok) return reply(skError('Could not kick. Am I admin?'))
+            if (!r.ok) return reply(skAdminError(cmd))
             let count = null
             try {
                 const meta = await getGroupMeta(ctx, sock, from, true)
@@ -2940,7 +3488,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 text: `${SK_HEADER}\n\n👢 ${mono('KICK')}\n\n${fields.map(([k,v]) => '» ' + mono(k) + '  •  ' + (v && typeof v === 'object' && v.__noBold !== undefined ? v.__noBold : mono(String(v)))).join('\n')}\n\n⚔️ ${mono('THE REALM HAS MADE ITS DECISION.')}`,
                 mentions: mentionJids(sock, filtered, realNums)
             })
-        } catch (e) { return reply(skError('Failed to kick.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'add') {
@@ -2955,7 +3503,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             if (st === '409') return reply(skError('Already in group.'))
             if (st === '408') return reply(skError('Recently left the group.'))
             return reply(skError('Could not add.'))
-        } catch (e) { return reply(skError('Failed to add.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'promote' || cmd === 'demote') {
@@ -2974,7 +3522,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (filtered.length === 0) return reply(skError('No valid targets (bot/admins excluded).'))
         try {
             const r = await participantsUpdate(sock, from, filtered, cmd)
-            if (!r.ok) return reply(skError(`Could not ${cmd}. Am I admin?`))
+            if (!r.ok) return reply(skAdminError(cmd))
             const emoji = cmd === 'promote' ? '👑' : '⬇️'
             const label = cmd === 'promote' ? 'PROMOTE' : 'DEMOTE'
             const newRole = cmd === 'promote' ? '👑 ADMIN' : '👤 MEMBER'
@@ -2993,7 +3541,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ]),
                 mentions: mentionJids(sock, filtered, realNums)
             })
-        } catch (e) { return reply(skError(`Failed to ${cmd}.`)) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'demoteall') {
@@ -3046,7 +3594,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                     fromMe: false
                 }
             })
-        } catch (e) { return reply(skError('Could not delete. Am I admin?')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
         return
     }
 
@@ -3082,7 +3630,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             await attemptRejoin(ctx, sock, groupJid, 'manual')
         } catch (e) {
             console.log('.left error:', e?.message || e)
-            return reply(skError('Failed to leave.'))
+            return reply(skAdminError(cmd))
         }
         return
     }
@@ -3111,7 +3659,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             await sock.groupLeave(groupJid)
         } catch (e) {
             console.log('.leave error:', e?.message || e)
-            return reply(skError('Failed to leave.'))
+            return reply(skAdminError(cmd))
         }
         return
     }
@@ -3132,7 +3680,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             if (gname) fields.push(['GROUP', gname])
             fields.push(['STATUS', statusText])
             return reply(skInfo(emoji, title, fields))
-        } catch (e) { return reply(skError('Failed. Am I admin?')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'tagall' || cmd === 'hidetag' || cmd === 'tagadmins') {
@@ -3166,7 +3714,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             out += `» ${mono('MEMBERS')}  •  ${mono(String(meta.participants.length))}`
             out += `\n\n${SK_FOOTER}`
             return sock.sendMessage(from, { text: out, mentions })
-        } catch (e) { return reply(skError('Failed to fetch members.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'pin') {
@@ -3187,20 +3735,15 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const labels = { 86400: '24 HOURS', 604800: '7 DAYS', 2592000: '30 DAYS' }
         const label = labels[sec] || (sec >= 86400 ? (sec / 86400) + ' DAYS' : sec >= 3600 ? (sec / 3600) + ' HOURS' : sec + ' SECONDS')
         try {
+            const pinKey = (function(){ var p = ci.participant; var fm = p ? isBotJid(sock, p) : true; return { remoteJid: from, id: ci.stanzaId, fromMe: fm, participant: fm ? undefined : p }; })()
             await sock.sendMessage(from, {
-                pin: {
-                    key: { remoteJid: from, id: ci.stanzaId, fromMe: false, participant: ci.participant || undefined },
-                    type: 1,
-                    time: sec
-                }
+                pin: pinKey,
+                type: 1
             })
-            return reply(skInfo('✅', 'PIN', [
-                ['STATUS', '🟢 PINNED'],
-                ['DURATION', label]
-            ]))
+            return
         } catch (e) {
             console.log('.pin error:', e?.message || e)
-            return reply(skError('Pin failed.'))
+            return reply(skAdminError(cmd))
         }
     }
 
@@ -3214,7 +3757,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ['MEMBERS', String(meta.participants.length)],
                 ['ADMINS', String(meta.participants.filter(p => p.admin).length)]
             ]))
-        } catch (e) { return reply(skError('Failed to fetch group info.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'groupdesc') {
@@ -3222,7 +3765,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             const meta = await getGroupMeta(ctx, sock, from, true)
             return reply(skLine('📝', 'GROUP DESC', meta.desc || '(empty)'))
-        } catch (e) { return reply(skError('Failed to fetch description.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'invitelink' || cmd === 'link') {
@@ -3258,7 +3801,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 ['GROUP', gname],
                 ['LINK', noBold(link)]
             ]))
-        } catch (e) { return reply(skError('Failed. Am I admin?')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'setinvite' || cmd === 'set') {
@@ -3310,7 +3853,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             await sock.groupRevokeInvite(from)
             return reply(skSuccess('REVOKE LINK', 'NEW LINK GENERATED'))
-        } catch (e) { return reply(skError('Failed. Am I admin?')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'admins') {
@@ -3320,7 +3863,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const admins = meta.participants.filter(p => p.admin)
             const lines = admins.map(a => `• ${bestNumber(a)}`).join('\n')
             return reply(skLine('👑', `GROUP ADMINS (${admins.length})`, lines))
-        } catch (e) { return reply(skError('Failed to fetch admins.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'members') {
@@ -3329,7 +3872,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const meta = await getGroupMeta(ctx, sock, from, true)
             const lines = meta.participants.map(p => `• ${bestNumber(p)}`).join('\n')
             return reply(skLine('👥', `MEMBERS (${meta.participants.length})`, lines))
-        } catch (e) { return reply(skError('Failed to fetch members.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
 
@@ -3345,7 +3888,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                 lines.push(`• ${rn}  •  ${v.count || 0}`)
             }
             return reply(skLine('📊', 'TOP MEMBERS', lines.join('\n')))
-        } catch (e) { return reply(skError('Failed to compute.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'kickinactive') {
@@ -3369,7 +3912,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             if (!list || list.length === 0) return reply(skInfo('📋', 'REQUESTS', [['REQUESTS', 'none']]))
             const lines = list.map(r => `• ${cleanNumber(r.jid)}`).join('\n')
             return reply(skLine('📋', `JOIN REQUESTS (${list.length})`, lines))
-        } catch (e) { return reply(skError('Failed to fetch requests.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
     if (cmd === 'approveall') {
         if (!(await needManage())) return
@@ -3379,7 +3922,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const jids = list.map(r => r.jid)
             await sock.groupRequestParticipantsUpdate(from, jids, 'approve')
             return reply(skSuccess('APPROVE ALL', `${jids.length} request(s)`))
-        } catch (e) { return reply(skError('Failed to approve.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
     if (cmd === 'rejectall') {
         if (!(await needManage())) return
@@ -3389,7 +3932,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const jids = list.map(r => r.jid)
             await sock.groupRequestParticipantsUpdate(from, jids, 'reject')
             return reply(skSuccess('REJECT ALL', `${jids.length} request(s)`))
-        } catch (e) { return reply(skError('Failed to reject.')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'setname') {
@@ -3399,7 +3942,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             await sock.groupUpdateSubject(from, txt)
             return reply(skInfo('📝', 'NAME CHANGED', [['NEW NAME', txt]]))
-        } catch (e) { return reply(skError('Failed. Am I admin?')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
     if (cmd === 'setdesc') {
         if (!(await needManage())) return
@@ -3408,7 +3951,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             await sock.groupUpdateDescription(from, txt)
             return reply(skSuccess('DESC UPDATED', 'SAVED'))
-        } catch (e) { return reply(skError('Failed. Am I admin?')) }
+        } catch (e) { return reply(skAdminError(cmd)) }
     }
 
     if (cmd === 'events' || cmd === 'event') {
@@ -3632,9 +4175,9 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!src) return reply(skError('Reply to a text message to translate it.'))
         const targetLang = args[0] || (ctx.userLang && ctx.userLang[cleanJid(sender)]) || 'en'
         try {
-            const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(src)}&langpair=autodetect|${encodeURIComponent(targetLang)}`
+            const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(src)}`
             const data = await httpGetJson(url, 15000)
-            const result = data?.responseData?.translatedText
+            const result = Array.isArray(data) && Array.isArray(data[0]) ? data[0].map(function(x){return x[0]}).join('') : null
             if (!result) return reply(skError('Translation failed.'))
             return reply(skInfo('🌐', 'AUTO TRANSLATE', [
                 ['TO', targetLang.toUpperCase()],
@@ -4218,7 +4761,7 @@ async function executeConfirmed(sock, ctx, msg, content, from, isGroup, sender, 
             })
         } catch (e) {
             console.log('demoteall error:', e?.message || e)
-            try { await sock.sendMessage(from, { text: skError('Failed to demote.') }) } catch (e2) {}
+            try { await sock.sendMessage(from, { text: skAdminError(cmd) }) } catch (e2) {}
         }
         return
     }
@@ -4413,6 +4956,7 @@ function renderMenu(ctx, sock) {
         `» ${p}${mono('autoreact')}  •  ${mono('Auto react msgs')}\n` +
         `» ${p}${mono('statusreact')}  •  ${mono('React to statuses')}\n` +
         `» ${p}${mono('broadcast1')}  •  ${mono('DM one number')}\n` +
+        `» ${p}${mono('newgc')}  •  ${mono('Create a group')}\n` +
         `» ${p}${mono('restart')}  •  ${mono('Restart session')}\n` +
         `\n` +
         `🛠️ ${mono('UTILITY')}\n` +
@@ -4643,6 +5187,40 @@ function checkYtDlp() {
     execFile('yt-dlp', ['--version'], { timeout: 10000 }, (err) => {
         YTDLP_AVAILABLE = !err
         if (err) console.log('[TT] yt-dlp not found. Install with: pip install yt-dlp')
+    })
+}
+
+function isImageUrl(url) {
+    try {
+        const u = new URL(url)
+        return ['http:','https:'].includes(u.protocol)
+    } catch (e) { return false }
+}
+async function pexelsSearch(query, count) {
+    const urls = []
+    if (!PEXELS_API_KEY) return urls
+    try {
+        const perPage = Math.min(Math.max(count * 2, 5), 80)
+        const api = 'https://api.pexels.com/v1/search?query=' + encodeURIComponent(query) + '&per_page=' + perPage + '&orientation=all'
+        const hdrs = { 'Authorization': PEXELS_API_KEY, 'Accept': 'application/json' }
+        const res = await httpGetBuffer(api, 20000, 0, hdrs)
+        const data = JSON.parse(res.toString('utf-8'))
+        if (data && Array.isArray(data.photos)) {
+            for (const p of data.photos) {
+                const u = p && p.src && (p.src.large || p.src.large2x || p.src.original)
+                if (u && u.startsWith('http') && !urls.includes(u)) urls.push(u)
+                if (urls.length >= count) break
+            }
+        }
+    } catch (e) { console.log('pexelsSearch err:', e && e.message) }
+    return urls
+}
+
+function runGalleryDl(url, outDir) {
+    return new Promise(function(resolve, reject){
+        execFile('gallery-dl', ['-D', outDir, '--no-mtime', '-o', 'skip=false', url], { timeout: 120000, maxBuffer: 20*1024*1024 }, function(err){
+            if (err) reject(err); else resolve()
+        })
     })
 }
 

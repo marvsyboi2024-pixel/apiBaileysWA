@@ -155,7 +155,9 @@ const CMDS = {
         ['guitar', 'Guitar'],
         ['subway', 'Subway Surf'],
         ['arena', 'M.K. Arena'],
-        ['overdrive', 'M.K. Overdrive']
+        ['overdrive', 'M.K. Overdrive'],
+        ['battle', 'M.K. Battle Royale'],
+        ['battle', 'M.K. Battle Royale']
     ],
     dl: [
         ['tt', 'TikTok download'],

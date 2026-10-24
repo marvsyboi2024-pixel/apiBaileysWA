@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+ * Sourced By - HACKER JADOON 
+ * Telegram   Channel - https://t.me/abdullah_king_0094
+*  Telegram Vip Private channel  https://t.me/PRIVATEWEBSCRIPT3
+-->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Futuristic Image Generator</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #121212;
+            color: white;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 3rem;
+            color: #00F5A0;
+            margin-bottom: 20px;
+        }
+
+        .input-container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            width: 80%;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .input-container input {
+            width: 100%;
+            padding: 10px;
+            font-size: 1.2rem;
+            border: none;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            background-color: #222;
+            color: #00F5A0;
+        }
+
+        .input-container button {
+            background: #00F5A0;
+            color: #121212;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .input-container button:hover {
+            background: #009d6e;
+        }
+
+        .loading {
+            font-size: 1.5rem;
+            color: #00F5A0;
+            margin-bottom: 20px;
+        }
+
+        .gallery {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+            align-items: center;
+        }
+
+        .image-card {
+            background-color: #1e1e1e;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 30px rgba(0, 255, 160, 0.2);
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .image-card img {
+            width: 100%;
+            border-radius: 10px;
+        }
+
+        .image-card p {
+            color: #aaa;
+            margin-top: 10px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <h1>Futuristic Image Generator</h1>
+
+    <div class="input-container">
+        <input type="text" id="prompt" placeholder="Enter a prompt for the image...">
+        <button onclick="generateImage()">Generate Image</button>
+    </div>
+
+    <div class="loading" id="loading" style="display: none;">Generating image... Please wait.</div>
+
+    <div class="gallery" id="gallery"></div>
+
+    <script>
+        async function generateImage() {
+            const prompt = document.getElementById('prompt').value.trim();
+            const loadingText = document.getElementById('loading');
+            const gallery = document.getElementById('gallery');
+
+            if (prompt === '') {
+                alert('Please enter a prompt!');
+                return;
+            }
+
+            loadingText.style.display = 'block';
+
+            try {
+                const encodedPrompt = encodeURIComponent(prompt);
+                const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&model=flux&seed=90&nologo=true&enhance=true`;
+
+                // Create card
+                const card = document.createElement('div');
+                card.className = 'image-card';
+
+                const img = document.createElement('img');
+                img.src = imageUrl;
+
+                const caption = document.createElement('p');
+                caption.innerText = `Prompt: "${prompt}"`;
+
+                card.appendChild(img);
+                card.appendChild(caption);
+                gallery.prepend(card); // Adds new image at the top
+            } catch (error) {
+                console.error('Error generating image:', error);
+                alert('Error generating image: ' + error.message);
+            } finally {
+                loadingText.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
