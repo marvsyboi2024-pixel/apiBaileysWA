@@ -1,3 +1,4 @@
+const dns = require('dns'); dns.setDefaultResultOrder('ipv4first');
 
 /*
  * SUKUNA REALM — WhatsApp bot (Baileys) + Telegram control panel
