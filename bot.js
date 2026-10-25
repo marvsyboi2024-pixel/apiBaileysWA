@@ -1,5 +1,5 @@
-var dns = require('dns')
-var https = require('https')
+const dns = require('dns')
+const https = require('https')
 
 function resolveViaDoH(hostname) {
     return new Promise((resolve, reject) => {
@@ -30,11 +30,15 @@ const dohCache = new Map()
 const originalLookup = dns.lookup.bind(dns)
 dns.lookup = (hostname, options, callback) => {
     if (typeof options === 'function') { callback = options; options = {} }
+    const wantsAll = options && options.all === true
     originalLookup(hostname, options, (err, address, family) => {
         if (!err) return callback(null, address, family)
-        if (dohCache.has(hostname)) return callback(null, dohCache.get(hostname), 4)
+        const useIp = (ip) => wantsAll
+            ? callback(null, [{ address: ip, family: 4 }])
+            : callback(null, ip, 4)
+        if (dohCache.has(hostname)) return useIp(dohCache.get(hostname))
         resolveViaDoH(hostname)
-            .then(ip => { dohCache.set(hostname, ip); callback(null, ip, 4) })
+            .then(ip => { dohCache.set(hostname, ip); useIp(ip) })
             .catch(() => callback(err))
     })
 }
