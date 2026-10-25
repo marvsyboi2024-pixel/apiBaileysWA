@@ -7181,7 +7181,7 @@ function initTelegram() {
         TelegramBot = tg.Bot || tg.TelegramBot || tg.default || tg
     }
     catch (e) { console.log('[TELEGRAM] node-telegram-bot-api not found. Run: npm install node-telegram-bot-api'); return }
-    try { tgBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true, baseApiUrl: 'https://telegram-proxy.marvyboi2024.workers.dev/bot', request: { agentOptions: { family: 4 } } }) }
+    try { tgBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true, request: { agentOptions: { family: 4 } } }) }
     catch (e) { console.log('[TELEGRAM] Failed to start bot:', e?.message || e); return }
 
     let tgPollErrorCount = 0
