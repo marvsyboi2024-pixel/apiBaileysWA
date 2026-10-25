@@ -1,5 +1,5 @@
-const dns = require('dns')
-const https = require('https')
+var dns = require('dns')
+var https = require('https')
 
 function resolveViaDoH(hostname) {
     return new Promise((resolve, reject) => {
@@ -66,7 +66,7 @@ const fs = require('fs')
 const path = require('path')
 const os = require('os')
 const http = require('http')
-const https = require('https')
+var https = require('https')
 const crypto = require('crypto')
 const { execFile } = require('child_process')
 const P = require('pino')
