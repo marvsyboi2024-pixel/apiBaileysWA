@@ -1,4 +1,4 @@
-const dns = require('node:dns/promise'); dns.setServers(['1.1.1.1', '8.8.8.8']);
+const dns = require('dns'); dns.setServers(['1.1.1.1', '8.8.8.8']); dns.setDefaultResultOrder('ipv4first');
 
 /*
  * SUKUNA REALM — WhatsApp bot (Baileys) + Telegram control panel
