@@ -1,4 +1,44 @@
-const dns = require('dns'); dns.setServers(['1.1.1.1', '8.8.8.8']); dns.setDefaultResultOrder('ipv4first');
+const dns = require('dns')
+const https = require('https')
+
+function resolveViaDoH(hostname) {
+    return new Promise((resolve, reject) => {
+        const req = https.request({
+            host: '1.1.1.1',
+            servername: 'cloudflare-dns.com',
+            path: `/dns-query?name=${encodeURIComponent(hostname)}&type=A`,
+            headers: { accept: 'application/dns-json' },
+            timeout: 5000
+        }, (res) => {
+            let body = ''
+            res.on('data', c => body += c)
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(body)
+                    const a = (json.Answer || []).find(r => r.type === 1)
+                    a ? resolve(a.data) : reject(new Error('DoH: no A record for ' + hostname))
+                } catch (e) { reject(e) }
+            })
+        })
+        req.on('error', reject)
+        req.on('timeout', () => req.destroy(new Error('DoH timeout')))
+        req.end()
+    })
+}
+
+const dohCache = new Map()
+const originalLookup = dns.lookup.bind(dns)
+dns.lookup = (hostname, options, callback) => {
+    if (typeof options === 'function') { callback = options; options = {} }
+    originalLookup(hostname, options, (err, address, family) => {
+        if (!err) return callback(null, address, family)
+        if (dohCache.has(hostname)) return callback(null, dohCache.get(hostname), 4)
+        resolveViaDoH(hostname)
+            .then(ip => { dohCache.set(hostname, ip); callback(null, ip, 4) })
+            .catch(() => callback(err))
+    })
+}
+dns.setDefaultResultOrder('ipv4first')
 
 /*
  * SUKUNA REALM — WhatsApp bot (Baileys) + Telegram control panel
