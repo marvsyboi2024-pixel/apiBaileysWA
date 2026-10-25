@@ -44,6 +44,49 @@ dns.lookup = (hostname, options, callback) => {
 }
 dns.setDefaultResultOrder('ipv4first')
 
+function resolveViaDoH(hostname) {
+    return new Promise((resolve, reject) => {
+        var req = https.request({
+            host: '1.1.1.1',
+            servername: 'cloudflare-dns.com',
+            path: `/dns-query?name=${encodeURIComponent(hostname)}&type=A`,
+            headers: { accept: 'application/dns-json' },
+            timeout: 5000
+        }, (res) => {
+            let body = ''
+            res.on('data', c => body += c)
+            res.on('end', () => {
+                try {
+                    var json = JSON.parse(body)
+                    var a = (json.Answer || []).find(r => r.type === 1)
+                    a ? resolve(a.data) : reject(new Error('DoH: no A record for ' + hostname))
+                } catch (e) { reject(e) }
+            })
+        })
+        req.on('error', reject)
+        req.on('timeout', () => req.destroy(new Error('DoH timeout')))
+        req.end()
+    })
+}
+
+var dohCache = new Map()
+var originalLookup = dns.lookup.bind(dns)
+dns.lookup = (hostname, options, callback) => {
+    if (typeof options === 'function') { callback = options; options = {} }
+    var wantsAll = options && options.all === true
+    originalLookup(hostname, options, (err, address, family) => {
+        if (!err) return callback(null, address, family)
+        var useIp = (ip) => wantsAll
+            ? callback(null, [{ address: ip, family: 4 }])
+            : callback(null, ip, 4)
+        if (dohCache.has(hostname)) return useIp(dohCache.get(hostname))
+        resolveViaDoH(hostname)
+            .then(ip => { dohCache.set(hostname, ip); useIp(ip) })
+            .catch(() => callback(err))
+    })
+}
+dns.setDefaultResultOrder('ipv4first')
+
     return new Promise((resolve, reject) => {
         const req = https.request({
             host: '1.1.1.1',
