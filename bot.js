@@ -88,6 +88,7 @@ const PORT = process.env.PORT || 3000
 const TIMEZONE = process.env.BOT_TIMEZONE || undefined
 const SESSION_DIR = path.join(os.tmpdir(), 'sessions')
 const LOGO_PATH = path.join('.', 'logo.png')
+const MENU2_LOGO_PATH = path.join('.', 'logo2.png')
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || (function () {
     const p = require('crypto').randomBytes(6).toString('hex')
     console.log('[DASHBOARD] DASHBOARD_PASSWORD not set. Temporary password for this run: ' + p + '  (put DASHBOARD_PASSWORD=yourpass in .env to keep one)')
@@ -272,6 +273,29 @@ async function loadLogoFromMongo() {
             return true
         }
     } catch (e) { console.log('[MONGO] Logo load error:', e.message) }
+    return false
+}
+
+async function saveMenu2LogoToMongo(buffer) {
+    if (!logoCollection) return
+    try {
+        await logoCollection.updateOne(
+            { _id: 'menu2logo' },
+            { $set: { data: buffer.toString('base64'), updatedAt: new Date() } },
+            { upsert: true }
+        )
+    } catch (e) { console.log('[MONGO] Menu2 logo save error:', e.message) }
+}
+
+async function loadMenu2LogoFromMongo() {
+    if (!logoCollection) return false
+    try {
+        const doc = await logoCollection.findOne({ _id: 'menu2logo' })
+        if (doc && doc.data) {
+            fs.writeFileSync(MENU2_LOGO_PATH, Buffer.from(doc.data, 'base64'))
+            return true
+        }
+    } catch (e) { console.log('[MONGO] Menu2 logo load error:', e.message) }
     return false
 }
 
@@ -6009,7 +6033,7 @@ function sniffImageType(buf) {
 const server = http.createServer(async (req, res) => {
     const url = req.url.split('?')[0]
 
-    if (url === '/' || url === '/dashboard' || url === '/logo.png' || url === '/upload-logo' || url === '/api/sessions') {
+    if (url === '/' || url === '/dashboard' || url === '/logo.png' || url === '/logo2.png' || url === '/upload-logo' || url === '/upload-logo2' || url === '/api/sessions') {
         const auth = req.headers.authorization
         if (!auth || !checkAuth(auth)) {
             res.writeHead(401, { 'WWW-Authenticate': `Basic realm="${BOT_NAME.replace(/"/g, '')}"` })
@@ -6071,6 +6095,52 @@ const server = http.createServer(async (req, res) => {
         if (url === '/logo.png') {
             if (fs.existsSync(LOGO_PATH)) {
                 const buf = fs.readFileSync(LOGO_PATH)
+                res.writeHead(200, { 'Content-Type': sniffImageType(buf) || 'image/png' })
+                res.end(buf)
+            } else { res.writeHead(404); res.end('No logo') }
+            return
+        }
+
+        if (url === '/upload-logo2' && req.method === 'POST') {
+            const chunks = []
+            let size = 0
+            let aborted = false
+            req.on('data', c => {
+                size += c.length
+                if (size > 5 * 1024 * 1024) { aborted = true; res.writeHead(413); res.end('Too large'); req.destroy(); return }
+                chunks.push(c)
+            })
+            req.on('end', async () => {
+                if (aborted) return
+                try {
+                    const buffer = Buffer.concat(chunks)
+                    const ct = req.headers['content-type'] || ''
+                    const boundary = ct.split('boundary=')[1]
+                    if (boundary) {
+                        const parts = buffer.toString('binary').split('--' + boundary)
+                        for (const part of parts) {
+                            if (part.includes('filename=') && /Content-Type: image/i.test(part)) {
+                                const headerEnd = part.indexOf('\r\n\r\n')
+                                let imgData = part.slice(headerEnd + 4).replace(/\r\n$/, '')
+                                const imgBuffer = Buffer.from(imgData, 'binary')
+                                if (sniffImageType(imgBuffer)) {
+                                    fs.writeFileSync(MENU2_LOGO_PATH, imgBuffer)
+                                    await saveMenu2LogoToMongo(imgBuffer)
+                                }
+                                break
+                            }
+                        }
+                    }
+                } catch (e) { console.log('Menu2 logo upload error:', e?.message || e) }
+                res.writeHead(302, { Location: '/dashboard' })
+                res.end()
+            })
+            return
+        }
+
+        if (url === '/logo2.png') {
+            if (fs.existsSync(MENU2_LOGO_PATH)) {
+                const buf = fs.readFileSync(MENU2_LOGO_PATH)
                 res.writeHead(200, { 'Content-Type': sniffImageType(buf) || 'image/png' })
                 res.end(buf)
             } else { res.writeHead(404); res.end('No logo') }
@@ -6770,6 +6840,14 @@ ${logoHtml}
 </div>
 
 <div class="card">
+<h3>UPLOAD MENU2 LOGO</h3>
+<form method="POST" action="/upload-logo2" enctype="multipart/form-data">
+<input type="file" name="logo" accept="image/*" required>
+<button type="submit">Upload Menu2 Logo</button>
+</form>
+</div>
+
+<div class="card">
 <h3>CONNECT WHATSAPP</h3>
 <form method="POST" action="/dashboard">
 <input type="hidden" name="action" value="connect">
@@ -7313,6 +7391,7 @@ function initTelegram() {
 async function restoreSessions() {
     const connected = await initMongo()
     await loadLogoFromMongo()
+    await loadMenu2LogoFromMongo()
 
     let ids = []
     if (connected) {
@@ -7912,9 +7991,27 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     // ── BASIC ──
     if (cmd === 'ping') {
         const latency = Math.max(1, Date.now() - ((msg.messageTimestamp || 0) * 1000))
-        return reply(withFooter(`${SK_HEADER}\n\n✅ ${mono('PONG')}\n\n» ${mono('STATUS')}  •  🟢 ${mono('ONLINE')}\n» ${mono('LATENCY')}  •  ${mono(String(latency) + ' ms')}`))
+        const pingText = withFooter(`${SK_HEADER}\n\n✅ ${mono('PONG')}\n\n» ${mono('STATUS')}  •  🟢 ${mono('ONLINE')}\n» ${mono('LATENCY')}  •  ${mono(String(latency) + ' ms')}`)
+        if (fs.existsSync(LOGO_PATH)) {
+            try {
+                const buffer = fs.readFileSync(LOGO_PATH)
+                await sock.sendMessage(from, { image: buffer, caption: pingText }, { quoted: msg })
+                return
+            } catch (e) { console.log('Ping image failed:', e?.message || e) }
+        }
+        return reply(pingText)
     }
-    if (cmd === 'alive') return reply(skSuccess('ALIVE', 'READY'))
+    if (cmd === 'alive') {
+        const aliveText = skSuccess('ALIVE', 'READY')
+        if (fs.existsSync(LOGO_PATH)) {
+            try {
+                const buffer = fs.readFileSync(LOGO_PATH)
+                await sock.sendMessage(from, { image: buffer, caption: aliveText }, { quoted: msg })
+                return
+            } catch (e) { console.log('Alive image failed:', e?.message || e) }
+        }
+        return reply(aliveText)
+    }
     if (cmd === 'time') {
         return reply(skInfo('⏰', 'TIME', [
             ['DATE', now.toLocaleDateString('en-US', { timeZone: TIMEZONE })],
@@ -8836,6 +8933,10 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
 
     if (cmd === 'menu2') {
         try {
+            if (fs.existsSync(MENU2_LOGO_PATH)) {
+                try { await sock.sendMessage(from, { image: fs.readFileSync(MENU2_LOGO_PATH) }, { quoted: msg }) }
+                catch (e) { console.log('Menu2 image failed:', e?.message || e) }
+            }
             await MENU2.sendMain(sock, from)
         } catch (e) {
             console.log('.menu2 err:', e?.message || e)
