@@ -103,7 +103,6 @@ const CMDS = {
         ['antitag', 'Block tags'],
         ['antiforward', 'Block forwards'],
         ['antibadword', 'Block bad words'],
-        ['antibilling', 'Anti-billing'],
         ['slowmode', 'Slow chat'],
         ['votekick', 'Vote to kick'],
         ['debtor', 'I owe someone'],
