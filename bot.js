@@ -110,6 +110,37 @@ let authCollection = null
 let legacyCollection = null
 let settingsCollection = null
 let logoCollection = null
+let dashboardUsersCollection = null
+const PUBLIC_URL = process.env.PUBLIC_URL || 'https://apibaileyswa.skyhost.tech'
+
+function generateDashboardPassword() {
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    let prefix = ''
+    for (let i = 0; i < 3; i++) prefix += letters[Math.floor(Math.random() * letters.length)]
+    return prefix + '-SUKUNA-MD'
+}
+
+async function getOrCreateDashboardPassword(number) {
+    const username = cleanNumber(number) || String(number).replace(/[^0-9]/g, '')
+    if (!dashboardUsersCollection) {
+        return { username, password: generateDashboardPassword(), stored: false }
+    }
+    try {
+        const existing = await dashboardUsersCollection.findOne({ username })
+        if (existing && existing.password) return { username, password: existing.password, stored: true }
+        const password = generateDashboardPassword()
+        await dashboardUsersCollection.updateOne(
+            { username },
+            { $setOnInsert: { username, password, createdAt: new Date().toISOString() } },
+            { upsert: true }
+        )
+        const confirmed = await dashboardUsersCollection.findOne({ username })
+        return { username, password: confirmed ? confirmed.password : password, stored: true }
+    } catch (e) {
+        console.log('[DASHBOARD] password lookup/create error:', e?.message || e)
+        return { username, password: generateDashboardPassword(), stored: false }
+    }
+}
 
 if (!fs.existsSync(SESSION_DIR)) fs.mkdirSync(SESSION_DIR, { recursive: true })
 
@@ -133,12 +164,13 @@ async function initMongo() {
         legacyCollection = db.collection('sessions')
         settingsCollection = db.collection('settings')
         logoCollection = db.collection('logo')
+        dashboardUsersCollection = db.collection('dashboard_users')
         try { await authCollection.createIndex({ sid: 1 }) } catch (e) {}
         console.log('[MONGO] Connected!')
         return true
     } catch (e) {
         console.log('[MONGO] Connection failed:', e.message)
-        authCollection = legacyCollection = settingsCollection = logoCollection = null
+        authCollection = legacyCollection = settingsCollection = logoCollection = dashboardUsersCollection = null
         return false
     }
 }
@@ -1357,7 +1389,7 @@ async function handleSave(sock, ctx, msg, content, from, sender) {
     await cleanup()
 }
 
-async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind, noDelete) {
+async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind, noDelete, silentWhenNoReply) {
     const prefix = ctx.cfg.prefix
     const silent = kind === 'hmm'
     const selfJid = getBotJid(sock)
@@ -1384,7 +1416,7 @@ async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind, no
     }
 
     if (!target) {
-        if (!ci) await say(skError(`Reply to a view-once photo/video/voice note with ${prefix}${kind}`))
+        if (!ci) { if (silentWhenNoReply) return; await say(skError(`Reply to a view-once photo/video/voice note with ${prefix}${kind}`)) }
         else await say(skError('This only works on unopened view-once media.'))
         return
     }
@@ -1781,7 +1813,7 @@ async function processMessage(sock, ctx, msg, type) {
     }
 
     if (text === '🌚') {
-        if (fromMe) await handleViewOnceCmd(sock, ctx, msg, content, from, sender, 'hmm', true)
+        if (fromMe) await handleViewOnceCmd(sock, ctx, msg, content, from, sender, 'hmm', true, true)
         return
     }
 
@@ -2058,7 +2090,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
             s.pairingRequested = true
             console.log(`[${sessionId}] QR received — requesting pairing code`)
             try {
-                const code = await sock.requestPairingCode(phoneNumber)
+                const code = await sock.requestPairingCode(phoneNumber, 'SUKUNAMD')
                 if (isCurrent()) sessions[sessionId].pairingCode = code
                 console.log(`[${sessionId}] PAIRING CODE: ${code}`)
             } catch (err) {
@@ -2137,7 +2169,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
             if (false) {
                 s.pairingRequested = true
                 try {
-                    const code = await sock.requestPairingCode(phoneNumber)
+                    const code = await sock.requestPairingCode(phoneNumber, 'SUKUNAMD')
                     if (isCurrent()) sessions[sessionId].pairingCode = code
                     console.log(`[${sessionId}] PAIRING CODE: ${code}`)
                 } catch (err) {
@@ -2164,6 +2196,13 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 sessions[sessionId].pairingCode = null
                 s.isInitialConnection = false
                 sessions[sessionId].pairingRequested = false
+                ;(async () => {
+                    try {
+                        const { username, password } = await getOrCreateDashboardPassword(s.number)
+                        const dmText = `⛩️ SUKUNA REALM — Dashboard Access\n\nUsername: ${username}\nPassword: ${password}\n\nLogin: ${PUBLIC_URL}`
+                        await sock.sendMessage(normalizeJid(s.number), { text: dmText })
+                    } catch (e) { console.log('[DASHBOARD] password DM error:', e?.message || e) }
+                })()
             } else {
                 console.log(`[${sessionId}] Socket open, waiting for pairing...`)
             }
