@@ -267,10 +267,7 @@ main:has(#page-home.active) footer{display:block}
 html,body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 input,textarea{-webkit-user-select:text;user-select:text}
 img{-webkit-user-drag:none;user-drag:none}
-#gate{display:none;position:fixed;inset:0;z-index:300;place-items:center;background:rgba(0,0,0,.72)}
-.logo-row input[type=file]{min-width:0;flex:1}
 </style>
-<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
 
@@ -282,8 +279,20 @@ img{-webkit-user-drag:none;user-drag:none}
         <div class="auth-word">SUKUNA REALM</div>
         <div class="auth-sub">Control panel</div>
 
-        <div class="panel" id="verifyPanel"><div class="verify-title">Verify you are human</div><div class="verify-sub">One quick check to continue.</div><div class="cf-turnstile" data-sitekey="0x4AAAAAAFk2JosrNv2aycbw" data-callback="onTs" data-theme="auto" style="display:flex;justify-content:center;margin-top:14px"></div><div id="vmsg" class="verify-sub" style="margin-top:10px"></div></div>
-        
+        <div class="panel" id="verifyPanel">
+            <div class="spinner"></div>
+            <div class="verify-title">Verifying you are human</div>
+            <div class="verify-sub">This may take a few seconds.</div>
+        </div>
+
+        <div class="panel" id="loginPanel" style="display:none">
+            <label for="loginUser">Username</label>
+            <input type="text" id="loginUser" placeholder="WhatsApp number">
+            <label for="loginPass">Password</label>
+            <input type="password" id="loginPass" placeholder="ABC-SUKUNA-MD">
+            <button class="btn primary" id="loginBtn">Enter the realm</button>
+        </div>
+        <div class="auth-foot">PREVIEW BUILD · auth is mocked here</div>
     </div>
 </div>
 
@@ -319,7 +328,7 @@ img{-webkit-user-drag:none;user-drag:none}
 <!-- HOME -->
 <div class="page active" id="page-home">
 <div class="hhead"><div><div class="hgreet" id="hGreet">Welcome</div><div class="hdate" id="hDate"></div></div><div class="hclock" id="hClock"></div></div>
-<div class="hcard banner"><div class="appicon"><div class="crop"><img id="bLogo" src="/img/menu" alt=""></div></div><div class="btxt"><h1>SUKUNA REALM</h1><small>Control Panel</small><div><span class="chip off" id="stChip">● Offline</span></div><div class="bq" id="hQuote"></div></div></div>
+<div class="hcard banner"><div class="appicon"><div class="crop"><img id="bLogo" src="/logo.png" alt=""></div></div><div class="btxt"><h1>SUKUNA REALM</h1><small>Control Panel</small><div><span class="chip off" id="stChip">● Offline</span></div><div class="bq" id="hQuote"></div></div></div>
 <div class="hstats"><div class="hcard hstat"><b id="hGroups">—</b><span>Groups</span></div><div class="hcard hstat"><b id="hUptime">—</b><span>Uptime</span></div><div class="hcard hstat"><b id="hMsgs">—</b><span>Msgs today</span></div></div>
 <div class="hcard hpeople"><div class="hl">People connected</div><div class="prow"><b id="pNum">0</b><div class="avs" id="pAvs"></div></div><div class="pbar" id="pBar"></div><div class="plegend" id="pLeg"></div></div>
 <div class="hcard hchart"><div class="hl">Messages · 7 days <i>sample</i></div><svg viewBox="0 0 200 50" preserveAspectRatio="none"><polyline points="0,38 30,30 60,34 90,18 120,24 150,10 200,16"/></svg></div>
@@ -365,7 +374,7 @@ img{-webkit-user-drag:none;user-drag:none}
     <div class="subhead" style="margin-top:22px">Uploads</div>
     <div class="panel">
         <div class="logo-row" style="border-top:none;padding-top:0;margin-top:0">
-            <label style="margin:0;flex:0 0 auto">Menu logo</label>
+            <label style="margin:0;flex:0 0 auto">Main logo</label>
             <input type="file" id="logoFile" accept="image/*">
             <button class="btn btn-sm" id="logoBtn">Upload</button>
         </div>
@@ -374,8 +383,6 @@ img{-webkit-user-drag:none;user-drag:none}
             <input type="file" id="logo2File" accept="image/*">
             <button class="btn btn-sm" id="logo2Btn">Upload</button>
         </div>
-        <div class="logo-row"><label style="margin:0;flex:0 0 auto">Ping image</label><input type="file" id="pingFile" accept="image/*"><button class="btn btn-sm" id="pingBtn">Upload</button></div>
-        <div class="logo-row"><label style="margin:0;flex:0 0 auto">Alive image</label><input type="file" id="aliveFile" accept="image/*"><button class="btn btn-sm" id="aliveBtn">Upload</button></div>
         <label style="margin-top:14px">Welcome message</label>
         <input type="text" id="welcomeMsg" placeholder="Welcome @user to the realm.">
         <div class="logo-row" style="border-top:none;padding-top:0;margin-top:0">
@@ -515,7 +522,7 @@ img{-webkit-user-drag:none;user-drag:none}
     </div>
 </div>
 
-<footer>SUKUNA REALM</footer>
+<footer>SUKUNA REALM · running on SkyHost</footer>
 </main>
 </div>
 
@@ -526,44 +533,24 @@ img{-webkit-user-drag:none;user-drag:none}
 function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;
     document.getElementById('toastLayer').appendChild(t);setTimeout(()=>t.remove(),2800)}
 
-/* ===== verification, login, and routing of calls to the bot ===== */
-let LOGGED='',PREVIEW=false,afterLogin=null;const GATED=['settings','developer','logs'];
-(function(){const _f=window.fetch.bind(window);
-window.fetch=function(u,o){o=o||{};
- if(u==='/api/sessions'){let n='';try{n=(document.getElementById('loginUser').value||LOGGED||localStorage.getItem('sr-num')||'').replace(/[^0-9]/g,'')}catch(e){}
-  return _f('/api/public'+(n?'?number='+n:''),{credentials:'same-origin'}).then(r=>{if(!r.ok)return r;return r.json().then(d=>{const L=[];
-   for(let i=0;i<d.active;i++)L.push({status:'active'});for(let i=0;i<d.connecting;i++)L.push({status:'connecting'});for(let i=0;i<d.offline;i++)L.push({status:'logged out'});
-   if(d.mine){const k=L.findIndex(x=>x.status===d.mine.status);if(k>=0)L.splice(k,1);L.unshift(d.mine)}
-   return new Response(JSON.stringify({sessions:L,uptime:d.uptime}),{status:200,headers:{'Content-Type':'application/json'}})})})}
- if(u==='/dashboard'&&o.method==='POST'){const p=new URLSearchParams(o.body||''),a=p.get('action'),nn=p.get('number');
-  if(a==='connect'){try{localStorage.setItem('sr-num',nn)}catch(e){}}
-  return _f(a==='connect'?'/api/connect':'/api/act',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:a,number:nn}),credentials:'same-origin'}).then(r=>{if(!r.ok){r.clone().json().then(d=>toast(d.error||'Request failed.')).catch(()=>{})}return r})}
- return _f(u,o)}})();
-function enterApp(){document.getElementById('auth').style.display='none';document.getElementById('app').style.display='block'}
-window.onTs=async function(token){const m=document.getElementById('vmsg');m.textContent='Checking…';
- try{const r=await fetch('/api/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token}),credentials:'same-origin'});const d=await r.json().catch(()=>({}));
-  if(r.ok){enterApp()}else{m.textContent=d.error||'Verification failed.';try{turnstile.reset()}catch(e){}}}catch(e){m.textContent='Could not reach the server.'}};
-window.addEventListener('DOMContentLoaded',async()=>{
- try{const r=await fetch('/api/public',{credentials:'same-origin'});if(r.ok){enterApp()}else if(r.status!==401){PREVIEW=true;enterApp()}}catch(e){PREVIEW=true;enterApp()}
- try{const r=await fetch('/api/me',{credentials:'same-origin'});if(r.ok){const d=await r.json();LOGGED=d.number;document.getElementById('loggedInAs').textContent='logged in as +'+d.number}}catch(e){}
+/* ===== auth flow (mocked) ===== */
+window.addEventListener('DOMContentLoaded',()=>{
+    setTimeout(()=>{document.getElementById('verifyPanel').style.display='none';
+        document.getElementById('loginPanel').style.display='block'},1300);
 });
-function openGate(name){afterLogin=name;document.getElementById('gate').style.display='grid'}
-document.getElementById('gateCancel').addEventListener('click',()=>{document.getElementById('gate').style.display='none'});
-document.getElementById('loginBtn').addEventListener('click',async()=>{
- const u=document.getElementById('loginUser').value.replace(/[^0-9]/g,''),p=document.getElementById('loginPass').value.trim();
- const done=()=>{document.getElementById('gate').style.display='none';document.getElementById('loggedInAs').textContent='logged in as +'+LOGGED;toast('Welcome back.');if(afterLogin)gotoPage(afterLogin)};
- if(PREVIEW){LOGGED=u||'preview';done();return}
- try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({number:u,password:p}),credentials:'same-origin'});const d=await r.json().catch(()=>({}));
-  if(!r.ok){toast(d.error||'Login failed.');return}LOGGED=d.number;done()}catch(e){toast('Could not reach the server.')}
+document.getElementById('loginBtn').addEventListener('click',()=>{
+    const u=document.getElementById('loginUser').value.trim();
+    document.getElementById('auth').style.display='none';
+    document.getElementById('app').style.display='block';
+    document.getElementById('loggedInAs').textContent=u?('logged in as '+u):'guest session';
+    toast('Welcome back.');
 });
-document.getElementById('loggedInAs').addEventListener('click',async()=>{if(!LOGGED||!confirm('Log out?'))return;try{await fetch('/api/logout',{method:'POST',credentials:'same-origin'})}catch(e){}LOGGED='';document.getElementById('loggedInAs').textContent='';gotoPage('home')});
 
 /* ===== drawer / page switching ===== */
 const drawer=document.getElementById('drawer'), overlay=document.getElementById('drawerOverlay');
 document.getElementById('menuBtn').addEventListener('click',()=>{drawer.classList.add('open');overlay.classList.add('open')});
 overlay.addEventListener('click',()=>{drawer.classList.remove('open');overlay.classList.remove('open')});
 function gotoPage(name){
-    if(GATED.includes(name)&&!LOGGED){openGate(name);return}
     document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
     document.querySelectorAll('.drawer-item').forEach(i=>i.classList.remove('active'));
     document.getElementById('page-'+name).classList.add('active');
@@ -795,7 +782,7 @@ const live=!!list;if(!list)list=MOCK_SESSIONS;
 const me=($('loginUser').value||'').replace(/[^0-9]/g,'');
 let s=list[0];if(me.length>5){const m=list.find(x=>String(x.number||'').replace(/[^0-9]/g,'').endsWith(me));if(m)s=m}
 mine=s?{s:s,live:live}:null;const el=$('sessionList');
-if(!s||!s.number){el.innerHTML='<div class="hcard" style="padding:16px;color:var(--ink-dim)">Connect your number, or log in, to see your session here.</div>';return}
+if(!s){el.innerHTML='<div class="hcard" style="padding:16px;color:var(--ink-dim)">No session yet. Open Connect to link your number.</div>';return}
 const d=String(s.number||'').replace(/[^0-9]/g,''),num='+'+d.slice(0,3)+' '+d.slice(3,5)+'•• ••• '+d.slice(-4);
 const k=s.status==='active'?'on':/connect/.test(s.status)?'mid':'off',lab=k==='on'?'Connected':k==='mid'?'Connecting':'Disconnected';
 const ca=s.connectedAt?new Date(s.connectedAt).getTime():null,ms=ca?Date.now()-ca:0,up=ca?Math.floor(ms/36e5)+'h '+Math.floor(ms%36e5/6e4)+'m':'—';
@@ -818,27 +805,6 @@ if(dm.style.display==='block'&&!$('devFeed')){dm.insertAdjacentHTML('beforeend',
 <script>
 /* no copy / no long-press menu on text (inputs stay editable) */
 document.addEventListener("contextmenu",function(e){if(!/^(INPUT|TEXTAREA)$/.test(e.target.tagName))e.preventDefault()});
-
-/* ===== settings reflect in WhatsApp + separate image uploads ===== */
-(function(){const KEYS={typing:'typing',delay:'delay',read:'read',online:'online',autoreact:'autoreact',statusview:'statusview',sr:'statusreact'};
-async function sapi(body){const r=await fetch('/api/settings',{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,credentials:'same-origin'});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Failed');return d}
-async function loadSettings(){if(PREVIEW)return;try{const c=(await sapi()).cfg;
- document.querySelectorAll('#autoToggles input').forEach((cb,i)=>{const k=KEYS[AUTO[i][0]];cb.checked=!!c[k];cb.onchange=async()=>{try{await sapi({key:k,value:cb.checked});toast(AUTO[i][1]+(cb.checked?' is on.':' is off.'))}catch(e){cb.checked=!cb.checked;toast(e.message)}}});
- document.getElementById('prefixInput').value=c.prefix;document.getElementById('modeSelect').value=c.mode;
- document.getElementById('settingsSessionPick').innerHTML='<option>+'+LOGGED+'</option>'}catch(e){toast(e.message)}}
-document.getElementById('prefixInput').addEventListener('change',async e=>{if(PREVIEW)return;try{await sapi({key:'prefix',value:e.target.value});toast('Prefix saved.')}catch(x){toast(x.message)}});
-document.getElementById('modeSelect').addEventListener('change',async e=>{if(PREVIEW)return;try{await sapi({key:'mode',value:e.target.value});toast('Mode saved.')}catch(x){toast(x.message)}});
-const _g=window.gotoPage;window.gotoPage=function(n){_g(n);if(n==='settings'&&LOGGED)loadSettings()};
-function bindUp(bid,fid,kind){const old=document.getElementById(bid),b=old.cloneNode(true);old.replaceWith(b);
- b.addEventListener('click',async()=>{const f=document.getElementById(fid).files[0];if(!f){toast('Choose an image first.');return}
-  if(PREVIEW){toast('Preview mode: open this from your bot.');return}if(f.size>2500000){toast('Image must be under 2.5 MB.');return}
-  const data=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(String(fr.result).split(',')[1]);fr.readAsDataURL(f)});
-  try{const rr=await fetch('/api/image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:kind,data:data}),credentials:'same-origin'});const d=await rr.json().catch(()=>({}));if(!rr.ok)throw new Error(d.error||'Upload failed');toast('Image saved.')}catch(e){toast(e.message)}})}
-bindUp('logoBtn','logoFile','menu');bindUp('logo2Btn','logo2File','menu2');bindUp('pingBtn','pingFile','ping');bindUp('aliveBtn','aliveFile','alive');
-})();
 </script>
-<div id="gate"><div class="panel" style="width:min(340px,90vw)"><div class="verify-title" style="text-align:center">Log in to continue</div><div class="verify-sub" style="text-align:center;margin-bottom:8px">Use the number you connected and the password sent to your WhatsApp.</div>
-<label for="loginUser">Number</label><input type="tel" id="loginUser" placeholder="Number with country code"><label for="loginPass">Password</label><input type="password" id="loginPass" placeholder="Password from WhatsApp">
-<button class="btn primary" id="loginBtn" style="margin-top:6px">Log in</button><button class="btn" id="gateCancel" style="margin-top:8px">Cancel</button></div></div>
 </body>
 </html>
