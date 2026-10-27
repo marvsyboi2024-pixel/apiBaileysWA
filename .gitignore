@@ -188,3 +188,5 @@ Desktop.ini
 *.bak*
 .env
 backups/
+.env
+bot.js.backup

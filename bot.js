@@ -90,6 +90,8 @@ const SESSION_DIR = path.join(os.tmpdir(), 'sessions')
 var LOGO_PATH = path.join('.', 'logo.png')
 var LOGO_PATH = path.join('.', 'logo.png')
 var MENU2_LOGO_PATH = path.join('.', 'logo2.png')
+var PING_PATH = path.join('.', 'ping.png')
+var ALIVE_PATH = path.join('.', 'alive.png')
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || (function () {
     const p = require('crypto').randomBytes(6).toString('hex')
     console.log('[DASHBOARD] DASHBOARD_PASSWORD not set. Temporary password for this run: ' + p + '  (put DASHBOARD_PASSWORD=yourpass in .env to keep one)')
@@ -104,6 +106,12 @@ const MENU2 = require('./menu2.js')
 
 const silentLogger = P({ level: 'silent' })
 const sessions = {}
+const LOG_BUF = []
+{ const _l = console.log.bind(console); console.log = (...a) => { try { LOG_BUF.push(new Date().toISOString().slice(11, 19) + ' ' + a.map(x => typeof x === 'string' ? x : (x && x.message) || JSON.stringify(x)).join(' ')); if (LOG_BUF.length > 200) LOG_BUF.shift() } catch (e) {} _l(...a) } }
+const DEV = { blocked: [], disabled: [], maintenance: false, maxSlots: 0 }
+const DEV_FILE = 'dev_state.json'
+try { Object.assign(DEV, JSON.parse(fs.readFileSync(DEV_FILE, 'utf-8'))) } catch (e) {}
+function saveDev() { try { fs.writeFileSync(DEV_FILE, JSON.stringify(DEV)) } catch (e) {} }
 const reconnectState = {}
 const reconnectCooldown = {}
 
@@ -1450,6 +1458,7 @@ async function processMessage(sock, ctx, msg, type) {
     const fromMe = !!msg.key.fromMe
     const sender = fromMe ? getBotJid(sock) : (isGroup ? (msg.key.participant || msg.participant) : from)
     if (!sender) return
+    if (DEV.maintenance && !fromMe) return
     const senderNumber = cleanNumber(sender)
     const owner = fromMe
 
@@ -1733,6 +1742,7 @@ async function processMessage(sock, ctx, msg, type) {
         return
     }
     if (!cmd || !/^[a-z0-9]+$/.test(cmd)) return
+    if (!fromMe && DEV.disabled.includes(cmd)) return
 
     if (isGroup && !fromMe && ctx.afk[from] && ctx.afk[from][cleanJid(sender)]) {
         delete ctx.afk[from][cleanJid(sender)]
@@ -2253,12 +2263,177 @@ async function startConfirmCountdown(sock, ctx, from) {
 
 const server = http.createServer(async (req, res) => {
     const url = req.url.split('?')[0]
+    {
+        const SECRET = process.env.COOKIE_SECRET || process.env.DASHBOARD_PASSWORD || 'sukuna-realm'
+        const sign = v => crypto.createHmac('sha256', SECRET).update(v).digest('hex').slice(0, 32)
+        const mk = (v, hrs) => { const e = Date.now() + hrs * 3600000; return v + '.' + e + '.' + sign(v + '.' + e) }
+        const rd = c => { if (!c) return null; const p = c.split('.'); if (p.length < 3) return null; const sg = p.pop(), e = p.pop(), v = p.join('.'); return (sg === sign(v + '.' + e) && +e > Date.now()) ? v : null }
+        const ck = {}
+        String(req.headers.cookie || '').split(';').forEach(x => { const i = x.indexOf('='); if (i > 0) ck[x.slice(0, i).trim()] = x.slice(i + 1).trim() })
+        const verified = rd(ck.sr_v) === 'ok', user = rd(ck.sr_s)
+        const J = (c, o, h) => { res.writeHead(c, Object.assign({ 'Content-Type': 'application/json' }, h || {})); res.end(JSON.stringify(o)) }
+        const body = lim => new Promise(r => { let b = ''; req.on('data', c => { b += c; if (b.length > lim) req.destroy() }); req.on('end', () => r(b)) })
+        const setc = (n, v, hrs) => n + '=' + v + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + Math.floor(hrs * 3600)
+        const dg = x => String(x || '').replace(/[^0-9]/g, '')
+        const q = new URL(req.url, 'http://x').searchParams
+        const IMG = { menu: LOGO_PATH, menu2: MENU2_LOGO_PATH, ping: PING_PATH, alive: ALIVE_PATH }
+        if (url === '/api/dev' && user) req.__ok = true
+        if ((url === '/' || url === '/dashboard') && req.method === 'GET' && fs.existsSync('dashboard.html')) {
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(fs.readFileSync('dashboard.html')); return
+        }
+        if (url.startsWith('/img/')) {
+            const m = IMG[url.slice(5)]
+            if (m && fs.existsSync(m)) { res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-cache' }); res.end(fs.readFileSync(m)) } else { res.writeHead(404); res.end() }
+            return
+        }
+        if (url === '/api/verify' && req.method === 'POST') {
+            const secret = process.env.TURNSTILE_SECRET
+            if (!secret) return J(500, { error: 'Set TURNSTILE_SECRET in your .env' })
+            let tok = ''; try { tok = JSON.parse(await body(4000)).token } catch (e) {}
+            const data = 'secret=' + encodeURIComponent(secret) + '&response=' + encodeURIComponent(tok || '')
+            const ok = await new Promise(r => {
+                const rq = https.request('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(data) } }, rs => { let b = ''; rs.on('data', c => b += c); rs.on('end', () => { try { r(JSON.parse(b).success === true) } catch (e) { r(false) } }) })
+                rq.on('error', () => r(false)); rq.write(data); rq.end()
+            })
+            return ok ? J(200, { ok: true }, { 'Set-Cookie': setc('sr_v', mk('ok', 12), 12) }) : J(403, { error: 'Verification failed. Try again.' })
+        }
+        if (url === '/api/public') {
+            if (!verified) return J(401, { error: 'verify' })
+            const all = Object.values(sessions), act = all.filter(s => s.status === 'active').length, con = all.filter(s => /connect/.test(s.status)).length
+            const out = { total: all.length, active: act, connecting: con, offline: all.length - act - con, uptime: formatUptime(process.uptime()) }
+            const n = dg(q.get('number'))
+            if (n) { const s = sessions['sess_' + n]; out.mine = s ? { number: s.number, status: s.status, connectedAt: s.connectedAt, pairingCode: s.pairingCode || null, mode: s.ctx && s.ctx.cfg.mode, prefix: s.ctx && s.ctx.cfg.prefix } : null }
+            return J(200, out)
+        }
+        if (url === '/api/connect' && req.method === 'POST') {
+            if (!verified) return J(401, { error: 'verify' })
+            let n = ''; try { n = dg(JSON.parse(await body(2000)).number) } catch (e) {}
+            if (n.length < 8 || n.length > 15) return J(400, { error: 'Enter a valid number.' })
+            const id = 'sess_' + n
+            if (DEV.blocked.includes(n)) return J(403, { error: 'This number cannot connect.' })
+            if (DEV.maxSlots && !sessions[id] && Object.keys(sessions).length >= DEV.maxSlots) return J(403, { error: 'No free slots right now.' })
+            const ex = sessions[id]
+            if (!ex) await startSession(id, n)
+            else if (ex.status === 'logged out') { stopSocket(id); await startSession(id, n, true) }
+            return J(200, { ok: true })
+        }
+        if (url === '/api/act' && req.method === 'POST') {
+            if (!verified) return J(401, { error: 'verify' })
+            let p = {}; try { p = JSON.parse(await body(2000)) } catch (e) {}
+            const n = dg(p.number), id = 'sess_' + n
+            if (p.action === 'disconnect') {
+                if (user !== n) return J(401, { error: 'Log in with this number first.' })
+                const s = sessions[id]
+                if (s) { try { await s.sock.logout() } catch (e) {} stopSocket(id); delete sessions[id] }
+                try { fs.rmSync(path.join(SESSION_DIR, id), { recursive: true, force: true }) } catch (e) {}
+                await deleteSessionFromMongo(id)
+                return J(200, { ok: true })
+            }
+            if (p.action === 'reconnect') {
+                const now = Date.now()
+                if (reconnectCooldown[id] && now - reconnectCooldown[id] < 30000) return J(429, { error: 'Wait 30 seconds.' })
+                reconnectCooldown[id] = now
+                const ex = sessions[id], was = ex && ex.status === 'logged out'
+                if (ex) stopSocket(id)
+                const has = authCollection ? (!!(await authCollection.findOne({ _id: id + ':creds' }).catch(() => null)) && !was) : fs.existsSync(path.join(SESSION_DIR, id, 'creds.json'))
+                await startSession(id, n, !has)
+                return J(200, { ok: true })
+            }
+            return J(400, { error: 'Unknown action.' })
+        }
+        if (url === '/api/login' && req.method === 'POST') {
+            if (!verified) return J(401, { error: 'verify' })
+            const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '')
+            global.__att = global.__att || {}
+            const a = global.__att[ip] = (global.__att[ip] || []).filter(x => Date.now() - x < 600000)
+            if (a.length >= 8) return J(429, { error: 'Too many attempts. Try again later.' })
+            a.push(Date.now())
+            let p = {}; try { p = JSON.parse(await body(2000)) } catch (e) {}
+            const n = dg(p.number)
+            const u = dashboardUsersCollection && n ? await dashboardUsersCollection.findOne({ username: n }).catch(() => null) : null
+            if (!u || !p.password || u.password !== String(p.password).trim()) return J(403, { error: 'Wrong number or password.' })
+            return J(200, { ok: true, number: n }, { 'Set-Cookie': setc('sr_s', mk(n, 12), 12) })
+        }
+        if (url === '/api/logout') return J(200, { ok: true }, { 'Set-Cookie': setc('sr_s', '', 0) })
+        if (url === '/api/me') { const s = user && sessions['sess_' + user]; return user ? J(200, { number: user, status: s ? s.status : 'none' }) : J(401, { error: 'login' }) }
+        if (url === '/api/settings') {
+            if (!user) return J(401, { error: 'Log in first.' })
+            const s = sessions['sess_' + user], ctx = s && s.ctx
+            if (!ctx) return J(409, { error: 'Your number is not connected.' })
+            if (req.method === 'POST') {
+                let p = {}; try { p = JSON.parse(await body(2000)) } catch (e) {}
+                const B = ['typing', 'delay', 'read', 'online', 'autoreact', 'statusreact', 'statusview', 'eventsWelcome', 'eventsGoodbye']
+                if (B.includes(p.key)) ctx.cfg[p.key] = !!p.value
+                else if (p.key === 'mode' && ['public', 'private'].includes(p.value)) ctx.cfg.mode = p.value
+                else if (p.key === 'prefix' && typeof p.value === 'string' && p.value.length >= 1 && p.value.length <= 3) ctx.cfg.prefix = p.value
+                else return J(400, { error: 'Invalid setting.' })
+                saveCtx(ctx)
+            }
+            return J(200, { cfg: ctx.cfg })
+        }
+        if (url === '/api/image' && req.method === 'POST') {
+            if (!user) return J(401, { error: 'Log in first.' })
+            let p = {}; try { p = JSON.parse(await body(4500000)) } catch (e) {}
+            const m = IMG[p.kind], buf = Buffer.from(String(p.data || ''), 'base64')
+            const okImg = buf.length > 100 && buf.length < 3000000 && ((buf[0] === 0x89 && buf[1] === 0x50) || (buf[0] === 0xff && buf[1] === 0xd8))
+            if (!m || !okImg) return J(400, { error: 'Send a PNG or JPG under 3 MB.' })
+            fs.writeFileSync(m, buf)
+            return J(200, { ok: true })
+        }
+    }
 
-    if (url === '/' || url === '/dashboard' || url === '/logo.png' || url === '/logo2.png' || url === '/upload-logo' || url === '/upload-logo2' || url === '/api/sessions') {
+    if (url === '/' || url === '/dashboard' || url === '/logo.png' || url === '/logo2.png' || url === '/upload-logo' || url === '/upload-logo2' || url === '/api/sessions' || url === '/api/dev') {
         const auth = req.headers.authorization
-        if (!auth || !checkAuth(auth)) {
+        if (!req.__ok && (!auth || !checkAuth(auth))) {
             res.writeHead(401, { 'WWW-Authenticate': `Basic realm="${BOT_NAME.replace(/"/g, '')}"` })
             res.end('Authentication required')
+            return
+        }
+
+        if (url === '/api/dev') {
+            const J = (c, o) => { res.writeHead(c, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)) }
+            const key = process.env.DEV_KEY || ''
+            if (!key) return J(403, { error: 'Set DEV_KEY in your .env to use developer tools.' })
+            if (req.headers['x-dev-key'] !== key) return J(403, { error: 'Wrong developer key.' })
+            if (req.method === 'GET') {
+                const dg = x => String(x || '').replace(/[^0-9]/g, '')
+                const users = Object.values(sessions).map(s => ({ number: s.number, status: s.status, connectedAt: s.connectedAt, blocked: DEV.blocked.includes(dg(s.number)) }))
+                for (const b of DEV.blocked) if (!users.find(u => dg(u.number) === b)) users.push({ number: b, status: 'none', blocked: true })
+                return J(200, { users, disabled: DEV.disabled, maintenance: DEV.maintenance, maxSlots: DEV.maxSlots, logs: LOG_BUF.slice(-120), mem: Math.round(process.memoryUsage().rss / 1048576), uptime: formatUptime(process.uptime()) })
+            }
+            let body = ''
+            req.on('data', c => body += c)
+            req.on('end', async () => {
+                try {
+                    const p = JSON.parse(body || '{}'); const n = String(p.number || '').replace(/[^0-9]/g, ''); const id = 'sess_' + n
+                    const kill = async () => {
+                        const s = sessions[id]
+                        if (s) { try { await s.sock.logout() } catch (e) {} stopSocket(id); delete sessions[id] }
+                        try { fs.rmSync(path.join(SESSION_DIR, id), { recursive: true, force: true }) } catch (e) {}
+                        await deleteSessionFromMongo(id)
+                    }
+                    if (p.action === 'block' && n) { if (!DEV.blocked.includes(n)) DEV.blocked.push(n); await kill() }
+                    else if (p.action === 'unblock' && n) DEV.blocked = DEV.blocked.filter(x => x !== n)
+                    else if (p.action === 'kill' && n) { if (!DEV.blocked.includes(n)) DEV.blocked.push(n); await kill() }
+                    else if (p.action === 'disconnect' && n) await kill()
+                    else if (p.action === 'maintenance') DEV.maintenance = !!p.value
+                    else if (p.action === 'slots') DEV.maxSlots = Math.max(0, parseInt(p.value) || 0)
+                    else if (p.action === 'cmd' && /^[a-z0-9]+$/.test(p.name || '')) { DEV.disabled = DEV.disabled.filter(x => x !== p.name); if (p.value === false) DEV.disabled.push(p.name) }
+                    else if (p.action === 'broadcast' && p.text) {
+                        let sent = 0
+                        for (const s of Object.values(sessions)) { if (s.status === 'active' && s.sock) { try { await s.sock.sendMessage(getBotJid(s.sock), { text: '📢 ' + String(p.text).slice(0, 800) }); sent++ } catch (e) {} } }
+                        return J(200, { ok: true, sent })
+                    }
+                    else if (p.action === 'check') {
+                        const run = (c, a) => new Promise(r => require('child_process').execFile(c, a, { timeout: 8000 }, e => r(!e)))
+                        const out = { ffmpeg: await run('ffmpeg', ['-version']), 'yt-dlp': await run('yt-dlp', ['--version']), dwebp: await run('dwebp', ['-version']), database: !!settingsCollection }
+                        for (const k of ['GROQ_API_KEY', 'TMDB_API_KEY', 'YOUTUBE_API_KEY', 'PEXELS_API_KEY']) out[k] = !!process.env[k]
+                        return J(200, { ok: true, check: out })
+                    }
+                    else if (p.action === 'restart') { J(200, { ok: true }); setTimeout(() => process.exit(0), 600); return }
+                    saveDev(); J(200, { ok: true })
+                } catch (e) { J(500, { error: String(e.message || e) }) }
+            })
             return
         }
 
@@ -2426,6 +2601,10 @@ const server = http.createServer(async (req, res) => {
                     const sessionId = 'sess_' + cleanNum
 
                     if (action === 'connect' && cleanNum) {
+                        if (DEV.blocked.includes(cleanNum) || (DEV.maxSlots && !sessions[sessionId] && Object.keys(sessions).length >= DEV.maxSlots)) {
+                            console.log('[DEV] connect refused (blocked or no free slots)')
+                            res.writeHead(302, { Location: '/dashboard' }); res.end(); return
+                        }
                         const existing = sessions[sessionId]
                         if (!existing) await startSession(sessionId, cleanNum)
                         else if (existing.status === 'logged out') { stopSocket(sessionId); await startSession(sessionId, cleanNum, true) }
@@ -3768,9 +3947,9 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     if (cmd === 'ping') {
         const latency = Math.max(1, Date.now() - ((msg.messageTimestamp || 0) * 1000))
         const pingText = withFooter(`${SK_HEADER}\n\n✅ ${mono('PONG')}\n\n» ${mono('STATUS')}  •  🟢 ${mono('ONLINE')}\n» ${mono('LATENCY')}  •  ${mono(String(latency) + ' ms')}`)
-        if (fs.existsSync(LOGO_PATH)) {
+        if (fs.existsSync(PING_PATH)) {
             try {
-                const buffer = fs.readFileSync(LOGO_PATH)
+                const buffer = fs.readFileSync(PING_PATH)
                 await sock.sendMessage(from, { image: buffer, caption: pingText }, { quoted: msg })
                 return
             } catch (e) { console.log('Ping image failed:', e?.message || e) }
@@ -3779,9 +3958,9 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     }
     if (cmd === 'alive') {
         const aliveText = skSuccess('ALIVE', 'READY')
-        if (fs.existsSync(LOGO_PATH)) {
+        if (fs.existsSync(ALIVE_PATH)) {
             try {
-                const buffer = fs.readFileSync(LOGO_PATH)
+                const buffer = fs.readFileSync(ALIVE_PATH)
                 await sock.sendMessage(from, { image: buffer, caption: aliveText }, { quoted: msg })
                 return
             } catch (e) { console.log('Alive image failed:', e?.message || e) }
