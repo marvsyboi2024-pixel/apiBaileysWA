@@ -89,6 +89,7 @@ const TIMEZONE = process.env.BOT_TIMEZONE || undefined
 const SESSION_DIR = path.join(os.tmpdir(), 'sessions')
 const LOGO_PATH = path.join('.', 'logo.png')
 const MENU2_LOGO_PATH = path.join('.', 'logo2.png')
+const MENU2_LOGO_PATH = path.join('.', 'logo2.png')
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || (function () {
     const p = require('crypto').randomBytes(6).toString('hex')
     console.log('[DASHBOARD] DASHBOARD_PASSWORD not set. Temporary password for this run: ' + p + '  (put DASHBOARD_PASSWORD=yourpass in .env to keep one)')
@@ -273,6 +274,29 @@ async function loadLogoFromMongo() {
             return true
         }
     } catch (e) { console.log('[MONGO] Logo load error:', e.message) }
+    return false
+}
+
+async function saveMenu2LogoToMongo(buffer) {
+    if (!logoCollection) return
+    try {
+        await logoCollection.updateOne(
+            { _id: 'menu2logo' },
+            { $set: { data: buffer.toString('base64'), updatedAt: new Date() } },
+            { upsert: true }
+        )
+    } catch (e) { console.log('[MONGO] Menu2 logo save error:', e.message) }
+}
+
+async function loadMenu2LogoFromMongo() {
+    if (!logoCollection) return false
+    try {
+        const doc = await logoCollection.findOne({ _id: 'menu2logo' })
+        if (doc && doc.data) {
+            fs.writeFileSync(MENU2_LOGO_PATH, Buffer.from(doc.data, 'base64'))
+            return true
+        }
+    } catch (e) { console.log('[MONGO] Menu2 logo load error:', e.message) }
     return false
 }
 
@@ -1215,18 +1239,37 @@ function cacheStatus(ctx, msg) {
 
 async function handleStatus(sock, ctx, msg) {
     if (msg.key.fromMe) return
-    const poster = msg.key.participant
+    const poster = msg.key.participant || msg.participant
     cacheStatus(ctx, msg)
-    if (!ctx.cfg.statusview || !poster) return
-    try { await sock.readMessages([msg.key]) } catch (e) {}
-    if (ctx.cfg.statusreact) {
-        try {
-            await sock.sendMessage(
-                'status@broadcast',
-                { react: { text: '❤️', key: msg.key } },
-                { statusJidList: [cleanJid(poster), getBotJid(sock)] }
-            )
-        } catch (e) {}
+    if (!poster) return
+    const wantRead = !!ctx.cfg.statusview
+    const wantReact = !!ctx.cfg.statusreact
+    if (!wantRead && !wantReact) return
+    const m = unwrap(msg.message) || {}
+    if (m.protocolMessage || m.reactionMessage) return
+    if (!ctx.statusSeen) ctx.statusSeen = new Set()
+    const sid = msg.key.id
+    if (sid) {
+        if (ctx.statusSeen.has(sid)) return
+        ctx.statusSeen.add(sid)
+        if (ctx.statusSeen.size > 500) ctx.statusSeen.delete(ctx.statusSeen.values().next().value)
+    }
+    try { await sock.readMessages([msg.key]) } catch (e) { console.log('[STATUS] view error:', e?.message || e) }
+    if (!wantReact) return
+    try {
+        await sleep(1000 + Math.random() * 2000)
+        const jids = new Set()
+        const cands = [msg.key.participant, msg.key.participantPn, msg.key.participantAlt, msg.participant, sock.user && sock.user.id, sock.user && sock.user.lid]
+        for (const j of cands) { if (j) jids.add(cleanJid(j)) }
+        await sock.sendMessage(
+            'status@broadcast',
+            { react: { text: '❤️', key: msg.key } },
+            { statusJidList: [...jids] }
+        )
+        console.log('[STATUS] reacted to status from ' + cleanNumber(poster))
+    } catch (e) {
+        if (sid) ctx.statusSeen.delete(sid)
+        console.log('[STATUS] react error:', e?.message || e)
     }
 }
 
@@ -1374,6 +1417,7 @@ async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind, no
     }
 }
 
+const VIEW_ONCE_EMOJIS = new Set(['🌚', '😹', '🙂', '🥺', '🥰', '😳'])
 const REACT_EMOJIS = ['❤️', '🔥', '👏', '😂', '💯', '⚡', '🎯', '🙌', '😍', '🗿', '🥶', '💀']
 const FLASH_COMMANDS = ['ping', 'alive', 'menu', 'promote', 'demote', 'add', 'kick', 'tagall', 'lockdown', 'unlockdown']
 const CURSED_ARTS = ['domain', 'oracle', 'ritual', 'awakening', 'awaken', 'omen', 'curse', 'verdict', 'tribute', 'sukuna', 'technique', 'power', 'cursedenergy', 'fate']
@@ -1624,7 +1668,7 @@ async function processMessage(sock, ctx, msg, type) {
         try { for (const k of Object.keys(ctx.afk[from])) { if (jidsMatch(k, sender)) delete ctx.afk[from][k] } } catch (e) {}
     }
 
-    if (text === '🌚') {
+    if (VIEW_ONCE_EMOJIS.has(text.replace(/\uFE0F/g, ''))) {
         if (fromMe) await handleViewOnceCmd(sock, ctx, msg, content, from, sender, 'hmm', true, true)
         return
     }
@@ -1872,6 +1916,7 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
             try {
                 const code = await sock.requestPairingCode(phoneNumber, 'SUKUNAMD')
                 if (isCurrent()) sessions[sessionId].pairingCode = code
+                s.sendPasswordOnConnect = true
                 console.log(`[${sessionId}] PAIRING CODE: ${code}`)
             } catch (err) {
                 console.log(`[${sessionId}] Pairing error:`, err.message)
@@ -1965,7 +2010,9 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 sessions[sessionId].pairingCode = null
                 s.isInitialConnection = false
                 sessions[sessionId].pairingRequested = false
-                ;(async () => {
+                const shouldSendPassword = s.sendPasswordOnConnect === true
+                s.sendPasswordOnConnect = false
+                if (shouldSendPassword) (async () => {
                     try {
                         const { username, password } = await getOrCreateDashboardPassword(s.number)
                         const dmText = `⛩️ SUKUNA REALM — Dashboard Access\n\nUsername: ${username}\nPassword: ${password}\n\nLogin: ${PUBLIC_URL}`
@@ -2269,6 +2316,52 @@ const server = http.createServer(async (req, res) => {
         if (url === '/logo.png') {
             if (fs.existsSync(LOGO_PATH)) {
                 const buf = fs.readFileSync(LOGO_PATH)
+                res.writeHead(200, { 'Content-Type': sniffImageType(buf) || 'image/png' })
+                res.end(buf)
+            } else { res.writeHead(404); res.end('No logo') }
+            return
+        }
+
+        if (url === '/upload-logo2' && req.method === 'POST') {
+            const chunks = []
+            let size = 0
+            let aborted = false
+            req.on('data', c => {
+                size += c.length
+                if (size > 5 * 1024 * 1024) { aborted = true; res.writeHead(413); res.end('Too large'); req.destroy(); return }
+                chunks.push(c)
+            })
+            req.on('end', async () => {
+                if (aborted) return
+                try {
+                    const buffer = Buffer.concat(chunks)
+                    const ct = req.headers['content-type'] || ''
+                    const boundary = ct.split('boundary=')[1]
+                    if (boundary) {
+                        const parts = buffer.toString('binary').split('--' + boundary)
+                        for (const part of parts) {
+                            if (part.includes('filename=') && /Content-Type: image/i.test(part)) {
+                                const headerEnd = part.indexOf('\r\n\r\n')
+                                let imgData = part.slice(headerEnd + 4).replace(/\r\n$/, '')
+                                const imgBuffer = Buffer.from(imgData, 'binary')
+                                if (sniffImageType(imgBuffer)) {
+                                    fs.writeFileSync(MENU2_LOGO_PATH, imgBuffer)
+                                    await saveMenu2LogoToMongo(imgBuffer)
+                                }
+                                break
+                            }
+                        }
+                    }
+                } catch (e) { console.log('Menu2 logo upload error:', e?.message || e) }
+                res.writeHead(302, { Location: '/dashboard' })
+                res.end()
+            })
+            return
+        }
+
+        if (url === '/logo2.png') {
+            if (fs.existsSync(MENU2_LOGO_PATH)) {
+                const buf = fs.readFileSync(MENU2_LOGO_PATH)
                 res.writeHead(200, { 'Content-Type': sniffImageType(buf) || 'image/png' })
                 res.end(buf)
             } else { res.writeHead(404); res.end('No logo') }
@@ -2766,6 +2859,14 @@ ${logoHtml}
 <form method="POST" action="/upload-logo" enctype="multipart/form-data">
 <input type="file" name="logo" accept="image/*" required>
 <button type="submit">Upload Logo</button>
+</form>
+</div>
+
+<div class="card">
+<h3>UPLOAD MENU2 LOGO</h3>
+<form method="POST" action="/upload-logo2" enctype="multipart/form-data">
+<input type="file" name="logo" accept="image/*" required>
+<button type="submit">Upload Menu2 Logo</button>
 </form>
 </div>
 
@@ -3321,6 +3422,7 @@ function initTelegram() {
 async function restoreSessions() {
     const connected = await initMongo()
     await loadLogoFromMongo()
+    await loadMenu2LogoFromMongo()
     await loadMenu2LogoFromMongo()
 
     let ids = []
