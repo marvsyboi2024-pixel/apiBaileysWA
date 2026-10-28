@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>SUKUNA REALM — Control Panel</title>
-<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Forum&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <style>
 :root{
     --bg:#0D0B07; --surface:#17130B; --surface-raised:#211B0F; --violet:#2A2210;
@@ -29,6 +29,7 @@ body{margin:0;background:radial-gradient(ellipse 120% 55% at 50% -5%, rgba(250,2
 :focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 a{color:var(--gold)}
 button,input,select{font-family:inherit}
+
 #auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;padding-top:calc(24px + var(--safe-top))}
 .auth-card{width:100%;max-width:360px;text-align:center}
 .sigil{width:56px;height:56px;margin:0 auto 14px;display:block}
@@ -37,6 +38,10 @@ button,input,select{font-family:inherit}
 .auth-word{font-family:var(--font-display);font-size:22px;letter-spacing:.07em}
 .auth-sub{font-size:12px;color:var(--ink-faint);margin-top:3px;letter-spacing:.02em}
 .panel{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);padding:20px;margin-top:22px;text-align:left}
+.spinner{width:30px;height:30px;border:3px solid var(--violet);border-top-color:var(--crimson);border-radius:50%;margin:6px auto 14px;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.verify-title{font-size:14px;font-weight:600;text-align:center}
+.verify-sub{font-size:12px;color:var(--ink-faint);text-align:center;margin-top:5px}
 label{display:block;font-size:11.5px;color:var(--ink-faint);margin:0 0 6px;font-weight:600;letter-spacing:.02em}
 input[type=text],input[type=password],input[type=number],input[type=tel],select{width:100%;padding:10px 12px;background:var(--surface-raised);border:1px solid var(--line);color:var(--ink);border-radius:8px;font-size:13.5px;margin-bottom:14px}
 input::placeholder{color:var(--ink-faint)}
@@ -46,11 +51,16 @@ input::placeholder{color:var(--ink-faint)}
 .btn.ghost{background:transparent}
 .btn.danger{color:var(--bad);border-color:rgba(216,72,92,.35)}
 .btn-sm{padding:7px 12px;font-size:12.5px;width:auto}
+.auth-foot{font-size:10px;color:#5a4a51;margin-top:16px;letter-spacing:.04em}
+
 #app{display:none}
 header{position:fixed;top:0;left:0;right:0;z-index:40;display:flex;align-items:center;justify-content:space-between;padding:calc(13px + var(--safe-top)) 16px 13px;background:rgba(18,11,16,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
 .menu-btn{background:none;border:none;color:var(--ink);cursor:pointer;padding:4px;display:flex}
 .hdr-word{font-family:var(--font-display);font-size:15px;letter-spacing:.05em;display:flex;align-items:center;gap:8px}
 .hdr-sigil{width:20px;height:20px}
+.pill{font-size:11px;font-weight:600;padding:4px 10px;border-radius:999px;border:1px solid var(--line);color:var(--ink-dim);display:inline-flex;align-items:center;gap:5px}
+.pill.live{color:var(--good);border-color:rgba(75,174,122,.35);background:rgba(75,174,122,.08)}
+
 .drawer-overlay{position:fixed;inset:0;background:rgba(7,4,6,.6);z-index:45;display:none}
 .drawer-overlay.open{display:block}
 .drawer{position:fixed;top:0;left:-270px;width:270px;height:100%;background:var(--surface);border-right:1px solid var(--line);z-index:46;transition:left .25s ease;display:flex;flex-direction:column;padding-top:var(--safe-top)}
@@ -65,12 +75,30 @@ header{position:fixed;top:0;left:0;right:0;z-index:40;display:flex;align-items:c
 .drawer-item.active svg{color:var(--gold)}
 .drawer-item.locked svg{color:var(--gold-dim)}
 .drawer-foot{padding:14px 16px;border-top:1px solid var(--line);font-size:10.5px;color:var(--ink-faint)}
+
 main{padding:calc(70px + var(--safe-top)) 16px calc(40px + var(--safe-bottom));max-width:520px;margin:0 auto}
 .page{display:none}
 .page.active{display:block;animation:fadein .25s ease}
 @keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .page-title{font-family:var(--font-display);font-size:19px;letter-spacing:.03em;margin:0 0 16px}
+
+.ledger{display:grid;grid-template-columns:repeat(2,1fr);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--surface);margin-bottom:18px}
+.ledger-cell{padding:14px 16px;border-right:1px solid var(--line)}
+.ledger-cell:nth-child(2n){border-right:none}
+.ledger-cell:nth-child(n+3){border-top:1px solid var(--line)}
+.ledger-num{font-family:var(--font-display);font-size:21px}
+.ledger-label{font-size:11px;color:var(--ink-faint);margin-top:2px}
+
 .subhead{font-size:11.5px;color:var(--ink-faint);font-weight:600;letter-spacing:.02em;margin:18px 0 8px}
+.status-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
+.status-row:last-child{border-bottom:none}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 7px var(--good);flex-shrink:0}
+.dot.warn{background:var(--warn);box-shadow:0 0 7px var(--warn)}
+.dot.off{background:var(--ink-faint);box-shadow:none}
+.status-num{font-family:var(--font-mono);color:var(--ink-dim)}
+.status-state{margin-left:auto;font-size:11.5px;color:var(--ink-faint)}
+.home-actions{display:flex;flex-direction:column;gap:8px;margin-top:18px}
+
 .session{border:1px solid var(--line);border-left:3px solid var(--ink-faint);border-radius:var(--radius);background:var(--surface);margin-bottom:10px;overflow:hidden}
 .session.active{border-left-color:var(--good)}
 .session.connecting{border-left-color:var(--warn)}
@@ -78,21 +106,76 @@ main{padding:calc(70px + var(--safe-top)) 16px calc(40px + var(--safe-bottom));m
 .session-row{display:flex;align-items:center;gap:10px;padding:13px 14px;cursor:pointer;flex-wrap:wrap}
 .session-number{font-weight:600;font-size:14px}
 .session-tag{font-size:11.5px;color:var(--ink-faint);margin-left:auto}
+.session-body{display:none;padding:0 14px 14px;border-top:1px solid var(--line)}
+.session.open .session-body{display:block}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.btn-row .btn{width:auto;flex:1;min-width:100px}
+
+.pairing-box{margin:12px 0;padding:12px 14px;background:var(--violet);border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.pairing-code{font-family:var(--font-mono);font-size:18px;letter-spacing:.08em;color:var(--gold)}
+.copy-btn{background:none;border:1px solid var(--gold-dim);color:var(--gold);border-radius:6px;padding:6px 10px;font-size:11.5px;cursor:pointer;display:flex;align-items:center;gap:5px}
+.copy-btn svg{width:13px;height:13px}
+
 .connect-form{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px}
 .code-box{flex:0 0 76px;display:flex;align-items:center;justify-content:center;padding:10px 12px;background:var(--surface-raised);border:1px solid var(--line);border-radius:8px;font-family:var(--font-mono);font-size:13.5px;color:var(--gold);margin-bottom:14px}
 .connect-form input{flex:1;min-width:140px}
+.logo-row{display:flex;align-items:center;gap:10px;padding-top:14px;border-top:1px solid var(--line);margin-top:14px;flex-wrap:wrap}
+.logo-row input[type=file]{font-size:11.5px;color:var(--ink-dim);flex:1}
+
 .toggle-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px;background:var(--surface-raised);border:1px solid var(--line);border-radius:8px;font-size:12.5px}
+.anti-block{grid-column:1 / -1;background:var(--surface-raised);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.anti-sub{display:none;padding:10px 11px;border-top:1px solid var(--line);gap:8px}
+.anti-sub.open{display:flex}
+.anti-sub select{margin:0;flex:1;padding:7px 9px;font-size:12px}
 .switch{position:relative;width:32px;height:18px;flex-shrink:0}
 .switch input{opacity:0;width:100%;height:100%;position:absolute;z-index:1;margin:0;cursor:pointer}
 .switch .track{position:absolute;inset:0;background:var(--line);border-radius:999px}
 .switch .knob{position:absolute;top:2px;left:2px;width:14px;height:14px;background:var(--ink-dim);border-radius:50%;transition:.15s}
 .switch input:checked ~ .track{background:var(--crimson-dim)}
 .switch input:checked ~ .knob{transform:translateX(14px);background:var(--gold)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:var(--surface-raised);border:1px solid var(--line);border-radius:999px;font-size:12px;font-family:var(--font-mono);margin:3px 4px 0 0}
+.chip button{background:none;border:none;color:var(--ink-faint);cursor:pointer;font-size:13px;padding:0}
+
+.seal{border:1px dashed var(--gold-dim);border-radius:var(--radius);padding:30px 18px;text-align:center;background:radial-gradient(circle at 50% 0%, rgba(201,162,75,.07), transparent 70%), var(--surface)}
+.seal svg{width:28px;height:28px;color:var(--gold);margin-bottom:8px}
+.seal h3{font-family:var(--font-display);font-size:15px;margin:0 0 4px}
+.seal p{font-size:12px;color:var(--ink-faint);margin:0 0 16px}
+.seal .btn{width:auto;padding:9px 20px;margin:0 auto}
+.secq-box{text-align:left;margin-top:14px}
+.secq-box .q{font-size:12.5px;color:var(--ink-dim);margin-bottom:8px;font-style:italic}
+
+.dev-head{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;background:var(--violet);border-radius:8px;margin-bottom:14px;font-family:var(--font-mono);font-size:11.5px;color:var(--gold)}
+.registry{border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.reg-row{display:grid;grid-template-columns:1.2fr .7fr auto;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);font-size:12.5px}
+.reg-row:last-child{border-bottom:none}
+.reg-row.head{background:var(--surface-raised);font-size:10.5px;color:var(--ink-faint);font-weight:600}
+.reg-num{font-family:var(--font-mono);font-size:12px}
+.badge{font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid rgba(216,72,92,.4);color:var(--bad);background:rgba(216,72,92,.1)}
+.cmd-bar-row{display:flex;align-items:center;gap:9px;margin-bottom:6px;font-size:12px}
+.cmd-bar-row .name{width:80px;flex-shrink:0;font-family:var(--font-mono);color:var(--ink-dim)}
+.cmd-bar-track{flex:1;height:6px;background:var(--surface-raised);border-radius:999px;overflow:hidden}
+.cmd-bar-fill{height:100%;background:linear-gradient(90deg,var(--crimson-dim),var(--gold-dim))}
+
 .log-box{background:#0C0709;border:1px solid var(--line);border-radius:8px;padding:11px 13px;font-family:var(--font-mono);font-size:11.5px;line-height:1.7;color:var(--ink-dim);max-height:260px;overflow-y:auto}
+.log-box .err{color:var(--bad)}
+.log-box .time{color:var(--ink-faint)}
+
+.owner-card{text-align:center}
+.owner-card svg{width:40px;height:40px;margin:0 auto 10px;color:var(--gold)}
+.owner-bio{font-size:13px;color:var(--ink-dim);line-height:1.7;margin:10px 0 18px;text-align:left;overflow-wrap:anywhere}
+.owner-bio .owner-section{margin:20px 0 8px;color:var(--gold);font-size:14px;font-weight:700;letter-spacing:.3px}
+.owner-bio p{margin:8px 0 12px}
+.owner-bio ul{list-style:none;padding:0;margin:8px 0 14px}
+.owner-bio li{margin:5px 0}
+.owner-identity{border:1px solid var(--line);border-radius:10px;padding:12px;margin:12px 0 16px;background:rgba(255,255,255,.02)}
+.owner-links{display:flex;flex-direction:column;gap:8px}
+.owner-links a.btn{text-decoration:none;display:flex;align-items:center;justify-content:center;gap:8px}
+
 .toast-layer{position:fixed;bottom:calc(16px + var(--safe-bottom));left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:8px;z-index:70;pointer-events:none}
 .toast{background:var(--surface-raised);border:1px solid var(--line);border-left:3px solid var(--gold);padding:10px 16px;border-radius:8px;font-size:12.5px;box-shadow:0 10px 30px rgba(0,0,0,.4);animation:toastin .15s ease-out}
 @keyframes toastin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+footer{text-align:center;font-size:11px;color:var(--ink-faint);margin-top:30px}
 </style>
 </head>
 <body>
@@ -105,17 +188,18 @@ main{padding:calc(70px + var(--safe-top)) 16px calc(40px + var(--safe-bottom));m
 
         <div class="panel" id="verifyPanel">
             <div class="cf-turnstile" data-sitekey="0x4AAAAAAFk2JosrNv2aycbw" data-callback="onTurnstileSuccess"></div>
-            <div id="verifyStatus" style="text-align:center;font-size:12px;color:var(--ink-faint);margin-top:10px;">Checking security...</div>
+            <div id="verifyStatus" class="verify-sub">Checking security...</div>
         </div>
 
         <div class="panel" id="loginPanel" style="display:none">
-            <label for="loginUser">WhatsApp Number</label>
-            <input type="tel" id="loginUser" placeholder="e.g. 2348139761928">
+            <label for="loginUser">Username</label>
+            <input type="tel" id="loginUser" placeholder="WhatsApp number">
             <label for="loginPass">Password</label>
             <input type="password" id="loginPass" placeholder="ABC-SUKUNA-MD">
             <button class="btn primary" id="loginBtn">Enter the realm</button>
             <div id="loginErr" style="color:var(--bad);font-size:12px;margin-top:8px;text-align:center;"></div>
         </div>
+        <div class="auth-foot">SECURE ACCESS</div>
     </div>
 </div>
 
@@ -145,16 +229,12 @@ main{padding:calc(70px + var(--safe-top)) 16px calc(40px + var(--safe-bottom));m
 
 <main>
 <div class="page active" id="page-home">
-<div class="page-title">Home</div>
-<div class="hcard banner" style="border:1px solid var(--line); padding:15px; border-radius:10px; margin-bottom:15px;">
-    <h1 style="font-family:var(--font-display); margin:0;">SUKUNA REALM</h1>
-    <small style="color:var(--ink-faint)">Control Panel</small>
-    <div><span class="chip off" id="stChip">● Offline</span></div>
-</div>
-<div class="toggle-grid">
-    <div class="hcard" style="padding:15px; border:1px solid var(--line); border-radius:10px;"><b id="hUptime">—</b><br><span style="font-size:11px;color:var(--ink-faint);">Uptime</span></div>
-    <div class="hcard" style="padding:15px; border:1px solid var(--line); border-radius:10px;"><b id="pNum">0</b><br><span style="font-size:11px;color:var(--ink-faint);">People</span></div>
-</div>
+<div class="hhead"><div><div class="hgreet" id="hGreet">Welcome</div><div class="hdate" id="hDate"></div></div><div class="hclock" id="hClock"></div></div>
+<div class="hcard banner"><div class="appicon"><div class="crop"><img id="bLogo" src="/logo.png" alt=""></div></div><div class="btxt"><h1>SUKUNA REALM</h1><small>Control Panel</small><div><span class="chip off" id="stChip">● Offline</span></div><div class="bq" id="hQuote"></div></div></div>
+<div class="hstats"><div class="hcard hstat"><b id="hGroups">—</b><span>Groups</span></div><div class="hcard hstat"><b id="hUptime">—</b><span>Uptime</span></div><div class="hcard hstat"><b id="hMsgs">—</b><span>Msgs today</span></div></div>
+<div class="hcard hpeople"><div class="hl">People connected</div><div class="prow"><b id="pNum">0</b><div class="avs" id="pAvs"></div></div><div class="pbar" id="pBar"></div><div class="plegend" id="pLeg"></div></div>
+<div class="hcard hchart"><div class="hl">Messages · 7 days <i>sample</i></div><svg viewBox="0 0 200 50" preserveAspectRatio="none"><polyline points="0,38 30,30 60,34 90,18 120,24 150,10 200,16"/></svg></div>
+<div class="hcard hhealth"><div>Memory<b id="hMem">—</b></div><div>Ping<b>42 ms</b></div><div>Database<b>OK</b></div></div>
 </div>
 
 <div class="page" id="page-connect">
@@ -165,7 +245,7 @@ main{padding:calc(70px + var(--safe-top)) 16px calc(40px + var(--safe-bottom));m
         <label for="connectNumber">WhatsApp number</label>
         <div class="connect-form">
             <div class="code-box" id="codeBox">+234</div>
-            <input type="tel" id="connectNumber" placeholder="Local number">
+            <input type="tel" id="connectNumber" placeholder="Local number, digits only">
         </div>
         <button class="btn primary" id="connectBtn" style="margin-top:4px">Connect WhatsApp</button>
         <div id="pairingArea"></div>
@@ -174,7 +254,7 @@ main{padding:calc(70px + var(--safe-top)) 16px calc(40px + var(--safe-bottom));m
 
 <div class="page" id="page-sessions">
     <div class="page-title">Sessions</div>
-    <div id="sessionList"><div style="color:var(--ink-faint)">Loading...</div></div>
+    <div id="sessionList"></div>
 </div>
 
 <div class="page" id="page-settings">
@@ -187,13 +267,28 @@ main{padding:calc(70px + var(--safe-top)) 16px calc(40px + var(--safe-bottom));m
     </div>
     <div class="subhead">Auto</div>
     <div class="toggle-grid" id="autoToggles"></div>
+
+    <div class="subhead" style="margin-top:22px">Uploads</div>
+    <div class="panel">
+        <div class="logo-row" style="border-top:none;padding-top:0;margin-top:0">
+            <label style="margin:0;flex:0 0 auto">Main logo</label>
+            <input type="file" id="logoFile" accept="image/*">
+            <button class="btn btn-sm" data-upload="menu">Upload</button>
+        </div>
+        <div class="logo-row">
+            <label style="margin:0;flex:0 0 auto">Menu2 logo</label>
+            <input type="file" id="logo2File" accept="image/*">
+            <button class="btn btn-sm" data-upload="menu2">Upload</button>
+        </div>
+    </div>
 </div>
 
 <div class="page" id="page-developer">
     <div class="page-title">Developer</div>
-    <div class="seal" id="sealPanel" style="border:1px dashed var(--gold-dim); padding:20px; border-radius:10px;">
+    <div class="seal" id="sealPanel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 3 L20 7 V12 C20 17 16.5 20 12 21 C7.5 20 4 17 4 12 V7 Z"/></svg>
         <h3>Sealed chamber</h3>
-        <p>Answer correctly to unseal.</p>
+        <p>This isn't a password box. Answer correctly to unseal.</p>
         <div class="secq-box">
             <div class="q" id="secQuestion">What city did SUKUNA REALM first go live from?</div>
             <input type="text" id="secAnswer" placeholder="Your answer">
@@ -202,41 +297,48 @@ main{padding:calc(70px + var(--safe-top)) 16px calc(40px + var(--safe-bottom));m
     </div>
 
     <div id="devMode" style="display:none">
-        <div class="dev-head" style="display:flex;justify-content:space-between;padding:10px;background:var(--surface);border-radius:8px;margin-bottom:10px;"><span>⛩ unsealed</span><button class="btn btn-sm ghost" id="resealBtn">Reseal</button></div>
+        <div class="dev-head"><span>⛩ unsealed</span><button class="btn btn-sm ghost" id="resealBtn">Reseal</button></div>
         <div class="subhead">Controls</div>
-        <div class="panel">
-            <div class="toggle" style="margin-bottom:10px">Maintenance Mode <input type="checkbox" id="dMaint"></div>
-            <div style="display:flex;gap:10px;margin-bottom:15px;"><input type="number" id="dSlots" placeholder="Max slots (0=∞)" style="margin:0;"><button class="btn btn-sm" onclick="devAct('slots', null, document.getElementById('dSlots').value)">Save</button></div>
-        </div>
-        <div class="subhead">People <span id="dCount" style="color:var(--gold)"></span></div>
-        <div class="panel" id="dUsers" style="padding:0 10px;"></div>
-        <div class="subhead">Tools</div>
-        <div class="panel" style="display:flex;gap:10px;">
-            <button class="btn" onclick="devAct('check')">Run checks</button>
-            <button class="btn" onclick="loadDev()">Refresh</button>
-            <button class="btn danger" onclick="devAct('restart')">Restart</button>
-        </div>
-        <div id="dCheck" style="margin-top:10px;font-size:13px;color:var(--ink-dim)"></div>
-        <div class="subhead">Console</div>
-        <div class="log-box" id="dLog" style="max-height:200px;overflow:auto;"></div>
+<div class="hcard"><div class="drow" style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);"><span>Maintenance mode</span><span class="switch"><input type="checkbox" id="dMaint"><span class="track"></span><span class="knob"></span></span></div>
+<div class="drow" style="display:flex;justify-content:space-between;padding:10px 0;"><span>Max people (0 = no limit)</span><span class="dinp" style="display:flex;gap:6px;align-items:center;"><input type="number" id="dSlots" min="0" placeholder="0" style="width:80px;margin:0;"><button class="btn btn-sm" data-dact="slots">Save</button></span></div></div>
+<div class="subhead" style="margin-top:18px">People <span id="dCount" style="color:var(--gold)"></span></div>
+<input type="text" id="dSearch" placeholder="Search number">
+<div class="hcard" id="dUsers" style="padding:4px 12px;margin-top:8px"></div>
+<div class="hcard" style="margin-top:8px"><div class="dinp" style="display:flex;gap:6px;width:100%"><input type="tel" id="dBlockNum" placeholder="Number to block" style="flex:1;width:auto;margin:0;"><button class="btn btn-sm danger" data-dact="blocknum">Block</button></div></div>
+<div class="subhead" style="margin-top:18px">Tools</div>
+<div class="hcard"><div class="sbtns" style="display:flex;gap:8px;margin-top:0"><button class="btn" data-dact="check">Run checks</button><button class="btn" data-dact="refresh">Refresh</button><button class="btn danger" data-dact="restart">Restart bot</button></div><div id="dCheck" style="margin-top:10px;font-size:13px;color:var(--ink-dim)"></div></div>
+<div class="subhead" style="margin-top:18px">Console</div>
+<div class="log-box" id="dLog" style="max-height:220px;overflow:auto"></div>
     </div>
 </div>
 
 <div class="page" id="page-logs">
     <div class="page-title">Logs</div>
     <div class="subhead">Recent errors</div>
-    <div class="log-box" id="errorLog"><div style="color:var(--ink-faint);font-size:12px;">Checking server...</div></div>
+    <div class="log-box" id="errorLog"></div>
 </div>
 
 <div class="page" id="page-owner">
     <div class="page-title">Contact owner</div>
-    <div class="panel owner-card" style="text-align:center;">
-        <h3 style="color:var(--gold);margin-bottom:15px;">CURSED KING</h3>
-        <a class="btn primary" href="https://wa.me/2347059187029" target="_blank" style="margin-bottom:10px;display:block;text-decoration:none;">💬 Contact on WhatsApp</a>
-        <a class="btn" href="https://t.me/marvsyb" target="_blank" style="display:block;text-decoration:none;">✈️ Contact on Telegram</a>
+    <div class="panel owner-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="12" cy="8" r="3.3"/><path d="M5 20 C5 15.5 8 13.5 12 13.5 C16 13.5 19 15.5 19 20"/></svg>
+        <div class="owner-bio">
+            <div class="owner-identity">
+                <div>╭━━━〔 🩸 SUKUNA BOT 🩸 〕━━━╮</div>
+                <div>┃ 👑 ᴏᴡɴᴇʀ : Cᴜʀsᴇᴅ Kɪɴɢ</div>
+                <div>┃ ⚙️ ᴅᴇᴠᴇʟᴏᴘᴇʀ : Mᴀʀᴠᴇʟʟᴏᴜs</div>
+                <div>┃ 🇳🇬 ᴄᴏᴜɴᴛʀʏ : Nɪɢᴇʀɪᴀ</div>
+                <div>╰━━━━━━━━━━━━━━━━━━━━━━━━╯</div>
+            </div>
+        </div>
+        <div class="owner-links">
+            <a class="btn primary" href="https://wa.me/2347059187029" target="_blank" rel="noopener">💬 Contact on WhatsApp</a>
+            <a class="btn" href="https://t.me/marvsyb" target="_blank" rel="noopener">✈️ Contact on Telegram</a>
+        </div>
     </div>
 </div>
 
+<footer>SUKUNA REALM · running on SkyHost</footer>
 </main>
 </div>
 
@@ -247,7 +349,6 @@ main{padding:calc(70px + var(--safe-top)) 16px calc(40px + var(--safe-bottom));m
 const $ = id => document.getElementById(id);
 function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;$('toastLayer').appendChild(t);setTimeout(()=>t.remove(),2800)}
 
-// AUTH FLOW
 window.onTurnstileSuccess = async function(token) {
     $('verifyStatus').textContent = 'Verifying...';
     try {
@@ -321,14 +422,18 @@ async function loadHome() {
         ch.textContent = st === 'on' ? '● Online' : st === 'part' ? '● Partly online' : '● Offline';
         $('hUptime').textContent = data.uptime || '—';
         $('pNum').textContent = data.total;
+        $('pAvs').innerHTML = Array.from({length: Math.min(data.total, 4)}).map(()=>'<i class="av"></i>').join('') + (data.total > 4 ? '<em>+' + (data.total-4) + '</em>' : '');
+        $('pBar').innerHTML = [['a', data.active], ['c', data.connecting], ['o', data.offline]].filter(x => x[1]).map(x => '<span class="' + x[0] + '" style="flex:' + x[1] + '"></span>').join('');
+        $('pLeg').textContent = 'Active ' + data.active + ' · Connecting ' + data.connecting + ' · Offline ' + data.offline;
     } catch(e) {}
 }
+$('bLogo').onerror=function(){this.style.display='none'};
 
 $('connectBtn').addEventListener('click', async () => {
     const full = $('codeBox').textContent.replace('+','') + $('connectNumber').value.replace(/[^0-9]/g,'').replace(/^0+/,'');
     if (full.length < 8) return toast('Invalid number');
     $('connectBtn').disabled = true;
-    $('pairingArea').innerHTML = '<div style="font-size:13px;color:var(--ink-dim);margin-top:10px;">Requesting code...</div>';
+    $('pairingArea').innerHTML = '<div style="font-size:13px;color:var(--ink-dim);margin-top:10px;">Requesting code for +' + full + '...</div>';
     try {
         const res = await fetch('/api/connect', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({number: full}), credentials:'same-origin' });
         const d = await res.json();
@@ -369,7 +474,7 @@ async function loadSettings() {
         if (!data.cfg) return;
         $('prefixInput').value = data.cfg.prefix || '.';
         $('modeSelect').value = data.cfg.mode || 'public';
-        const toggles = ['typing','delay','read','online','autoreact'];
+        const toggles = ['typing','delay','read','online','autoreact','statusview','statusreact'];
         $('autoToggles').innerHTML = toggles.map(k => `<div class="toggle">${k}<span class="switch"><input type="checkbox" data-key="${k}" ${data.cfg[k]?'checked':''}><span class="track"></span><span class="knob"></span></span></div>`).join('');
         document.querySelectorAll('[data-key]').forEach(cb => cb.addEventListener('change', async () => {
             await fetch('/api/settings', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({key: cb.dataset.key, value: cb.checked}), credentials:'same-origin' });
@@ -401,7 +506,7 @@ async function loadDev() {
         $('dMaint').checked = data.maintenance;
         $('dSlots').value = data.maxSlots || 0;
         $('dCount').textContent = '· ' + data.users.length;
-        $('dUsers').innerHTML = data.users.map(u => `<div class="urow" style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);"><span>+${u.number}</span>${u.blocked?'<span style="color:var(--bad)">blocked</span>':'<button class="btn btn-sm danger" onclick="devAct(\'kill\',\'${u.number}\')">Kill</button>'}</div>`).join('');
+        $('dUsers').innerHTML = data.users.map(u => `<div class="urow" style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);"><span>+${u.number}</span>${u.blocked?'<span class="dtag" style="color:var(--bad)">blocked</span>':'<button class="btn btn-sm danger" onclick="devAct(\'kill\',\'${u.number}\')">Kill</button>'}</div>`).join('');
         $('dLog').innerHTML = data.logs.map(l => `<div>${l}</div>`).join('');
     } catch(e) {}
 }
@@ -418,11 +523,31 @@ $('dMaint').addEventListener('change', async () => {
     toast('Updated');
 });
 
-async function loadLogs() {
-    $('errorLog').innerHTML = '<div style="color:var(--good)">Server connected. Check Developer tab for console.</div>';
-}
+document.querySelectorAll('[data-upload]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const kind = btn.dataset.upload;
+        const fileInput = kind === 'menu' ? $('logoFile') : $('logo2File');
+        const file = fileInput.files[0];
+        if (!file) return toast('Select an image first');
+        const reader = new FileReader();
+        reader.onload = async () => {
+            const base64 = reader.result.split(',')[1];
+            await fetch('/api/image', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({kind, data: base64}), credentials:'same-origin' });
+            toast('Image uploaded');
+        };
+        reader.readAsDataURL(file);
+    });
+});
 
-setInterval(()=>{ $('hClock') && ($('hClock').textContent = new Date().toLocaleTimeString()); }, 1000);
+async function loadLogs() { $('errorLog').innerHTML = '<div style="color:var(--good)">Server connected.</div>'; }
+
+function tick(){
+    const d = new Date();
+    $('hClock').textContent = d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',second:'2-digit',hour12:true});
+    $('hDate').textContent = d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+}
+setInterval(tick, 1000); tick();
+
 const COUNTRIES = [['Nigeria', 234], ['US', 1], ['UK', 44]];
 $('countrySelect').innerHTML = COUNTRIES.map(([n,c])=>`<option value="${c}">${n} (+${c})</option>`).join('');
 $('countrySelect').addEventListener('change', () => { $('codeBox').textContent = '+' + $('countrySelect').value; });
