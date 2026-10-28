@@ -2278,6 +2278,7 @@ const server = http.createServer(async (req, res) => {
         const q = new URL(req.url, 'http://x').searchParams
         const IMG = { menu: LOGO_PATH, menu2: MENU2_LOGO_PATH, ping: PING_PATH, alive: ALIVE_PATH }
         if (url === '/api/dev' && user) req.__ok = true
+        if (url === '/api/sessions' && user) req.__ok = true
         if ((url === '/' || url === '/dashboard') && req.method === 'GET' && fs.existsSync('dashboard.html')) {
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(fs.readFileSync('dashboard.html')); return
         }
