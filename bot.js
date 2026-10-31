@@ -92,6 +92,7 @@ var LOGO_PATH = path.join('.', 'logo.png')
 var MENU2_LOGO_PATH = path.join('.', 'logo2.png')
 var PING_PATH = path.join('.', 'ping.png')
 var ALIVE_PATH = path.join('.', 'alive.png')
+var BIRTHDAY_PATH = path.join('.', 'birthday.png')
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || (function () {
     const p = require('crypto').randomBytes(6).toString('hex')
     console.log('[DASHBOARD] DASHBOARD_PASSWORD not set. Temporary password for this run: ' + p + '  (put DASHBOARD_PASSWORD=yourpass in .env to keep one)')
@@ -1190,33 +1191,52 @@ async function enforceProtection(sock, ctx, msg, content, from, sender, senderNu
 
     if (await checkAdmin(ctx, sock, from, [sender])) return false
 
-    if (!ctx.warningCounts[from]) ctx.warningCounts[from] = {}
-    const key = cleanJid(sender)
-    ctx.warningCounts[from][key] = (ctx.warningCounts[from][key] || 0) + 1
     const _reasonMap = { 'links': 'antilink', 'spam': 'antispam', 'media': 'antimedia', 'tags': 'antitag', 'forwarded messages': 'antiforward', 'bad words': 'antibadword' }
     const _cmdKey = _reasonMap[reason] || ''
-    const _cmdLimit = _cmdKey && ctx.groupSettings[from] ? ctx.groupSettings[from][_cmdKey + 'Limit'] : null
-    const limit = _cmdLimit || ctx.warnLimit[from] || 3
-    const count = ctx.warningCounts[from][key]
+    const action = (_cmdKey && settings[_cmdKey + 'Action']) || 'warn'
     const realNum = await resolveNumber(ctx, sock, from, sender)
-
     const botAdmin = await checkAdmin(ctx, sock, from, [...botIds(sock)])
+
     if (botAdmin) {
         try { await sock.sendMessage(from, { delete: msg.key }) } catch (e) {}
     }
+
+    // Kick action: always deletes (above), always kicks immediately, no warning message, no count.
+    if (action === 'kick') {
+        if (botAdmin) {
+            try {
+                await sock.groupParticipantsUpdate(from, [sender], 'remove')
+                await sock.sendMessage(from, {
+                    text: skInfo('🚫', 'KICKED', [['USER', `@${realNum}`], ['REASON', reason]]),
+                    mentions: mentionJids(sock, [sender], [realNum])
+                })
+            } catch (e) {}
+        }
+        return true
+    }
+
+    // Warn action: deletes (above), counts, warns, kicks at limit - unless the limit is 'none', which
+    // never kicks regardless of count.
+    if (!ctx.warningCounts[from]) ctx.warningCounts[from] = {}
+    const key = cleanJid(sender)
+    ctx.warningCounts[from][key] = (ctx.warningCounts[from][key] || 0) + 1
+    const _cmdLimit = _cmdKey ? settings[_cmdKey + 'Limit'] : null
+    const limit = _cmdLimit || ctx.warnLimit[from] || 3
+    const count = ctx.warningCounts[from][key]
+    const limitText = limit === 'none' ? `${count} (no limit)` : `${Math.min(count, limit)} / ${limit}`
 
     try {
         await sock.sendMessage(from, {
             text: skInfo('⚠️', 'WARN', [
                 ['USER', `@${realNum}`],
                 ['REASON', reason],
-                ['COUNT', `${Math.min(count, limit)} / ${limit}`]
+                ['COUNT', limitText]
             ]),
             mentions: mentionJids(sock, [sender], [realNum])
         })
     } catch (e) {}
 
-    if (count >= limit && botAdmin) {
+    if (limit !== 'none' && count >= limit && botAdmin) {
         try {
             await sock.groupParticipantsUpdate(from, [sender], 'remove')
             delete ctx.warningCounts[from][key]
@@ -2276,7 +2296,7 @@ const server = http.createServer(async (req, res) => {
         const setc = (n, v, hrs) => n + '=' + v + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + Math.floor(hrs * 3600)
         const dg = x => String(x || '').replace(/[^0-9]/g, '')
         const q = new URL(req.url, 'http://x').searchParams
-        const IMG = { menu: LOGO_PATH, menu2: MENU2_LOGO_PATH, ping: PING_PATH, alive: ALIVE_PATH }
+        const IMG = { menu: LOGO_PATH, menu2: MENU2_LOGO_PATH, ping: PING_PATH, alive: ALIVE_PATH, birthday: BIRTHDAY_PATH }
         if ((url === '/api/dev' || url === '/api/sessions') && user) req.__ok = true
         if (url === '/api/sessions' && user) req.__ok = true
         if ((url === '/' || url === '/dashboard') && req.method === 'GET' && fs.existsSync('dashboard.html')) {
@@ -2367,10 +2387,50 @@ const server = http.createServer(async (req, res) => {
                 if (B.includes(p.key)) ctx.cfg[p.key] = !!p.value
                 else if (p.key === 'mode' && ['public', 'private'].includes(p.value)) ctx.cfg.mode = p.value
                 else if (p.key === 'prefix' && typeof p.value === 'string' && p.value.length >= 1 && p.value.length <= 3) ctx.cfg.prefix = p.value
+                else if (p.key === 'birthdayMsg' && typeof p.value === 'string' && p.value.length <= 300) ctx.cfg.birthdayMsg = p.value
                 else return J(400, { error: 'Invalid setting.' })
                 saveCtx(ctx)
             }
             return J(200, { cfg: ctx.cfg })
+        }
+        if (url === '/api/group-settings') {
+            if (!user) return J(401, { error: 'Log in first.' })
+            const s = sessions['sess_' + user], ctx = s && s.ctx
+            if (!ctx || !s.sock) return J(409, { error: 'Your number is not connected.' })
+            const ANTI_KEYS = ['antilink', 'antispam', 'antibot', 'antimedia', 'antitag', 'antiforward', 'antidelete', 'antibadword']
+            const gid = q.get('group')
+            if (req.method === 'GET' && !gid) {
+                try {
+                    const groups = await s.sock.groupFetchAllParticipating()
+                    const list = Object.values(groups).map(g => ({ id: g.id, name: g.subject }))
+                    return J(200, { groups: list })
+                } catch (e) { return J(500, { error: 'Could not fetch groups.' }) }
+            }
+            if (req.method === 'GET' && gid) {
+                const gs = ctx.groupSettings[gid] || {}
+                const ws = ctx.welcomeSettings[gid] || { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
+                return J(200, { settings: gs, welcome: ws })
+            }
+            if (req.method === 'POST') {
+                let p = {}; try { p = JSON.parse(await body(2000)) } catch (e) {}
+                const g = String(p.group || '')
+                if (!g) return J(400, { error: 'Missing group.' })
+                if (!ctx.groupSettings[g]) ctx.groupSettings[g] = {}
+                const gs = ctx.groupSettings[g]
+                if (!ctx.welcomeSettings[g]) ctx.welcomeSettings[g] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
+                const ws = ctx.welcomeSettings[g]
+                if (ANTI_KEYS.includes(p.key)) gs[p.key] = !!p.value
+                else if (ANTI_KEYS.some(k => p.key === k + 'Action') && ['warn', 'kick'].includes(p.value)) gs[p.key] = p.value
+                else if (ANTI_KEYS.some(k => p.key === k + 'Limit') && (p.value === 'none' || (Number.isInteger(+p.value) && +p.value >= 1 && +p.value <= 10))) gs[p.key] = p.value === 'none' ? 'none' : +p.value
+                else if (p.key === 'slowmode' && Number.isInteger(+p.value) && +p.value >= 0) gs.slowmode = +p.value
+                else if (p.key === 'blacklist' && Array.isArray(p.value)) gs.blacklist = p.value.map(String).slice(0, 100)
+                else if (p.key === 'welcome' || p.key === 'goodbye') ws[p.key] = !!p.value
+                else if ((p.key === 'welcomeMsg' || p.key === 'goodbyeMsg') && typeof p.value === 'string' && p.value.length <= 500) ws[p.key] = p.value
+                else return J(400, { error: 'Invalid setting.' })
+                saveCtx(ctx)
+                return J(200, { settings: gs, welcome: ws })
+            }
+            return J(400, { error: 'Unknown request.' })
         }
         if (url === '/api/image' && req.method === 'POST') {
             if (!user) return J(401, { error: 'Log in first.' })
@@ -5968,7 +6028,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         }
 
         const celebrantDisplay = celebrant ? titleCase(celebrant) : ''
-        const quote = getRandom(BIRTHDAY_QUOTES)
+        const quote = (ctx.cfg.birthdayMsg && ctx.cfg.birthdayMsg.trim()) ? ctx.cfg.birthdayMsg.trim() : getRandom(BIRTHDAY_QUOTES)
         const namedQuote = celebrantDisplay ? quote.replace('{name}', ', ' + celebrantDisplay) : quote.replace('{name}', '')
         const fromLine = senderName ? '» ' + mono('FROM') + '  •  ' + mono(titleCase(senderName)) + '\n\n' : ''
 
@@ -5984,6 +6044,9 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const delays = [3500, 1500, 1500, 1500, 1500, 3500]
 
         if (!targetNum) {
+            if (fs.existsSync(BIRTHDAY_PATH)) {
+                try { await sock.sendMessage(from, { image: fs.readFileSync(BIRTHDAY_PATH) }, { quoted: msg }) } catch (e) {}
+            }
             const sent = await reply(stages[0])
             const k = sent?.key || null
             if (!k) return
