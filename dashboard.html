@@ -275,6 +275,22 @@ img{-webkit-user-drag:none;user-drag:none}
 .anti-sub select{margin:0;flex:1;padding:7px 9px;font-size:12px}
 .chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:var(--surface-raised);border:1px solid var(--line);border-radius:999px;font-size:12px;font-family:var(--font-mono);margin:3px 4px 0 0}
 .chip button{background:none;border:none;color:var(--ink-faint);cursor:pointer;font-size:13px;padding:0}
+.gtabs{display:flex;gap:6px;margin:14px 0 4px}
+.gtab{flex:1;padding:9px 0;border:1px solid var(--line);background:var(--surface-raised);color:var(--ink-dim);border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer}
+.gtab.active{background:var(--crimson-dim);color:var(--ink);border-color:var(--crimson)}
+.gpanel{display:none;padding-top:6px}
+.gpanel.active{display:block}
+.ginfo{border:1px solid var(--line);border-radius:8px;padding:11px 13px;background:var(--surface-raised);font-size:12.5px;line-height:1.7;margin-bottom:6px}
+.ginfo b{font-family:var(--font-display);font-size:15px;font-weight:400}
+.cmd-row{display:flex;gap:8px;margin-bottom:10px}
+.cmd-row input{margin:0;flex:1}
+.cmd-row .btn{width:auto;flex:0 0 auto}
+.member-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);font-size:12.5px;flex-wrap:wrap}
+.member-row:last-child{border-bottom:none}
+.member-row .mnum{font-family:var(--font-mono);flex:1;min-width:130px}
+.member-row .mtag{font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid var(--gold-dim);color:var(--gold)}
+.btn-xs{padding:5px 10px;font-size:11.5px;width:auto}
+.link-out{font-family:var(--font-mono);font-size:12px;word-break:break-all;color:var(--gold);margin:6px 0 10px}
 .coming-soon{border:1px dashed var(--ink-faint);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--ink-faint);margin-bottom:14px}
 input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
 .err-text{color:var(--bad);font-size:12px;margin-top:-6px;margin-bottom:10px}
@@ -319,7 +335,7 @@ input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
         <div class="drawer-item" data-page="connect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M8 12 H16 M12 8 V16"/></svg>Connect</div>
         <div class="drawer-item" data-page="sessions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7 H15"/></svg>Sessions</div>
         <div class="drawer-item locked" data-page="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 3 V6 M12 18 V21 M3 12 H6 M18 12 H21 M5.6 5.6 L7.8 7.8 M16.2 16.2 L18.4 18.4 M18.4 5.6 L16.2 7.8 M7.8 16.2 L5.6 18.4"/></svg>Settings</div>
-        <div class="drawer-item locked" data-page="protection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3 L20 7 V12 C20 17 16.5 20 12 21 C7.5 20 4 17 4 12 V7 Z"/><path d="M9 12 L11 14 L15 10"/></svg>Protection</div>
+        <div class="drawer-item locked" data-page="protection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3 L20 7 V12 C20 17 16.5 20 12 21 C7.5 20 4 17 4 12 V7 Z"/><path d="M9 12 L11 14 L15 10"/></svg>Groups</div>
         <div class="drawer-item locked" data-page="developer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3 L20 7 V12 C20 17 16.5 20 12 21 C7.5 20 4 17 4 12 V7 Z"/></svg>Developer</div>
         <div class="drawer-item locked" data-page="logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9 H16 M8 13 H13"/></svg>Logs</div>
         <div class="drawer-item" data-page="owner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="3.3"/><path d="M5 20 C5 15.5 8 13.5 12 13.5 C16 13.5 19 15.5 19 20"/></svg>Contact owner</div>
@@ -421,12 +437,44 @@ input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
 </div>
 
 <div class="page" id="page-protection">
-    <div class="page-title">Protection</div>
+    <div class="page-title">Groups</div>
     <div class="panel">
         <label>Group</label>
         <select id="groupPick"><option value="">Loading groups...</option></select>
         <div id="groupBody" style="display:none">
+            <div class="gtabs">
+                <button class="gtab active" data-gtab="commands">Commands</button>
+                <button class="gtab" data-gtab="anti">Protection</button>
+                <button class="gtab" data-gtab="welcome">Welcome</button>
+            </div>
+            <div class="gpanel active" id="gpanel-commands">
+                <div class="ginfo" id="groupInfoCard">Loading group...</div>
+                <div class="btn-row">
+                    <button class="btn btn-sm" id="gaMute">Mute group</button>
+                    <button class="btn btn-sm" id="gaLink">Get link</button>
+                    <button class="btn btn-sm" id="gaRevoke">Reset link</button>
+                </div>
+                <div id="gaLinkOut"></div>
+                <div class="subhead">Tag members</div>
+                <input type="text" id="gaTagText" maxlength="300" placeholder="Message (optional)">
+                <div class="btn-row" style="margin-top:0">
+                    <button class="btn btn-sm" id="gaTagAll">Tag all</button>
+                    <button class="btn btn-sm" id="gaHideTag">Hidetag</button>
+                    <button class="btn btn-sm" id="gaTagAdmins">Tag admins</button>
+                </div>
+                <div class="subhead">Group details</div>
+                <div class="cmd-row"><input type="text" id="gaName" maxlength="100" placeholder="New group name"><button class="btn btn-sm" id="gaRenameBtn">Rename</button></div>
+                <div class="cmd-row"><input type="text" id="gaDesc" maxlength="2000" placeholder="New description"><button class="btn btn-sm" id="gaDescBtn">Save</button></div>
+                <div class="subhead">Add a member</div>
+                <div class="cmd-row"><input type="tel" id="gaAddNum" placeholder="Number with country code"><button class="btn btn-sm" id="gaAddBtn">Add</button></div>
+                <div class="subhead" id="gaMembersTitle">Members</div>
+                <div id="gaMembers"></div>
+                <div class="subhead">Danger zone</div>
+                <button class="btn danger" id="gaLeave">Leave group</button>
+            </div>
+            <div class="gpanel" id="gpanel-anti">
             <div class="toggle-grid" id="antiToggles" style="margin-top:6px"></div>
+            <div style="font-size:11px;color:var(--ink-faint);margin-top:8px">Antibot catches bots that use the older Baileys message signature. Antidelete reposts deleted messages and has no warn or kick.</div>
             <label style="margin-top:14px">Slowmode (seconds)</label>
             <input type="number" id="slowmodeInput" min="0" value="0">
             <label>Badword blacklist</label>
@@ -435,7 +483,9 @@ input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
                 <input type="text" id="blacklistAdd" placeholder="Add a word" style="margin:0">
                 <button class="btn btn-sm" id="blacklistAddBtn">Add</button>
             </div>
-            <div class="subhead" style="margin-top:18px">Welcome / Goodbye (this group)</div>
+            </div>
+            <div class="gpanel" id="gpanel-welcome">
+            <div class="subhead" style="margin-top:6px">Welcome / Goodbye for this group. Overrides the all-groups toggle in Settings.</div>
             <div class="toggle-grid">
                 <div class="toggle">Welcome<span class="switch"><input type="checkbox" id="welcomeToggle"><span class="track"></span><span class="knob"></span></span></div>
                 <div class="toggle">Goodbye<span class="switch"><input type="checkbox" id="goodbyeToggle"><span class="track"></span><span class="knob"></span></span></div>
@@ -445,6 +495,7 @@ input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
             <label>Goodbye message</label>
             <input type="text" id="goodbyeMsgInput" maxlength="500" placeholder="@user has left the realm.">
             <button class="btn" id="saveWelcomeMsgBtn" style="margin-top:4px">Save messages</button>
+            </div>
         </div>
     </div>
 </div>
@@ -653,7 +704,7 @@ document.getElementById('reloadSessionBtn').addEventListener('click',loadSession
 
 /* ===== settings ===== */
 const AUTO=[['typing','Typing'],['delay','Delay'],['read','Read'],['online','Online'],['autoreact','Autoreact'],
-    ['statusreact','Status react'],['statusview','Status view'],['eventsWelcome','Welcome messages'],['eventsGoodbye','Goodbye messages']];
+    ['statusreact','Status react'],['statusview','Status view'],['eventsWelcome','Welcome (all groups)'],['eventsGoodbye','Goodbye (all groups)']];
 async function loadSettings(){
     document.getElementById('settingsNumber').value=loggedInNumber;
     const r=await api('/api/settings');
@@ -777,17 +828,22 @@ document.getElementById('groupPick').addEventListener('change',async(e)=>{
     if(!r.ok){toast(r.data.error||'Failed.');return}
     const gs=r.data.settings||{}, ws=r.data.welcome||{};
     body.style.display='block';
+    showGTab('commands');
+    loadGroupInfo();
     document.getElementById('antiToggles').innerHTML=ANTI.map(([k,l])=>{
         const on=!!gs[k];
-        return `<div class="anti-block"><div class="toggle" style="border:none;border-radius:0">${l}<span class="switch"><input type="checkbox" data-anti="${k}" ${on?'checked':''}><span class="track"></span><span class="knob"></span></span></div>
-            <div class="anti-sub ${on?'open':''}" id="sub-${k}">
+        const sub=k==='antidelete'
+            ?`<div class="anti-sub ${on?'open':''}" id="sub-${k}"><span style="font-size:12px;color:var(--ink-faint)">Reposts deleted messages. No warn or kick.</span></div>`
+            :`<div class="anti-sub ${on?'open':''}" id="sub-${k}">
                 <select data-action="${k}"><option value="warn">Warn</option><option value="kick">Kick</option></select>
                 <select data-limit="${k}">${limitOptions()}</select>
-            </div></div>`;
+            </div>`;
+        return `<div class="anti-block"><div class="toggle" style="border:none;border-radius:0">${l}<span class="switch"><input type="checkbox" data-anti="${k}" ${on?'checked':''}><span class="track"></span><span class="knob"></span></span></div>${sub}</div>`;
     }).join('');
     ANTI.forEach(([k])=>{
-        document.querySelector(`[data-action="${k}"]`).value=gs[k+'Action']||'warn';
-        document.querySelector(`[data-limit="${k}"]`).value=String(gs[k+'Limit']||3);
+        const a=document.querySelector(`[data-action="${k}"]`),l=document.querySelector(`[data-limit="${k}"]`);
+        if(a)a.value=gs[k+'Action']||'warn';
+        if(l)l.value=String(gs[k+'Limit']||3);
     });
     document.querySelectorAll('[data-anti]').forEach(cb=>cb.addEventListener('change',()=>{
         document.getElementById('sub-'+cb.dataset.anti).classList.toggle('open',cb.checked);
@@ -802,6 +858,84 @@ document.getElementById('groupPick').addEventListener('change',async(e)=>{
     document.getElementById('goodbyeToggle').checked=!!ws.goodbye;
     document.getElementById('welcomeMsgInput').value=ws.welcomeMsg||'';
     document.getElementById('goodbyeMsgInput').value=ws.goodbyeMsg||'';
+});
+/* ===== group commands (per group) ===== */
+const escHtml=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let groupMeta=null;
+function showGTab(name){
+    document.querySelectorAll('.gtab').forEach(x=>x.classList.toggle('active',x.dataset.gtab===name));
+    document.querySelectorAll('.gpanel').forEach(x=>x.classList.toggle('active',x.id==='gpanel-'+name));
+}
+document.querySelectorAll('[data-gtab]').forEach(b=>b.addEventListener('click',()=>showGTab(b.dataset.gtab)));
+async function gaPost(action,extra){
+    const r=await api('/api/group-action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({group:currentGroup,action},extra||{}))});
+    toast(r.ok?(r.data.message||'Done.'):(r.data.error||'Failed.'));
+    return r;
+}
+async function loadGroupInfo(){
+    const card=document.getElementById('groupInfoCard');
+    card.textContent='Loading group...';
+    document.getElementById('gaLinkOut').innerHTML='';
+    const r=await api('/api/group-info?group='+encodeURIComponent(currentGroup));
+    if(!r.ok){card.textContent=r.data.error||'Could not load this group.';return}
+    groupMeta=r.data;
+    const admins=groupMeta.members.filter(m=>m.admin).length;
+    card.innerHTML='<b>'+escHtml(groupMeta.name)+'</b><br>'+groupMeta.members.length+' members · '+admins+' admins · '+(groupMeta.muted?'muted (admins only)':'open to everyone')
+        +(groupMeta.desc?'<br><span style="color:var(--ink-faint)">'+escHtml(groupMeta.desc.slice(0,160))+'</span>':'');
+    document.getElementById('gaMute').textContent=groupMeta.muted?'Unmute group':'Mute group';
+    document.getElementById('gaMembersTitle').textContent='Members ('+groupMeta.members.length+')';
+    document.getElementById('gaMembers').innerHTML=groupMeta.members.map((m,i)=>{
+        const label=m.number?('+'+m.number):('Hidden number ····'+String(m.id).split('@')[0].slice(-4));
+        const tag=m.me?'<span class="mtag">you</span>':(m.admin?'<span class="mtag">admin</span>':'');
+        const acts=m.me?'':(m.admin
+            ?'<button class="btn btn-xs" data-ma="demote" data-mi="'+i+'">Demote</button>'
+            :'<button class="btn btn-xs" data-ma="promote" data-mi="'+i+'">Promote</button><button class="btn btn-xs danger" data-ma="kick" data-mi="'+i+'">Kick</button>');
+        return '<div class="member-row"><span class="mnum">'+escHtml(label)+'</span>'+tag+acts+'</div>';
+    }).join('');
+    document.querySelectorAll('[data-ma]').forEach(b=>b.addEventListener('click',async()=>{
+        const m=groupMeta.members[+b.dataset.mi];
+        if(b.dataset.ma==='kick'&&!confirm('Remove this member from the group?'))return;
+        const rr=await gaPost(b.dataset.ma,{targets:[m.id]});
+        if(rr.ok)loadGroupInfo();
+    }));
+}
+document.getElementById('gaMute').addEventListener('click',async()=>{
+    const r=await gaPost(groupMeta&&groupMeta.muted?'unmute':'mute');
+    if(r.ok)loadGroupInfo();
+});
+async function showLink(action){
+    const r=await gaPost(action);
+    if(r.ok&&r.data.link){
+        document.getElementById('gaLinkOut').innerHTML='<div class="link-out">'+escHtml(r.data.link)+'</div><button class="btn btn-xs" id="gaCopyLink">Copy link</button>';
+        document.getElementById('gaCopyLink').addEventListener('click',()=>{navigator.clipboard?.writeText(r.data.link).catch(()=>{});toast('Link copied.')});
+    }
+}
+document.getElementById('gaLink').addEventListener('click',()=>showLink('link'));
+document.getElementById('gaRevoke').addEventListener('click',()=>{if(confirm('Reset the invite link? The old one stops working.'))showLink('revoke')});
+[['gaTagAll','tagall'],['gaHideTag','hidetag'],['gaTagAdmins','tagadmins']].forEach(([id,action])=>{
+    document.getElementById(id).addEventListener('click',()=>gaPost(action,{text:document.getElementById('gaTagText').value}));
+});
+document.getElementById('gaRenameBtn').addEventListener('click',async()=>{
+    const name=document.getElementById('gaName').value;
+    const r=await gaPost('setname',{text:name});
+    if(r.ok){
+        document.getElementById('gaName').value='';
+        const o=document.querySelector('#groupPick option:checked');if(o)o.textContent=name.trim();
+        loadGroupInfo();
+    }
+});
+document.getElementById('gaDescBtn').addEventListener('click',async()=>{
+    const r=await gaPost('setdesc',{text:document.getElementById('gaDesc').value});
+    if(r.ok){document.getElementById('gaDesc').value='';loadGroupInfo()}
+});
+document.getElementById('gaAddBtn').addEventListener('click',async()=>{
+    const r=await gaPost('add',{number:document.getElementById('gaAddNum').value});
+    if(r.ok){document.getElementById('gaAddNum').value='';loadGroupInfo()}
+});
+document.getElementById('gaLeave').addEventListener('click',async()=>{
+    if(!confirm('Make this number leave the group? This cannot be undone from here.'))return;
+    const r=await gaPost('leave',{confirm:true});
+    if(r.ok){document.getElementById('groupBody').style.display='none';currentGroup='';loadProtection()}
 });
 document.getElementById('slowmodeInput').addEventListener('change',e=>gsPost('slowmode',e.target.value));
 function renderBlacklist(){

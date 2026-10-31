@@ -1169,7 +1169,8 @@ function detectViolation(ctx, settings, msg, content, ci, text, from, sender) {
     )) return 'media'
     if (settings.antitag && ci?.mentionedJid?.length >= 5) return 'tags'
     if (settings.antiforward && ci?.isForwarded) return 'forwarded messages'
-    if (settings.antibadword && BAD_WORDS.some(w => new RegExp(`\\b${w}\\b`, 'i').test(text))) return 'bad words'
+    if (settings.antibot && /^BAE5/.test(String(msg.key && msg.key.id || ''))) return 'bots'
+    if (settings.antibadword && (BAD_WORDS.some(w => new RegExp(`\\b${w}\\b`, 'i').test(text)) || (Array.isArray(settings.blacklist) ? settings.blacklist : []).some(w => { const e = String(w).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); return !!e && new RegExp(`(^|[^\\p{L}\\p{N}_])${e}($|[^\\p{L}\\p{N}_])`, 'iu').test(text) }))) return 'bad words'
     if (settings.antispam) {
         const now = Date.now()
         if (!ctx.spam[from]) ctx.spam[from] = {}
@@ -1191,7 +1192,7 @@ async function enforceProtection(sock, ctx, msg, content, from, sender, senderNu
 
     if (await checkAdmin(ctx, sock, from, [sender])) return false
 
-    const _reasonMap = { 'links': 'antilink', 'spam': 'antispam', 'media': 'antimedia', 'tags': 'antitag', 'forwarded messages': 'antiforward', 'bad words': 'antibadword' }
+    const _reasonMap = { 'links': 'antilink', 'spam': 'antispam', 'media': 'antimedia', 'tags': 'antitag', 'forwarded messages': 'antiforward', 'bad words': 'antibadword', 'bots': 'antibot' }
     const _cmdKey = _reasonMap[reason] || ''
     const action = (_cmdKey && settings[_cmdKey + 'Action']) || 'warn'
     const realNum = await resolveNumber(ctx, sock, from, sender)
@@ -1546,6 +1547,9 @@ async function processMessage(sock, ctx, msg, type) {
             const stages = pending.stages
             const delays = pending.delays
             try {
+                if (fs.existsSync(BIRTHDAY_PATH)) {
+                    try { await sock.sendMessage(sender, { image: fs.readFileSync(BIRTHDAY_PATH) }) } catch (e) {}
+                }
                 const sent = await sock.sendMessage(sender, { text: stages[0] })
                 const editKey = sent?.key
                 for (let i = 1; i < stages.length; i++) {
@@ -2408,8 +2412,9 @@ const server = http.createServer(async (req, res) => {
             }
             if (req.method === 'GET' && gid) {
                 const gs = ctx.groupSettings[gid] || {}
-                const ws = ctx.welcomeSettings[gid] || { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
-                return J(200, { settings: gs, welcome: ws })
+                const ws = ctx.welcomeSettings[gid] || {}
+                const eff = { welcome: typeof ws.welcome === 'boolean' ? ws.welcome : !!ctx.cfg.eventsWelcome, goodbye: typeof ws.goodbye === 'boolean' ? ws.goodbye : !!ctx.cfg.eventsGoodbye }
+                return J(200, { settings: gs, welcome: Object.assign({}, ws, eff) })
             }
             if (req.method === 'POST') {
                 let p = {}; try { p = JSON.parse(await body(2000)) } catch (e) {}
@@ -2417,13 +2422,14 @@ const server = http.createServer(async (req, res) => {
                 if (!g) return J(400, { error: 'Missing group.' })
                 if (!ctx.groupSettings[g]) ctx.groupSettings[g] = {}
                 const gs = ctx.groupSettings[g]
-                if (!ctx.welcomeSettings[g]) ctx.welcomeSettings[g] = { welcome: false, goodbye: false, welcomeMsg: '', goodbyeMsg: '' }
-                const ws = ctx.welcomeSettings[g]
+                const isWelcomeKey = ['welcome', 'goodbye', 'welcomeMsg', 'goodbyeMsg'].includes(p.key)
+                if (isWelcomeKey && !ctx.welcomeSettings[g]) ctx.welcomeSettings[g] = {}
+                const ws = ctx.welcomeSettings[g] || {}
                 if (ANTI_KEYS.includes(p.key)) gs[p.key] = !!p.value
                 else if (ANTI_KEYS.some(k => p.key === k + 'Action') && ['warn', 'kick'].includes(p.value)) gs[p.key] = p.value
                 else if (ANTI_KEYS.some(k => p.key === k + 'Limit') && (p.value === 'none' || (Number.isInteger(+p.value) && +p.value >= 1 && +p.value <= 10))) gs[p.key] = p.value === 'none' ? 'none' : +p.value
                 else if (p.key === 'slowmode' && Number.isInteger(+p.value) && +p.value >= 0) gs.slowmode = +p.value
-                else if (p.key === 'blacklist' && Array.isArray(p.value)) gs.blacklist = p.value.map(String).slice(0, 100)
+                else if (p.key === 'blacklist' && Array.isArray(p.value)) gs.blacklist = p.value.map(x => String(x).trim().slice(0, 40)).filter(Boolean).slice(0, 100)
                 else if (p.key === 'welcome' || p.key === 'goodbye') ws[p.key] = !!p.value
                 else if ((p.key === 'welcomeMsg' || p.key === 'goodbyeMsg') && typeof p.value === 'string' && p.value.length <= 500) ws[p.key] = p.value
                 else return J(400, { error: 'Invalid setting.' })
@@ -2432,6 +2438,115 @@ const server = http.createServer(async (req, res) => {
             }
             return J(400, { error: 'Unknown request.' })
         }
+        if (url === '/api/group-info' || url === '/api/group-action') {
+            if (!user) return J(401, { error: 'Log in first.' })
+            const s = sessions['sess_' + user], ctx = s && s.ctx
+            if (!ctx || !s.sock) return J(409, { error: 'Your number is not connected.' })
+            const sock = s.sock
+            let gid = q.get('group') || ''
+            let p = {}
+            if (req.method === 'POST') { try { p = JSON.parse(await body(6000)) } catch (e) {} gid = String(p.group || '') }
+            if (!/@g\.us$/.test(gid)) return J(400, { error: 'Pick a group first.' })
+            let meta
+            try { meta = await getGroupMeta(ctx, sock, gid, true) } catch (e) { return J(404, { error: 'That group is not available to this number.' }) }
+            const isMe = x => isBotJid(sock, x.id) || [x.jid, x.lid, x.phoneNumber].some(v => v && isBotJid(sock, v))
+            if (url === '/api/group-info') {
+                return J(200, {
+                    id: gid, name: meta.subject, desc: meta.desc || '', muted: !!meta.announce,
+                    members: meta.participants.map(x => ({ id: x.id, number: bestNumber(x), admin: x.admin || null, me: isMe(x) }))
+                })
+            }
+            if (req.method !== 'POST') return J(405, { error: 'POST only.' })
+            const act = String(p.action || '')
+            const refresh = () => getGroupMeta(ctx, sock, gid, true).catch(() => {})
+            try {
+                if (act === 'mute' || act === 'unmute') {
+                    await sock.groupSettingUpdate(gid, act === 'mute' ? 'announcement' : 'not_announcement')
+                    await refresh()
+                    return J(200, { ok: true, muted: act === 'mute', message: act === 'mute' ? 'Group muted. Admins only.' : 'Group unmuted.' })
+                }
+                if (act === 'link' || act === 'revoke') {
+                    if (act === 'revoke') await sock.groupRevokeInvite(gid)
+                    const code = await sock.groupInviteCode(gid)
+                    return J(200, { ok: true, link: 'https://chat.whatsapp.com/' + code, message: act === 'revoke' ? 'Link reset.' : 'Link ready.' })
+                }
+                if (act === 'tagall' || act === 'hidetag' || act === 'tagadmins') {
+                    global.__gaLast = global.__gaLast || {}
+                    const k = user + gid
+                    if (Date.now() - (global.__gaLast[k] || 0) < 5000) return J(429, { error: 'Wait a few seconds between tags.' })
+                    global.__gaLast[k] = Date.now()
+                    const list = act === 'tagadmins' ? meta.participants.filter(x => x.admin) : meta.participants
+                    const mentions = list.map(x => x.id)
+                    const custom = String(p.text || '').slice(0, 300)
+                    let out
+                    if (act === 'tagadmins') {
+                        out = `${SK_HEADER}\n\n📢 ${mono('ATTENTION ADMINS')}`
+                        if (custom) out += `\n\n${mono(custom)}`
+                        out += `\n\n» ${mono('GROUP')}  •  ${mono(meta.subject)}\n» ${mono('ADMINS')}  •  ${mono(String(mentions.length))}\n\n${SK_FOOTER}`
+                    } else if (act === 'hidetag') {
+                        out = `${SK_HEADER}\n\n📢 ${mono('ATTENTION')}`
+                        if (custom) out += `\n\n${mono(custom)}`
+                        out += `\n\n${SK_FOOTER}`
+                    } else {
+                        out = `${SK_HEADER}\n\n📢 ${mono('ATTENTION EVERYONE')}`
+                        if (custom) out += `\n\n${mono(custom)}`
+                        out += `\n\n» ${mono('GROUP')}  •  ${mono(meta.subject)}\n» ${mono('MEMBERS')}  •  ${mono(String(meta.participants.length))}\n\n${SK_FOOTER}`
+                    }
+                    await sock.sendMessage(gid, { text: out, mentions })
+                    return J(200, { ok: true, message: 'Sent to the group.' })
+                }
+                if (act === 'promote' || act === 'demote' || act === 'kick') {
+                    const wanted = (Array.isArray(p.targets) ? p.targets : []).map(String).slice(0, 5)
+                    const ids = []
+                    for (const id of wanted) {
+                        const part = meta.participants.find(x => x.id === id)
+                        if (!part || isMe(part)) continue
+                        if ((act === 'kick' || act === 'promote') && part.admin) continue
+                        if (act === 'demote' && !part.admin) continue
+                        ids.push(id)
+                    }
+                    if (!ids.length) return J(400, { error: 'Nothing to do for that member. Admins cannot be kicked, and you cannot target yourself.' })
+                    const r = await participantsUpdate(sock, gid, ids, act === 'kick' ? 'remove' : act)
+                    await refresh()
+                    if (!r.ok) return J(403, { error: 'WhatsApp refused that. This number must be a group admin.' })
+                    return J(200, { ok: true, message: act === 'kick' ? 'Removed.' : act === 'promote' ? 'Promoted to admin.' : 'Admin removed.' })
+                }
+                if (act === 'add') {
+                    const digits = String(p.number || '').replace(/[^0-9]/g, '')
+                    if (digits.length < 7 || digits.length > 15) return J(400, { error: 'Enter a valid number with country code.' })
+                    const r = await participantsUpdate(sock, gid, [normalizeJid(digits)], 'add')
+                    if (r.ok) { await refresh(); return J(200, { ok: true, message: 'Added +' + digits + '.' }) }
+                    const st = String(r.res && r.res[0] && r.res[0].status)
+                    if (st === '403') return J(400, { error: 'They only allow adds through an invite link.' })
+                    if (st === '409') return J(400, { error: 'Already in the group.' })
+                    if (st === '408') return J(400, { error: 'They recently left the group.' })
+                    return J(403, { error: 'Could not add. This number must be a group admin.' })
+                }
+                if (act === 'setname') {
+                    const t = String(p.text || '').trim()
+                    if (!t || t.length > 100) return J(400, { error: 'Name must be 1 to 100 characters.' })
+                    await sock.groupUpdateSubject(gid, t); await refresh()
+                    return J(200, { ok: true, message: 'Name changed.' })
+                }
+                if (act === 'setdesc') {
+                    const t = String(p.text || '').trim()
+                    if (!t || t.length > 2000) return J(400, { error: 'Description must be 1 to 2000 characters.' })
+                    await sock.groupUpdateDescription(gid, t); await refresh()
+                    return J(200, { ok: true, message: 'Description saved.' })
+                }
+                if (act === 'leave') {
+                    if (p.confirm !== true) return J(400, { error: 'Confirmation required.' })
+                    await sock.groupLeave(gid)
+                    delete ctx.metaCache[gid]
+                    return J(200, { ok: true, message: 'Left the group.' })
+                }
+                return J(400, { error: 'Unknown action.' })
+            } catch (e) {
+                console.log('[group-action]', act, e && e.message || e)
+                return J(403, { error: 'WhatsApp refused that. This number must be a group admin.' })
+            }
+        }
+
         if (url === '/api/image' && req.method === 'POST') {
             if (!user) return J(401, { error: 'Log in first.' })
             let p = {}; try { p = JSON.parse(await body(4500000)) } catch (e) {}
