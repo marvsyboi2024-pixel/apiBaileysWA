@@ -2484,9 +2484,7 @@ const server = http.createServer(async (req, res) => {
                         if (custom) out += `\n\n${mono(custom)}`
                         out += `\n\n» ${mono('GROUP')}  •  ${mono(meta.subject)}\n» ${mono('ADMINS')}  •  ${mono(String(mentions.length))}\n\n${SK_FOOTER}`
                     } else if (act === 'hidetag') {
-                        out = `${SK_HEADER}\n\n📢 ${mono('ATTENTION')}`
-                        if (custom) out += `\n\n${mono(custom)}`
-                        out += `\n\n${SK_FOOTER}`
+                        out = custom ? custom : `📢 ${mono('ATTENTION')}`
                     } else {
                         out = `${SK_HEADER}\n\n📢 ${mono('ATTENTION EVERYONE')}`
                         if (custom) out += `\n\n${mono(custom)}`
@@ -5773,9 +5771,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             }
 
             if (cmd === 'hidetag') {
-                let out = `${SK_HEADER}\n\n📢 ${mono('ATTENTION')}`
-                if (custom) out += `\n\n${mono(custom)}`
-                out += `\n\n${SK_FOOTER}`
+                let out = custom ? custom : `📢 ${mono('ATTENTION')}`
                 return sock.sendMessage(from, { text: out, mentions })
             }
 
