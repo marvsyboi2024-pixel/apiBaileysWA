@@ -4805,7 +4805,16 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             if (!fs.existsSync(outPath)) throw new Error('no output')
             const buf = fs.readFileSync(outPath)
             const sizeMB = (buf.length / 1024 / 1024).toFixed(1)
-            await sock.sendMessage(from, { audio: buf, mimetype: 'audio/mpeg', ptt: false }, { quoted: msg })
+            let voiceSent = false
+            try {
+                const oggPath = outPath.replace(/\.mp3$/, '.ogg')
+                await runFfmpeg(['-y', '-i', outPath, '-vn', '-c:a', 'libopus', '-b:a', '48k', '-ar', '48000', '-ac', '1', '-f', 'ogg', oggPath])
+                const oggBuf = fs.readFileSync(oggPath)
+                await sock.sendMessage(from, { audio: oggBuf, mimetype: 'audio/ogg; codecs=opus', ptt: true }, { quoted: msg })
+                voiceSent = true
+                try { fs.unlinkSync(oggPath) } catch (e) {}
+            } catch (e) { console.log('[SONG] voice convert failed:', e.message) }
+            if (!voiceSent) await sock.sendMessage(from, { audio: buf, mimetype: 'audio/mpeg', ptt: false }, { quoted: msg })
             if (noticeKey) {
                 try {
                     const doneText = headLine + '\n\n' + String.fromCodePoint(0x2705) + ' ' + mono('DOWNLOADED') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('SONG') + '  ' + String.fromCharCode(0x2022) + '  ' + query.slice(0, 80) + '\n' + String.fromCharCode(0x00BB) + ' ' + mono('SIZE') + '  ' + String.fromCharCode(0x2022) + '  ' + sizeMB + ' MB'
