@@ -4805,7 +4805,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             if (!fs.existsSync(outPath)) throw new Error('no output')
             const buf = fs.readFileSync(outPath)
             const sizeMB = (buf.length / 1024 / 1024).toFixed(1)
-            await sock.sendMessage(from, { audio: buf, mimetype: 'audio/mpeg', ptt: true }, { quoted: msg })
+            await sock.sendMessage(from, { audio: buf, mimetype: 'audio/mpeg', ptt: false }, { quoted: msg })
             if (noticeKey) {
                 try {
                     const doneText = headLine + '\n\n' + String.fromCodePoint(0x2705) + ' ' + mono('DOWNLOADED') + '\n\n' + String.fromCharCode(0x00BB) + ' ' + mono('SONG') + '  ' + String.fromCharCode(0x2022) + '  ' + query.slice(0, 80) + '\n' + String.fromCharCode(0x00BB) + ' ' + mono('SIZE') + '  ' + String.fromCharCode(0x2022) + '  ' + sizeMB + ' MB'
