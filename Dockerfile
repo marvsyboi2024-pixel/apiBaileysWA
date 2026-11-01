@@ -1,10 +1,10 @@
 # Use Node 22 as required by bgutil
 FROM node:22-slim
 
-# Prevent debconf interactive prompts and install required tools
+# Prevent debconf interactive prompts and install required tools (including unzip)
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip python3-venv ffmpeg git curl build-essential libterm-readline-gnu-perl \
+    python3 python3-pip python3-venv ffmpeg git curl build-essential unzip xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Deno
