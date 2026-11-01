@@ -2830,11 +2830,12 @@ server.listen(PORT, () => {
     console.log(`Web server listening on port ${PORT}`)
 })
 
+const YT_PROXY = process.env.YT_PROXY || ''
 let YTDLP_AVAILABLE = false
 function checkYtDlp() {
     execFile('yt-dlp', ['--version'], { timeout: 10000 }, (err) => {
         YTDLP_AVAILABLE = !err
-        if (err) console.log('[TT] yt-dlp not found. Install with: pip install yt-dlp')
+        if (err) console.log('[TT] yt-dlp check failed:', err.message)
     })
 }
 
@@ -3047,7 +3048,7 @@ function runYtDlpVideo(url, outPath, quality) {
                 '--js-runtimes', 'deno',
                 '--extractor-args', 'youtubepot-bgutilscript:server_home=/opt/bgutil/server',
                 '-f', fmt,
-                '--force-ipv4',
+                ...(YT_PROXY ? ['--proxy', YT_PROXY] : ['--force-ipv4']),
             '--merge-output-format', 'mp4',
             '--no-playlist',
             '--max-filesize', '150M',
@@ -4768,7 +4769,16 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             const src = isTikTokUrl(query) || /^https?:\/\//i.test(query) ? query : 'ytsearch1:' + query
             await new Promise(function(resolve, reject){
-                execFile('yt-dlp', ['-x', '--audio-format', 'mp3', '--max-filesize', '30M', '--match-filter', 'duration < 300', '-o', outPath, '--no-playlist', '--js-runtimes', 'deno', '--extractor-args', 'youtubepot-bgutilscript:server_home=/opt/bgutil/server', '--force-ipv4', '--', src], { timeout: 120000, maxBuffer: 20*1024*1024 }, function(err){ if (err) reject(err); else resolve() })
+                const ytArgs = [
+                    '-f', 'ba/b', '-x', '--audio-format', 'mp3',
+                    '--max-filesize', '30M', '--match-filter', 'duration < 300',
+                    '--no-playlist', '--no-warnings',
+                    '--js-runtimes', 'deno',
+                    '--extractor-args', 'youtubepot-bgutilscript:server_home=/opt/bgutil/server',
+                    ...(YT_PROXY ? ['--proxy', YT_PROXY] : ['--force-ipv4']),
+                    '-o', outPath, '--', src
+                ]
+                execFile('yt-dlp', ytArgs, { timeout: 120000, maxBuffer: 20*1024*1024 }, function(err, so, se){ if (err) { console.log('[SONG ERR]', String(se).slice(0, 400)); reject(err) } else resolve() })
             })
             if (!fs.existsSync(outPath)) throw new Error('no output')
             const buf = fs.readFileSync(outPath)
