@@ -2836,10 +2836,16 @@ if (process.env.YT_COOKIES_B64) {
     try { YT_COOKIE_FILE = '/tmp/yt-cookies.txt'; require('fs').writeFileSync(YT_COOKIE_FILE, Buffer.from(process.env.YT_COOKIES_B64, 'base64')) } catch (e) { YT_COOKIE_FILE = ''; console.log('[YT] cookie write failed:', e.message) }
 }
 let YTDLP_AVAILABLE = false
-function checkYtDlp() {
-    execFile('yt-dlp', ['--version'], { timeout: 10000 }, (err) => {
+function checkYtDlp(tries) {
+    tries = tries || 0
+    execFile('yt-dlp', ['--version'], { timeout: 60000 }, (err, so, se) => {
         YTDLP_AVAILABLE = !err
-        if (err) console.log('[TT] yt-dlp check failed:', err.message)
+        if (err) {
+            console.log('[TT] yt-dlp check failed (try ' + tries + '):', err.message, String(se || '').slice(0, 200))
+            if (tries < 4) setTimeout(() => checkYtDlp(tries + 1), 15000)
+        } else {
+            console.log('[TT] yt-dlp OK', String(so).trim())
+        }
     })
 }
 
