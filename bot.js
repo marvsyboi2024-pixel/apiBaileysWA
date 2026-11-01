@@ -1405,9 +1405,9 @@ async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind, no
 
     const wait = checkExtractCooldown(ctx, sender)
     if (wait > 0) {
-        await say(skError(`Please wait ${wait}s before using ${prefix}${kind} again.`))
-        return
-    }
+            if (!silentWhenNoReply) await say(skError(`Please wait ${wait}s before using ${prefix}${kind} again.`))
+            return
+        }
 
     const ci = getContextInfo(content)
     const quoted = ci?.quotedMessage ? unwrapEphemeral(ci.quotedMessage) : null
@@ -1422,10 +1422,11 @@ async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind, no
     }
 
     if (!target) {
-        if (!ci) { if (silentWhenNoReply) return; await say(skError(`Reply to a view-once photo/video/voice note with ${prefix}${kind}`)) }
-        else await say(skError('This only works on unopened view-once media.'))
-        return
-    }
+            if (silentWhenNoReply) return;
+            if (!ci) { await say(skError(`Reply to a view-once photo/video/voice note with ${prefix}${kind}`)) }
+            else { await say(skError('This only works on unopened view-once media.')) }
+            return
+        }
 
     try {
         const buffer = await downloadBuffer(sock, key, target.message)
@@ -1439,7 +1440,12 @@ async function handleViewOnceCmd(sock, ctx, msg, content, from, sender, kind, no
         else await sock.sendMessage(from, payload, { quoted: msg })
     } catch (e) {
         console.log(`.${kind} error:`, e?.message || e)
-        await say(skError('Failed to get that view-once. WhatsApp may have deleted it.'))
+
+        if (!silentWhenNoReply) {
+
+            await say(skError('Failed to get that view-once. WhatsApp may have deleted it.'))
+
+        }
     }
     if (silent && !noDelete && msg.key.fromMe) {
         try { await sock.sendMessage(from, { delete: msg.key }) } catch (e) {}
