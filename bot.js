@@ -2831,6 +2831,10 @@ server.listen(PORT, () => {
 })
 
 const YT_PROXY = process.env.YT_PROXY || ''
+let YT_COOKIE_FILE = ''
+if (process.env.YT_COOKIES_B64) {
+    try { YT_COOKIE_FILE = '/tmp/yt-cookies.txt'; require('fs').writeFileSync(YT_COOKIE_FILE, Buffer.from(process.env.YT_COOKIES_B64, 'base64')) } catch (e) { YT_COOKIE_FILE = ''; console.log('[YT] cookie write failed:', e.message) }
+}
 let YTDLP_AVAILABLE = false
 function checkYtDlp() {
     execFile('yt-dlp', ['--version'], { timeout: 10000 }, (err) => {
@@ -3049,6 +3053,7 @@ function runYtDlpVideo(url, outPath, quality) {
                 '--extractor-args', 'youtubepot-bgutilscript:server_home=/opt/bgutil/server',
                 '-f', fmt,
                 ...(YT_PROXY ? ['--proxy', YT_PROXY] : ['--force-ipv4']),
+                ...(YT_COOKIE_FILE ? ['--cookies', YT_COOKIE_FILE] : []),
             '--merge-output-format', 'mp4',
             '--no-playlist',
             '--max-filesize', '150M',
@@ -4776,6 +4781,8 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                     '--js-runtimes', 'deno',
                     '--extractor-args', 'youtubepot-bgutilscript:server_home=/opt/bgutil/server',
                     ...(YT_PROXY ? ['--proxy', YT_PROXY] : ['--force-ipv4']),
+                    ...(YT_COOKIE_FILE ? ['--cookies', YT_COOKIE_FILE] : []),
+                    ...(/^scsearch/.test(s) ? ['--ignore-errors', '--max-downloads', '1'] : []),
                     '-o', outPath, '--', s
                 ] }
                 const runOnce = function(s, cb){ execFile('yt-dlp', mkArgs(s), { timeout: 120000, maxBuffer: 20*1024*1024 }, cb) }
@@ -4784,8 +4791,8 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
                     console.log('[SONG ERR]', String(se).slice(0, 300))
                     if (!/^ytsearch1:/.test(src)) return reject(err)
                     console.log('[SONG] falling back to SoundCloud')
-                    runOnce('scsearch1:' + query, function(err2, so2, se2){
-                        if (err2) { console.log('[SC ERR]', String(se2).slice(0, 300)); reject(err2) } else resolve()
+                    runOnce('scsearch5:' + query, function(err2, so2, se2){
+                        if (err2 && !fs.existsSync(outPath)) { console.log('[SC ERR]', String(se2).slice(0, 300)); reject(err2) } else resolve()
                     })
                 })
             })
