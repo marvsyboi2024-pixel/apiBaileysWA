@@ -2999,6 +2999,8 @@ async function youtubeSearch(query, count) {
 function runYtDlpSearch(query, count) {
     return new Promise(function(resolve){
         execFile('yt-dlp', [
+            '--extractor-args', 'youtube:player_client=ios',
+            '--force-ipv4',
             '--dump-json', '--no-warnings', '--ignore-errors',
             '--flat-playlist',
             'ytsearch' + count + ':' + query
@@ -3044,6 +3046,8 @@ function runYtDlpVideo(url, outPath, quality) {
         const fmt = 'bv*[height<=' + q + ']+ba/b[height<=' + q + ']/b'
         execFile('yt-dlp', [
             '-f', fmt,
+                    '--extractor-args', 'youtube:player_client=ios',
+                    '--force-ipv4',
             '--merge-output-format', 'mp4',
             '--no-playlist',
             '--max-filesize', '150M',
@@ -4764,7 +4768,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             const src = isTikTokUrl(query) || /^https?:\/\//i.test(query) ? query : 'ytsearch1:' + query
             await new Promise(function(resolve, reject){
-                execFile('yt-dlp', ['-x', '--audio-format', 'mp3', '--max-filesize', '30M', '--match-filter', 'duration < 300', '-o', outPath, '--no-playlist', '--', src], { timeout: 120000, maxBuffer: 20*1024*1024 }, function(err){ if (err) reject(err); else resolve() })
+                execFile('yt-dlp', ['-x', '--audio-format', 'mp3', '--max-filesize', '30M', '--match-filter', 'duration < 300', '-o', outPath, '--no-playlist', '--extractor-args', 'youtube:player_client=ios', '--force-ipv4', '--', src], { timeout: 120000, maxBuffer: 20*1024*1024 }, function(err){ if (err) reject(err); else resolve() })
             })
             if (!fs.existsSync(outPath)) throw new Error('no output')
             const buf = fs.readFileSync(outPath)
