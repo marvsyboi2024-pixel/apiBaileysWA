@@ -4178,7 +4178,8 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         return reply(skInfo('🔒', 'HIDDEN COMMANDS', [
             ['.vv', 'Reveal view-once in chat'],
             ['.hmm', 'Silent save view-once to DM'],
-            ['.save', 'Save status / photo to DM']
+            ['.save', 'Save status / photo to DM'],
+                ['TRIGGERS', '🌚 😹 🙂 🥺 🥰 😳']
         ]))
     }
     if (cmd === 'mode') {
