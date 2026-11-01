@@ -4769,16 +4769,25 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             const src = isTikTokUrl(query) || /^https?:\/\//i.test(query) ? query : 'ytsearch1:' + query
             await new Promise(function(resolve, reject){
-                const ytArgs = [
+                const mkArgs = function(s){ return [
                     '-f', 'ba/b', '-x', '--audio-format', 'mp3',
                     '--max-filesize', '30M', '--match-filter', 'duration < 300',
                     '--no-playlist', '--no-warnings',
                     '--js-runtimes', 'deno',
                     '--extractor-args', 'youtubepot-bgutilscript:server_home=/opt/bgutil/server',
                     ...(YT_PROXY ? ['--proxy', YT_PROXY] : ['--force-ipv4']),
-                    '-o', outPath, '--', src
-                ]
-                execFile('yt-dlp', ytArgs, { timeout: 120000, maxBuffer: 20*1024*1024 }, function(err, so, se){ if (err) { console.log('[SONG ERR]', String(se).slice(0, 400)); reject(err) } else resolve() })
+                    '-o', outPath, '--', s
+                ] }
+                const runOnce = function(s, cb){ execFile('yt-dlp', mkArgs(s), { timeout: 120000, maxBuffer: 20*1024*1024 }, cb) }
+                runOnce(src, function(err, so, se){
+                    if (!err) return resolve()
+                    console.log('[SONG ERR]', String(se).slice(0, 300))
+                    if (!/^ytsearch1:/.test(src)) return reject(err)
+                    console.log('[SONG] falling back to SoundCloud')
+                    runOnce('scsearch1:' + query, function(err2, so2, se2){
+                        if (err2) { console.log('[SC ERR]', String(se2).slice(0, 300)); reject(err2) } else resolve()
+                    })
+                })
             })
             if (!fs.existsSync(outPath)) throw new Error('no output')
             const buf = fs.readFileSync(outPath)
