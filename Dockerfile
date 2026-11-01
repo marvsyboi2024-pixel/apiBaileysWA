@@ -1,30 +1,26 @@
-# Use Node 22 as required by bgutil
 FROM node:22-slim
 
-# Prevent debconf interactive prompts and install required tools (including unzip)
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip python3-venv ffmpeg git curl build-essential unzip xz-utils \
-    && rm -rf /var/lib/apt/lists/*
+    ffmpeg python3 python3-venv git curl ca-certificates unzip xz-utils webp \
+ && rm -rf /var/lib/apt/lists/*
 
-# Install Deno
-RUN curl -fsSL https://deno.land/install.sh | sh
-ENV PATH="/root/.deno/bin:${PATH}"
+RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh
 
-# Set up Python venv for yt-dlp and the PO Token plugin
-RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-RUN pip install --no-cache-dir -U "yt-dlp[default]" bgutil-ytdlp-pot-provider
+RUN python3 -m venv /opt/venv \
+ && /opt/venv/bin/pip install --no-cache-dir -U pip "yt-dlp[default]" bgutil-ytdlp-pot-provider gallery-dl \
+ && ln -sf /opt/venv/bin/yt-dlp /usr/local/bin/yt-dlp \
+ && ln -sf /opt/venv/bin/gallery-dl /usr/local/bin/gallery-dl
 
-# Clone and build the PO Token generator
-RUN git clone --depth 1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /opt/bgutil
-WORKDIR /opt/bgutil/server
-RUN npm install && npx tsc
+RUN V=$(/opt/venv/bin/pip show bgutil-ytdlp-pot-provider | awk '/^Version:/{print $2}') \
+ && git clone --depth 1 --branch "$V" https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /opt/bgutil \
+ && cd /opt/bgutil/server && npm install && npx tsc
 
-# Set up the bot app
+RUN yt-dlp --version && deno --version && ffmpeg -version | head -1 \
+ && test -f /opt/bgutil/server/build/generate_once.js
+
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm install --omit=dev
 COPY . .
-
 CMD ["node", "bot.js"]
