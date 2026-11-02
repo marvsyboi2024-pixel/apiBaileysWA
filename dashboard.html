@@ -295,6 +295,62 @@ img{-webkit-user-drag:none;user-drag:none}
 input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
 .err-text{color:var(--bad);font-size:12px;margin-top:-6px;margin-bottom:10px}
 </style>
+
+<style>
+/* country picker */
+.cc-box{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.cc-box input,.cc-box select{margin:0}
+.cc-hint{font-size:12px;color:var(--ink-faint);margin:-2px 0 12px;font-family:var(--font-mono);min-height:16px}
+/* uploads */
+.up-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 0;border-top:1px solid var(--line)}
+.up-row:first-child{border-top:none;padding-top:0}
+.up-name{flex:1 1 100%;display:flex;align-items:center;justify-content:space-between;font-size:13px;color:var(--ink-dim)}
+.up-row input[type=file]{flex:1;min-width:0;font-size:11.5px;color:var(--ink-dim)}
+.up-row .btn{width:auto}
+.up-tag{font-size:10.5px;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--ink-faint)}
+.up-tag.on{border-color:var(--gold-dim);color:var(--gold)}
+.up-note{font-size:11.5px;color:var(--ink-faint);margin:10px 0 0;line-height:1.55}
+.notice{border:1px dashed var(--gold-dim);border-radius:10px;padding:12px 14px;font-size:12.5px;color:var(--ink-dim);line-height:1.6;grid-column:1/-1}
+/* home */
+.hm-hero{position:relative;display:flex;align-items:center;gap:14px;padding:16px;border:1px solid var(--line);border-radius:16px;overflow:hidden;
+ background:radial-gradient(120% 140% at 0% 0%,rgba(250,204,21,.16),transparent 60%),radial-gradient(100% 120% at 100% 100%,rgba(59,130,246,.12),transparent 60%),var(--surface)}
+.hm-sigil{width:54px;height:54px;margin:0;flex:none;filter:drop-shadow(0 0 10px rgba(250,204,21,.45));animation:hmfloat 5s ease-in-out infinite}
+@keyframes hmfloat{50%{transform:translateY(-3px)}}
+.hm-hello{flex:1;min-width:0}
+.hm-greet{font-family:var(--font-display);font-size:21px;line-height:1.15}
+.hm-date{font-size:12px;color:var(--ink-faint);margin-top:3px}
+.hm-clock{font-family:var(--font-mono);font-size:20px;color:var(--gold);font-variant-numeric:tabular-nums}
+.hm-state{position:absolute;left:16px;right:16px;bottom:-1px;display:none}
+.hm-chip{display:inline-flex;align-items:center;gap:7px;margin-top:8px;padding:4px 11px;border-radius:999px;font-size:11.5px;font-weight:700;border:1px solid var(--line)}
+.hm-chip i{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor;animation:pulse 1.8s ease-in-out infinite}
+.hm-chip.on{color:var(--good);background:rgba(75,174,122,.1);border-color:rgba(75,174,122,.35)}
+.hm-chip.mid{color:var(--warn);background:rgba(216,162,59,.1);border-color:rgba(216,162,59,.35)}
+.hm-chip.off{color:var(--bad);background:rgba(216,72,92,.1);border-color:rgba(216,72,92,.35)}
+.hm-chip.none{color:var(--ink-faint)}
+.hm-health{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--surface)}
+.hm-bar{display:flex;gap:3px;height:8px;border-radius:99px;overflow:hidden;background:var(--surface-raised)}
+.hm-bar span{display:block;height:100%;transition:width .8s ease}
+.hm-bar .a{background:var(--good);box-shadow:0 0 8px var(--good)}.hm-bar .c{background:var(--warn)}.hm-bar .o{background:var(--bad)}
+.hm-legend{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--ink-faint);margin-top:9px;flex-wrap:wrap}
+.hm-legend b{color:var(--ink);font-weight:600}
+.hm-num{border:1px solid var(--line);border-left:3px solid var(--ink-faint);border-radius:12px;padding:12px 14px;background:var(--surface);margin-bottom:10px}
+.hm-num.on{border-left-color:var(--good)}.hm-num.mid{border-left-color:var(--warn)}.hm-num.off{border-left-color:var(--bad)}
+.hm-num-top{display:flex;align-items:center;gap:10px}
+.hm-num-n{font-family:var(--font-mono);font-size:14px;color:var(--ink)}
+.hm-num-s{margin-left:auto;font-size:11.5px;color:var(--ink-faint)}
+.hm-tags{display:flex;gap:6px;flex-wrap:wrap;margin:9px 0 0}
+.hm-tag{font-size:10.5px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--ink-dim);background:var(--surface-raised)}
+.hm-num-actions{display:flex;gap:8px;margin-top:11px}
+.hm-num-actions .btn{flex:1;width:auto;padding:8px 10px;font-size:12px}
+.hm-empty{border:1px dashed var(--line);border-radius:12px;padding:16px;font-size:13px;color:var(--ink-dim);text-align:center;line-height:1.6}
+.hm-tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hm-tile{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);cursor:pointer;text-align:left;font-family:var(--font-body)}
+.hm-tile:active{transform:scale(.98)}
+.hm-tile svg{width:22px;height:22px;color:var(--gold)}
+.hm-tile b{font-size:13.5px}.hm-tile span{font-size:11.5px;color:var(--ink-faint)}
+.hm-tip{border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:12.5px;color:var(--ink-dim);background:var(--surface);line-height:1.6;transition:opacity .4s}
+.hm-tip b{color:var(--gold)}
+</style>
 </head>
 <body>
 
@@ -352,34 +408,52 @@ input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
 <main>
 
 <div class="page active" id="page-home">
-    <div class="page-title">Home</div>
+    <div class="hm-hero">
+        <svg class="sigil hm-sigil" viewBox="0 0 64 64"><circle cx="32" cy="32" r="27"></circle><circle cx="32" cy="32" r="21"></circle><path d="M22 40 L32 20 L42 40 M26 34 L38 34"></path></svg>
+        <div class="hm-hello">
+            <div class="hm-greet" id="hmGreet">Welcome</div>
+            <div class="hm-date" id="hmDate"></div>
+            <span class="hm-chip none" id="hmChip"><i></i><span id="hmChipText">Checking the realm...</span></span>
+        </div>
+        <div class="hm-clock" id="hmClock">--:--</div>
+    </div>
     <div class="ledger">
         <div class="ledger-cell"><div class="ledger-num" id="hTotal">—</div><div class="ledger-label">Sessions</div></div>
         <div class="ledger-cell"><div class="ledger-num" id="hActive">—</div><div class="ledger-label">Active</div></div>
         <div class="ledger-cell"><div class="ledger-num" id="hConnecting">—</div><div class="ledger-label">Connecting</div></div>
         <div class="ledger-cell"><div class="ledger-num" id="hUptime">—</div><div class="ledger-label">Uptime</div></div>
     </div>
-    <div id="homeMine"></div>
-    <div class="home-actions">
-        <button class="btn" data-goto="connect">Connect a number</button>
-        <button class="btn" data-goto="sessions">Open sessions</button>
+    <div class="hm-health">
+        <div class="hm-bar"><span class="a" id="hmA" style="width:0"></span><span class="c" id="hmC" style="width:0"></span><span class="o" id="hmO" style="width:0"></span></div>
+        <div class="hm-legend"><span><b id="hmLA">0</b> live</span><span><b id="hmLC">0</b> connecting</span><span><b id="hmLO">0</b> offline</span></div>
     </div>
+    <div>
+        <div class="subhead">Your numbers</div>
+        <div id="homeMine"></div>
+    </div>
+    <div>
+        <div class="subhead">Quick actions</div>
+        <div class="hm-tiles">
+            <button class="hm-tile" data-goto="connect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M8 12 H16 M12 8 V16"/></svg><b>Connect</b><span>Link a number</span></button>
+            <button class="hm-tile" data-goto="sessions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7 H15 M9 11 H15"/></svg><b>Sessions</b><span>Status and reconnect</span></button>
+            <button class="hm-tile" data-goto="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 3 V6 M12 18 V21 M3 12 H6 M18 12 H21"/></svg><b>Settings</b><span>Prefix, mode, images</span></button>
+            <button class="hm-tile" data-goto="protection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3 L20 7 V12 C20 17 16.5 20 12 21 C7.5 20 4 17 4 12 V7 Z"/><path d="M9 12 L11 14 L15 10"/></svg><b>Groups</b><span>Protection and tools</span></button>
+        </div>
+    </div>
+    <div class="hm-tip" id="hmTip"></div>
 </div>
 
 <div class="page" id="page-connect">
     <div class="page-title">Connect</div>
     <div class="panel">
-        <label>Number</label>
-        <div class="connect-form">
-            <select id="countrySelect">
-                <option value="234">🇳🇬 +234</option>
-                <option value="1">🇺🇸 +1</option>
-                <option value="44">🇬🇧 +44</option>
-                <option value="233">🇬🇭 +233</option>
-                <option value="27">🇿🇦 +27</option>
-            </select>
-            <input type="tel" id="connectNumber" placeholder="Local number, digits only">
+        <label>Country</label>
+        <div class="cc-box">
+            <input type="text" id="countryFilter" placeholder="Search country or code" autocomplete="off">
+            <select id="countrySelect"></select>
         </div>
+        <label>Number</label>
+        <input type="tel" id="connectNumber" placeholder="Local number, digits only">
+        <div class="cc-hint" id="countryHint"></div>
         <div class="err-text" id="connectErr" style="display:none"></div>
         <button class="btn primary" id="connectBtn">Connect WhatsApp</button>
         <div id="pairingArea"></div>
@@ -395,7 +469,7 @@ input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
     <div class="page-title">Settings</div>
     <div class="panel">
         <label>Number</label>
-        <input type="text" id="settingsNumber" disabled>
+        <select id="settingsNumber"></select>
         <label>Prefix</label>
         <input type="text" id="prefixInput" maxlength="3">
         <label>Mode</label>
@@ -406,31 +480,8 @@ input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
 
     <div class="subhead" style="margin-top:22px">Uploads</div>
     <div class="panel">
-        <div class="logo-row" style="border-top:none;padding-top:0;margin-top:0">
-            <label style="margin:0;flex:0 0 auto">Menu logo</label>
-            <input type="file" id="menuLogoFile" accept="image/*">
-            <button class="btn btn-sm" id="menuLogoBtn">Upload</button>
-        </div>
-        <div class="logo-row">
-            <label style="margin:0;flex:0 0 auto">Menu2 logo</label>
-            <input type="file" id="menu2LogoFile" accept="image/*">
-            <button class="btn btn-sm" id="menu2LogoBtn">Upload</button>
-        </div>
-        <div class="logo-row">
-            <label style="margin:0;flex:0 0 auto">Ping logo</label>
-            <input type="file" id="pingLogoFile" accept="image/*">
-            <button class="btn btn-sm" id="pingLogoBtn">Upload</button>
-        </div>
-        <div class="logo-row">
-            <label style="margin:0;flex:0 0 auto">Alive logo</label>
-            <input type="file" id="aliveLogoFile" accept="image/*">
-            <button class="btn btn-sm" id="aliveLogoBtn">Upload</button>
-        </div>
-        <div class="logo-row">
-            <label style="margin:0;flex:0 0 auto">Birthday logo</label>
-            <input type="file" id="birthdayLogoFile" accept="image/*">
-            <button class="btn btn-sm" id="birthdayLogoBtn">Upload</button>
-        </div>
+        <div id="uploadRows"></div>
+        <div class="up-note">Welcome and goodbye images are sent with the welcome and goodbye message in every group of the selected number. Each number keeps its own images.</div>
         <label style="margin-top:14px">Birthday message (blank = random quote)</label>
         <input type="text" id="birthdayMsgInput" maxlength="300" placeholder="Happy birthday{name}.">
     </div>
@@ -439,6 +490,8 @@ input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
 <div class="page" id="page-protection">
     <div class="page-title">Groups</div>
     <div class="panel">
+        <label>Number</label>
+        <select id="groupNumber"></select>
         <label>Group</label>
         <select id="groupPick"><option value="">Loading groups...</option></select>
         <div id="groupBody" style="display:none">
@@ -467,8 +520,6 @@ input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
                 <div class="cmd-row"><input type="text" id="gaDesc" maxlength="2000" placeholder="New description"><button class="btn btn-sm" id="gaDescBtn">Save</button></div>
                 <div class="subhead">Add a member</div>
                 <div class="cmd-row"><input type="tel" id="gaAddNum" placeholder="Number with country code"><button class="btn btn-sm" id="gaAddBtn">Add</button></div>
-                <div class="subhead" id="gaMembersTitle">Members</div>
-                <div id="gaMembers"></div>
                 <div class="subhead">Danger zone</div>
                 <button class="btn danger" id="gaLeave">Leave group</button>
             </div>
@@ -548,7 +599,10 @@ input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
 function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;
     document.getElementById('toastLayer').appendChild(t);setTimeout(()=>t.remove(),3000)}
 async function api(url,opts){
-    opts=opts||{};
+    opts=Object.assign({},opts||{});
+    const h=Object.assign({},opts.headers||{});
+    if(!h['x-as']&&loggedInNumber&&/^\/api\/(settings|image|group-)/.test(url))h['x-as']=loggedInNumber;
+    opts.headers=h;
     const r=await fetch(url,Object.assign({credentials:'same-origin'},opts));
     let data={};
     try{data=await r.json()}catch(e){}
@@ -567,18 +621,48 @@ async function checkVerified(){
 function afterVerify(){
     document.getElementById('auth').style.display='none';
     document.getElementById('app').style.display='block';
-    loadHome();
+    syncMe().then(loadHome);
 }
 window.addEventListener('DOMContentLoaded',checkVerified);
 
 /* ===== login (Settings only) ===== */
 let loggedInNumber=localStorage.getItem('sr_user')||'';
+let loggedUsers=[];try{loggedUsers=JSON.parse(localStorage.getItem('sr_users')||'[]')}catch(e){}
+if(!Array.isArray(loggedUsers))loggedUsers=[];
+if(loggedInNumber&&!loggedUsers.includes(loggedInNumber))loggedUsers.push(loggedInNumber);
+function saveUsers(){localStorage.setItem('sr_users',JSON.stringify(loggedUsers));localStorage.setItem('sr_user',loggedInNumber)}
+async function syncMe(){
+    const r=await api('/api/me');
+    if(!r.ok||!Array.isArray(r.data.users))return;
+    loggedUsers=r.data.users.slice();
+    if(!loggedUsers.includes(loggedInNumber))loggedInNumber=loggedUsers[loggedUsers.length-1]||'';
+    saveUsers();updateLoggedInLabel();
+}
+function fillNumberPicker(sel){
+    if(!sel)return;
+    const tracked=localStorage.getItem('trackedNumber')||'';
+    let h=loggedUsers.map(n=>'<option value="'+n+'"'+(n===loggedInNumber?' selected':'')+'>'+n+'</option>').join('');
+    if(tracked&&!loggedUsers.includes(tracked))h+='<option value="'+tracked+'">'+tracked+' (log in)</option>';
+    if(!h)h='<option value="">Not logged in</option>';
+    sel.innerHTML=h+'<option value="__add">+ Log in with another number</option>';
+}
+function switchNumber(v,page){
+    if(v==='__add'||!loggedUsers.includes(v)){
+        requireLogin(page,v==='__add'?'':v);
+        fillNumberPicker(document.getElementById('settingsNumber'));fillNumberPicker(document.getElementById('groupNumber'));
+        return;
+    }
+    loggedInNumber=v;saveUsers();updateLoggedInLabel();
+    if(page==='settings')loadSettings();
+    else{currentGroup='';document.getElementById('groupBody').style.display='none';loadProtection()}
+}
 function updateLoggedInLabel(){
     document.getElementById('loggedInAs').textContent=loggedInNumber?('logged in as '+loggedInNumber):'not logged in';
 }
 updateLoggedInLabel();
-function requireLogin(target){
+function requireLogin(target,prefill){
     document.getElementById('loginPanel').dataset.target=target;
+    document.getElementById('loginUser').value=prefill||'';document.getElementById('loginPass').value='';
     document.getElementById('app').style.display='none';
     document.getElementById('auth').style.display='flex';
     document.getElementById('verifyPanel').style.display='none';
@@ -595,7 +679,7 @@ document.getElementById('loginBtn').addEventListener('click',async()=>{
     errEl.style.display='none';
     const r=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({number,password})});
     if(!r.ok){errEl.textContent=r.data.error||'Login failed.';errEl.style.display='block';return}
-    loggedInNumber=r.data.number;localStorage.setItem('sr_user',loggedInNumber);updateLoggedInLabel();
+    loggedInNumber=r.data.number;loggedUsers=(r.data.users&&r.data.users.length)?r.data.users.slice():loggedUsers.filter(x=>x!==loggedInNumber).concat(loggedInNumber);saveUsers();updateLoggedInLabel();
     document.getElementById('auth').style.display='none';
     document.getElementById('app').style.display='block';
     const target=document.getElementById('loginPanel').dataset.target||'settings';
@@ -608,7 +692,7 @@ document.getElementById('menuBtn').addEventListener('click',()=>{drawer.classLis
 overlay.addEventListener('click',()=>{drawer.classList.remove('open');overlay.classList.remove('open')});
 const LOGIN_GATED=['settings','protection'];
 function gotoPage(name,skipGateCheck){
-    if(!skipGateCheck&&LOGIN_GATED.includes(name)&&!loggedInNumber){requireLogin(name);return}
+    if(!skipGateCheck&&LOGIN_GATED.includes(name)&&!loggedInNumber){requireLogin(name,localStorage.getItem('trackedNumber')||'');return}
     document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
     document.querySelectorAll('.drawer-item').forEach(i=>i.classList.remove('active'));
     document.getElementById('page-'+name).classList.add('active');
@@ -626,27 +710,105 @@ document.querySelectorAll('.drawer-item').forEach(i=>i.addEventListener('click',
 document.querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>gotoPage(b.dataset.goto)));
 
 /* ===== home ===== */
+function countUp(id,to){
+    const el=document.getElementById(id);if(!el)return;
+    const n=Number(to);if(!isFinite(n)){el.textContent=to;return}
+    const from=Number(el.dataset.v||0);el.dataset.v=n;
+    if(from===n){el.textContent=n;return}
+    const t0=performance.now();
+    (function step(t){const k=Math.min(1,(t-t0)/600);el.textContent=Math.round(from+(n-from)*k);if(k<1)requestAnimationFrame(step)})(t0);
+}
+function agoText(ts){
+    const t=typeof ts==='number'?ts:Date.parse(ts);if(!isFinite(t))return '';
+    const m=Math.max(0,Math.floor((Date.now()-t)/60000));
+    if(m<1)return 'just now';if(m<60)return m+'m';
+    const h=Math.floor(m/60);if(h<24)return h+'h '+(m%60)+'m';
+    return Math.floor(h/24)+'d '+(h%24)+'h';
+}
+const HM_TIPS=['Send <b>.menu</b> in WhatsApp to see every command.','<b>.song</b> + a title sends the track as a voice note.','Add a <b>Welcome image</b> in Settings, then Uploads.','Switch between your numbers in <b>Settings</b>. Each keeps its own options.','Turn on <b>Antilink</b> per group in Groups, then Protection.'];
+let hmTipI=0;
+function tickHome(){
+    const d=new Date(),h=d.getHours();
+    const g=h<5?'Still up?':h<12?'Good morning':h<17?'Good afternoon':h<21?'Good evening':'Good night';
+    const set=(id,v)=>{const e=document.getElementById(id);if(e&&e.textContent!==v)e.textContent=v};
+    set('hmGreet',g);
+    set('hmClock',d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}));
+    set('hmDate',d.toLocaleDateString([],{weekday:'long',day:'numeric',month:'long'}));
+}
+function rotateTip(){
+    const el=document.getElementById('hmTip');if(!el)return;
+    el.style.opacity=0;
+    setTimeout(()=>{el.innerHTML='<b>Tip</b> · '+HM_TIPS[hmTipI%HM_TIPS.length];hmTipI++;el.style.opacity=1},350);
+}
 async function loadHome(){
+    tickHome();
+    if(!document.getElementById('hmTip').innerHTML)rotateTip();
     const tracked=localStorage.getItem('trackedNumber')||'';
     const r=await api('/api/public'+(tracked?('?number='+encodeURIComponent(tracked)):''));
     if(!r.ok)return;
     const d=r.data;
-    document.getElementById('hTotal').textContent=d.total;
-    document.getElementById('hActive').textContent=d.active;
-    document.getElementById('hConnecting').textContent=d.connecting;
+    countUp('hTotal',d.total);countUp('hActive',d.active);countUp('hConnecting',d.connecting);
     document.getElementById('hUptime').textContent=d.uptime;
-    const mineEl=document.getElementById('homeMine');
-    if(d.mine){
-        mineEl.innerHTML=`<div class="subhead">Your number</div>
-            <div class="status-row"><span class="dot ${d.mine.status==='active'?'':/connect/.test(d.mine.status)?'warn':'off'}"></span>
-            <span class="status-num">${d.mine.number}</span><span class="status-state">${d.mine.status}</span></div>`;
-    }else{mineEl.innerHTML=''}
+    const tot=Math.max(1,d.total),off=d.offline!=null?d.offline:Math.max(0,d.total-d.active-d.connecting);
+    document.getElementById('hmA').style.width=(d.active/tot*100)+'%';
+    document.getElementById('hmC').style.width=(d.connecting/tot*100)+'%';
+    document.getElementById('hmO').style.width=(off/tot*100)+'%';
+    document.getElementById('hmLA').textContent=d.active;document.getElementById('hmLC').textContent=d.connecting;document.getElementById('hmLO').textContent=off;
+    const chip=document.getElementById('hmChip');
+    const st=!d.total?['none','No sessions yet']:d.active===d.total?['on','All systems live']:d.active>0?['mid','Partly live']:['off','Offline'];
+    chip.className='hm-chip '+st[0];document.getElementById('hmChipText').textContent=st[1];
+    const nums=[...new Set([tracked].concat(loggedUsers).filter(Boolean))];
+    const box=document.getElementById('homeMine');
+    if(!nums.length){box.innerHTML='<div class="hm-empty">No number linked on this device yet.<br>Tap <b>Connect</b> below to add your WhatsApp.</div>';return}
+    const res=await Promise.all(nums.map(n=>api('/api/public?number='+encodeURIComponent(n))));
+    box.innerHTML=res.map((rr,i)=>{
+        const n=nums[i],m=rr.ok&&rr.data.mine;
+        const cls=!m?'off':m.status==='active'?'on':/connect/.test(m.status)?'mid':'off';
+        const since=m&&m.status==='active'?agoText(m.connectedAt):'';
+        return '<div class="hm-num '+cls+'"><div class="hm-num-top"><span class="dot '+(cls==='on'?'':cls==='mid'?'warn':'off')+'"></span><span class="hm-num-n">'+n+'</span><span class="hm-num-s">'+(m?m.status:'not found')+'</span></div>'
+            +(m?'<div class="hm-tags"><span class="hm-tag">mode: '+(m.mode||'?')+'</span><span class="hm-tag">prefix: '+(m.prefix||'?')+'</span>'+(since?'<span class="hm-tag">online '+since+'</span>':'')+'</div>':'')
+            +'<div class="hm-num-actions"><button class="btn" data-hm="settings" data-n="'+n+'">Settings</button><button class="btn" data-hm="protection" data-n="'+n+'">Groups</button></div></div>';
+    }).join('');
+    box.querySelectorAll('[data-hm]').forEach(b=>b.addEventListener('click',()=>{
+        const n=b.dataset.n,page=b.dataset.hm;
+        if(loggedUsers.includes(n)){loggedInNumber=n;saveUsers();updateLoggedInLabel();gotoPage(page,true)}
+        else requireLogin(page,n);
+    }));
 }
+setInterval(tickHome,1000);
+setInterval(()=>{if(document.getElementById('page-home').classList.contains('active'))rotateTip()},9000);
+
+/* ===== all countries ===== */
+const CC_RAW='AF:93,AL:355,DZ:213,AS:1684,AD:376,AO:244,AI:1264,AG:1268,AR:54,AM:374,AW:297,AU:61,AT:43,AZ:994,BS:1242,BH:973,BD:880,BB:1246,BY:375,BE:32,BZ:501,BJ:229,BM:1441,BT:975,BO:591,BA:387,BW:267,BR:55,IO:246,VG:1284,BN:673,BG:359,BF:226,BI:257,KH:855,CM:237,CA:1,CV:238,KY:1345,CF:236,TD:235,CL:56,CN:86,CO:57,KM:269,CK:682,CR:506,HR:385,CU:53,CW:599,CY:357,CZ:420,CD:243,DK:45,DJ:253,DM:1767,DO:1809,EC:593,EG:20,SV:503,GQ:240,ER:291,EE:372,SZ:268,ET:251,FK:500,FO:298,FJ:679,FI:358,FR:33,GF:594,PF:689,GA:241,GM:220,GE:995,DE:49,GH:233,GI:350,GR:30,GL:299,GD:1473,GP:590,GU:1671,GT:502,GG:44,GN:224,GW:245,GY:592,HT:509,HN:504,HK:852,HU:36,IS:354,IN:91,ID:62,IR:98,IQ:964,IE:353,IM:44,IL:972,IT:39,CI:225,JM:1876,JP:81,JE:44,JO:962,KZ:7,KE:254,KI:686,XK:383,KW:965,KG:996,LA:856,LV:371,LB:961,LS:266,LR:231,LY:218,LI:423,LT:370,LU:352,MO:853,MG:261,MW:265,MY:60,MV:960,ML:223,MT:356,MH:692,MQ:596,MR:222,MU:230,YT:262,MX:52,FM:691,MD:373,MC:377,MN:976,ME:382,MS:1664,MA:212,MZ:258,MM:95,NA:264,NR:674,NP:977,NL:31,NC:687,NZ:64,NI:505,NE:227,NG:234,NU:683,KP:850,MK:389,MP:1670,NO:47,OM:968,PK:92,PW:680,PS:970,PA:507,PG:675,PY:595,PE:51,PH:63,PL:48,PT:351,PR:1787,QA:974,CG:242,RE:262,RO:40,RU:7,RW:250,BL:590,SH:290,KN:1869,LC:1758,MF:590,PM:508,VC:1784,WS:685,SM:378,ST:239,SA:966,SN:221,RS:381,SC:248,SL:232,SG:65,SX:1721,SK:421,SI:386,SB:677,SO:252,ZA:27,KR:82,SS:211,ES:34,LK:94,SD:249,SR:597,SE:46,CH:41,SY:963,TW:886,TJ:992,TZ:255,TH:66,TL:670,TG:228,TK:690,TO:676,TT:1868,TN:216,TR:90,TM:993,TC:1649,TV:688,VI:1340,UG:256,UA:380,AE:971,GB:44,US:1,UY:598,UZ:998,VU:678,VA:39,VE:58,VN:84,WF:681,EH:212,YE:967,ZM:260,ZW:263';
+const COUNTRY_DIAL={};CC_RAW.split(',').forEach(p=>{const a=p.split(':');COUNTRY_DIAL[a[0]]=a[1]});
+let _dn=null;try{_dn=new Intl.DisplayNames(['en'],{type:'region'})}catch(e){}
+const COUNTRIES=Object.keys(COUNTRY_DIAL).map(iso=>{
+    let name=iso;try{name=(_dn&&_dn.of(iso))||iso}catch(e){}
+    return {iso,name,dial:COUNTRY_DIAL[iso],flag:String.fromCodePoint(127397+iso.charCodeAt(0),127397+iso.charCodeAt(1))};
+}).sort((a,b)=>a.name.localeCompare(b.name));
+function renderCountries(filter){
+    const sel=document.getElementById('countrySelect');
+    const keep=sel.value||localStorage.getItem('sr_cc')||'NG';
+    const f=String(filter||'').trim().toLowerCase().replace(/^\+/,'');
+    const list=COUNTRIES.filter(c=>!f||c.name.toLowerCase().includes(f)||c.iso.toLowerCase()===f||c.dial.startsWith(f));
+    sel.innerHTML=list.map(c=>'<option value="'+c.iso+'">'+c.flag+' '+c.name+' (+'+c.dial+')</option>').join('')||'<option value="">No match</option>';
+    if(list.some(c=>c.iso===keep))sel.value=keep;
+    updateCountryHint();
+}
+function updateCountryHint(){
+    const iso=document.getElementById('countrySelect').value,dial=COUNTRY_DIAL[iso];
+    const local=document.getElementById('connectNumber').value.replace(/[^0-9]/g,'').replace(/^0+/,'');
+    document.getElementById('countryHint').textContent=dial?('Full number: +'+dial+(local?' '+local:'')):'';
+}
+document.getElementById('countryFilter').addEventListener('input',e=>renderCountries(e.target.value));
+document.getElementById('countrySelect').addEventListener('change',e=>{if(e.target.value)localStorage.setItem('sr_cc',e.target.value);updateCountryHint()});
+document.getElementById('connectNumber').addEventListener('input',updateCountryHint);
+renderCountries('');
 
 /* ===== connect ===== */
 document.getElementById('connectBtn').addEventListener('click',async()=>{
-    const dial=document.getElementById('countrySelect').value;
-    const local=document.getElementById('connectNumber').value.replace(/[^0-9]/g,'');
+    const dial=COUNTRY_DIAL[document.getElementById('countrySelect').value]||'234';
+    const local=document.getElementById('connectNumber').value.replace(/[^0-9]/g,'').replace(/^0+/,'');
     const errEl=document.getElementById('connectErr');errEl.style.display='none';
     if(local.length<6){errEl.textContent='Enter a valid number.';errEl.style.display='block';return}
     const number=dial+local;
@@ -706,20 +868,34 @@ document.getElementById('reloadSessionBtn').addEventListener('click',loadSession
 const AUTO=[['typing','Typing'],['delay','Delay'],['read','Read'],['online','Online'],['autoreact','Autoreact'],
     ['statusreact','Status react'],['statusview','Status view'],['eventsWelcome','Welcome (all groups)'],['eventsGoodbye','Goodbye (all groups)']];
 async function loadSettings(){
-    document.getElementById('settingsNumber').value=loggedInNumber;
+    const sel=document.getElementById('settingsNumber');
+    fillNumberPicker(sel);
     const r=await api('/api/settings');
-    if(!r.ok){toast(r.data.error||'Could not load settings.');return}
+    const box=document.getElementById('autoToggles');
+    if(r.status===401){
+        toast('Log in with this number to edit it.');
+        requireLogin('settings',loggedInNumber||localStorage.getItem('trackedNumber')||'');
+        return;
+    }
+    if(!r.ok){
+        box.innerHTML='<div class="notice">'+escHtml(r.data.error||'Could not load settings.')+(r.status===409?' Open Sessions and tap Reconnect, then come back.':'')+'</div>';
+        renderUploads([]);
+        return;
+    }
+    if(r.data.number&&r.data.number!==loggedInNumber){loggedInNumber=r.data.number;saveUsers();updateLoggedInLabel();fillNumberPicker(sel)}
     const cfg=r.data.cfg;
     document.getElementById('prefixInput').value=cfg.prefix||'.';
     document.getElementById('modeSelect').value=cfg.mode||'public';
     document.getElementById('birthdayMsgInput').value=cfg.birthdayMsg||'';
-    document.getElementById('autoToggles').innerHTML=AUTO.map(([k,l])=>`
+    box.innerHTML=AUTO.map(([k,l])=>`
         <div class="toggle">${l}<span class="switch"><input type="checkbox" data-key="${k}" ${cfg[k]?'checked':''}><span class="track"></span><span class="knob"></span></span></div>`).join('');
     document.querySelectorAll('[data-key]').forEach(cb=>cb.addEventListener('change',async()=>{
         const rr=await api('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:cb.dataset.key,value:cb.checked})});
         toast(rr.ok?'Saved.':(rr.data.error||'Failed.'));
     }));
+    renderUploads(r.data.images||[]);
 }
+document.getElementById('settingsNumber').addEventListener('change',e=>switchNumber(e.target.value,'settings'));
 document.getElementById('prefixInput').addEventListener('change',async(e)=>{
     const rr=await api('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:'prefix',value:e.target.value})});
     toast(rr.ok?'Prefix saved.':(rr.data.error||'Failed.'));
@@ -729,25 +905,64 @@ document.getElementById('modeSelect').addEventListener('change',async(e)=>{
     toast(rr.ok?'Mode saved.':(rr.data.error||'Failed.'));
 });
 
-/* ===== image uploads ===== */
-function wireUpload(fileId,btnId,kind,label){
-    document.getElementById(btnId).addEventListener('click',async()=>{
-        const file=document.getElementById(fileId).files[0];
-        if(!file){toast('Choose a file first.');return}
-        const reader=new FileReader();
-        reader.onload=async()=>{
-            const b64=String(reader.result).split(',')[1];
-            const rr=await api('/api/image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,data:b64})});
-            toast(rr.ok?(label+' uploaded.'):(rr.data.error||'Failed.'));
-        };
-        reader.readAsDataURL(file);
+/* ===== image uploads (per number) ===== */
+const UPLOADS=[['menu','Menu logo'],['menu2','Menu2 logo'],['ping','Ping logo'],['alive','Alive logo'],['birthday','Birthday logo'],['welcome','Welcome image'],['goodbye','Goodbye image']];
+function sniffImage(file){
+    return file.slice(0,4).arrayBuffer().then(b=>{
+        const u=new Uint8Array(b);
+        if(u[0]===0x89&&u[1]===0x50)return 'png';
+        if(u[0]===0xff&&u[1]===0xd8)return 'jpg';
+        return 'other';
     });
 }
-wireUpload('menuLogoFile','menuLogoBtn','menu','Menu logo');
-wireUpload('menu2LogoFile','menu2LogoBtn','menu2','Menu2 logo');
-wireUpload('pingLogoFile','pingLogoBtn','ping','Ping logo');
-wireUpload('aliveLogoFile','aliveLogoBtn','alive','Alive logo');
-wireUpload('birthdayLogoFile','birthdayLogoBtn','birthday','Birthday logo');
+function fileToBase64(file){
+    return new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(String(fr.result).split(',')[1]);fr.onerror=()=>rej(new Error('Could not read that file.'));fr.readAsDataURL(file)});
+}
+function imageToJpegBase64(file,maxSide){
+    return new Promise((res,rej)=>{
+        const url=URL.createObjectURL(file),img=new Image();
+        img.onload=()=>{
+            let w=img.naturalWidth,h=img.naturalHeight;const s=Math.min(1,maxSide/Math.max(w,h));w=Math.round(w*s);h=Math.round(h*s);
+            const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
+            x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(img,0,0,w,h);
+            URL.revokeObjectURL(url);res(c.toDataURL('image/jpeg',0.9).split(',')[1]);
+        };
+        img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('That file is not an image this browser can read.'))};
+        img.src=url;
+    });
+}
+async function prepareImage(file){
+    const kind=await sniffImage(file);
+    if((kind==='png'||kind==='jpg')&&file.size<=2800000)return fileToBase64(file);
+    return imageToJpegBase64(file,1280);
+}
+function renderUploads(have){
+    const box=document.getElementById('uploadRows');if(!box)return;
+    box.innerHTML=UPLOADS.map(([k,l])=>{
+        const on=have.includes(k);
+        return '<div class="up-row"><div class="up-name"><span>'+l+'</span><span class="up-tag'+(on?' on':'')+'">'+(on?'✓ set':'not set')+'</span></div>'
+            +'<input type="file" id="upf-'+k+'" accept="image/*"><button class="btn btn-sm" data-up="'+k+'">Upload</button>'
+            +(on?'<button class="btn btn-sm ghost" data-upx="'+k+'">Remove</button>':'')+'</div>';
+    }).join('');
+    box.querySelectorAll('[data-up]').forEach(b=>b.addEventListener('click',async()=>{
+        const k=b.dataset.up,label=(UPLOADS.find(u=>u[0]===k)||[])[1]||'Image';
+        const file=document.getElementById('upf-'+k).files[0];
+        if(!file){toast('Choose a file first.');return}
+        b.disabled=true;
+        try{
+            const data=await prepareImage(file);
+            const rr=await api('/api/image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:k,data})});
+            toast(rr.ok?(label+' saved.'):(rr.data.error||'Upload failed.'));
+            if(rr.ok)loadSettings();
+        }catch(e){toast(e.message||'Upload failed.')}
+        b.disabled=false;
+    }));
+    box.querySelectorAll('[data-upx]').forEach(b=>b.addEventListener('click',async()=>{
+        const rr=await api('/api/image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:b.dataset.upx,remove:true})});
+        toast(rr.ok?'Removed.':(rr.data.error||'Failed.'));
+        if(rr.ok)loadSettings();
+    }));
+}
 document.getElementById('birthdayMsgInput').addEventListener('change',async(e)=>{
     const rr=await api('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:'birthdayMsg',value:e.target.value})});
     toast(rr.ok?'Birthday message saved.':(rr.data.error||'Failed.'));
@@ -816,10 +1031,13 @@ async function gsPost(key,value){
 }
 async function loadProtection(){
     const sel=document.getElementById('groupPick');
+    fillNumberPicker(document.getElementById('groupNumber'));
     const r=await api('/api/group-settings');
+    if(r.status===401){toast('Log in with this number to manage its groups.');requireLogin('protection',loggedInNumber||localStorage.getItem('trackedNumber')||'');return}
     if(!r.ok){sel.innerHTML='<option value="">'+(r.data.error||'Could not load groups')+'</option>';return}
     sel.innerHTML='<option value="">Select a group</option>'+r.data.groups.map(g=>`<option value="${g.id}">${String(g.name).replace(/</g,'&lt;')}</option>`).join('');
 }
+document.getElementById('groupNumber').addEventListener('change',e=>switchNumber(e.target.value,'groups'));
 document.getElementById('groupPick').addEventListener('change',async(e)=>{
     currentGroup=e.target.value;
     const body=document.getElementById('groupBody');
@@ -883,21 +1101,6 @@ async function loadGroupInfo(){
     card.innerHTML='<b>'+escHtml(groupMeta.name)+'</b><br>'+groupMeta.members.length+' members · '+admins+' admins · '+(groupMeta.muted?'muted (admins only)':'open to everyone')
         +(groupMeta.desc?'<br><span style="color:var(--ink-faint)">'+escHtml(groupMeta.desc.slice(0,160))+'</span>':'');
     document.getElementById('gaMute').textContent=groupMeta.muted?'Unmute group':'Mute group';
-    document.getElementById('gaMembersTitle').textContent='Members ('+groupMeta.members.length+')';
-    document.getElementById('gaMembers').innerHTML=groupMeta.members.map((m,i)=>{
-        const label=m.number?('+'+m.number):('Hidden number ····'+String(m.id).split('@')[0].slice(-4));
-        const tag=m.me?'<span class="mtag">you</span>':(m.admin?'<span class="mtag">admin</span>':'');
-        const acts=m.me?'':(m.admin
-            ?'<button class="btn btn-xs" data-ma="demote" data-mi="'+i+'">Demote</button>'
-            :'<button class="btn btn-xs" data-ma="promote" data-mi="'+i+'">Promote</button><button class="btn btn-xs danger" data-ma="kick" data-mi="'+i+'">Kick</button>');
-        return '<div class="member-row"><span class="mnum">'+escHtml(label)+'</span>'+tag+acts+'</div>';
-    }).join('');
-    document.querySelectorAll('[data-ma]').forEach(b=>b.addEventListener('click',async()=>{
-        const m=groupMeta.members[+b.dataset.mi];
-        if(b.dataset.ma==='kick'&&!confirm('Remove this member from the group?'))return;
-        const rr=await gaPost(b.dataset.ma,{targets:[m.id]});
-        if(rr.ok)loadGroupInfo();
-    }));
 }
 document.getElementById('gaMute').addEventListener('click',async()=>{
     const r=await gaPost(groupMeta&&groupMeta.muted?'unmute':'mute');

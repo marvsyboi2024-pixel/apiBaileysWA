@@ -332,6 +332,55 @@ async function loadMenu2LogoFromMongo() {
     return false
 }
 
+const MEDIA_DIR = path.join('.', 'media')
+const IMG_KINDS = ['menu', 'menu2', 'ping', 'alive', 'birthday', 'welcome', 'goodbye']
+const IMG_LEGACY = { menu: LOGO_PATH, menu2: MENU2_LOGO_PATH, ping: PING_PATH, alive: ALIVE_PATH, birthday: BIRTHDAY_PATH }
+function imgFile(num, kind) { return path.join(MEDIA_DIR, String(num).replace(/[^0-9]/g, ''), kind + '.img') }
+function sessNum(ctx) { return String((ctx && ctx.sessionId) || '').replace(/^sess_/, '') }
+function getImg(ctx, kind) {
+    try {
+        const f = imgFile(sessNum(ctx), kind)
+        if (fs.existsSync(f)) return fs.readFileSync(f)
+        const l = IMG_LEGACY[kind]
+        if (l && fs.existsSync(l)) return fs.readFileSync(l)
+    } catch (e) {}
+    return null
+}
+async function saveImg(num, kind, buf) {
+    const f = imgFile(num, kind)
+    fs.mkdirSync(path.dirname(f), { recursive: true })
+    fs.writeFileSync(f, buf)
+    if (logoCollection) {
+        try { await logoCollection.updateOne({ _id: 'img:' + num + ':' + kind }, { $set: { data: buf.toString('base64'), updatedAt: new Date() } }, { upsert: true }) }
+        catch (e) { console.log('[MONGO] image save error:', e.message) }
+    }
+}
+async function delImg(num, kind) {
+    try { fs.rmSync(imgFile(num, kind), { force: true }) } catch (e) {}
+    if (logoCollection) { try { await logoCollection.deleteOne({ _id: 'img:' + num + ':' + kind }) } catch (e) {} }
+}
+async function restoreImgs() {
+    if (!logoCollection) return
+    try {
+        const docs = await logoCollection.find({ _id: { $regex: '^img:' } }).toArray()
+        for (const d of docs) {
+            const m = /^img:(\d+):(\w+)$/.exec(String(d._id))
+            if (!m || !IMG_KINDS.includes(m[2]) || !d.data) continue
+            const f = imgFile(m[1], m[2])
+            fs.mkdirSync(path.dirname(f), { recursive: true })
+            fs.writeFileSync(f, Buffer.from(d.data, 'base64'))
+        }
+        console.log('[IMG] restored ' + docs.length + ' image(s)')
+    } catch (e) { console.log('[IMG] restore error:', e.message) }
+}
+async function sendVia(ctx, kind, sock, jid, payload) {
+    const img = payload && payload.text ? getImg(ctx, kind) : null
+    if (!img) return sock.sendMessage(jid, payload)
+    const p2 = Object.assign({}, payload)
+    p2.image = img; p2.caption = p2.text; delete p2.text
+    try { return await sock.sendMessage(jid, p2) } catch (e) { return sock.sendMessage(jid, payload) }
+}
+
 const jokes = [
     'Why did the developer go broke? Because he used up all his cache!',
     'Why do programmers prefer dark mode? Because light attracts bugs!',
@@ -1553,8 +1602,9 @@ async function processMessage(sock, ctx, msg, type) {
             const stages = pending.stages
             const delays = pending.delays
             try {
-                if (fs.existsSync(BIRTHDAY_PATH)) {
-                    try { await sock.sendMessage(sender, { image: fs.readFileSync(BIRTHDAY_PATH) }) } catch (e) {}
+                const _bd1 = getImg(ctx, 'birthday')
+                if (_bd1) {
+                    try { await sock.sendMessage(sender, { image: _bd1 }) } catch (e) {}
                 }
                 const sent = await sock.sendMessage(sender, { text: stages[0] })
                 const editKey = sent?.key
@@ -2119,14 +2169,14 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                         .replace(/@user/gi, '@' + realNum)
                         .replace(/@group/gi, groupName || '')
                         .replace(/@count/gi, (memberCount !== null && memberCount !== undefined) ? String(memberCount) : '')
-                    await sock.sendMessage(id, { text: _wm, mentions: mentionJids(sock, [jid], [realNum]) })
+                    await sendVia(ctx, 'welcome', sock, id, { text: _wm, mentions: mentionJids(sock, [jid], [realNum]) })
                 } else if (action === 'add' && welcomeOn) {
                     const fields = [['USER', `@${realNum}`]]
                     const mentions = [jid]
                     fields.push(['STATUS', '🟢 JOINED'])
                     if (groupName) fields.push(['GROUP', groupName])
                     if (memberCount !== null) fields.push(['MEMBERS', String(memberCount)])
-                    await sock.sendMessage(id, {
+                    await sendVia(ctx, 'welcome', sock, id, {
                         text: `${SK_HEADER}\n\n🔥 ${mono('A NEW PRESENCE HAS AWAKENED')}\n\n${fields.map(([k,v]) => '» ' + mono(k) + '  •  ' + (v && typeof v === 'object' && v.__noBold !== undefined ? v.__noBold : mono(String(v)))).join('\n')}\n\n𖥂 ${mono('WELCOME TO THE REALM.')}`,
                         mentions: mentionJids(sock, mentions)
                     })
@@ -2141,14 +2191,14 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                         .replace(/@user/gi, '@' + realNum)
                         .replace(/@group/gi, groupName || '')
                         .replace(/@count/gi, (memberCount !== null && memberCount !== undefined) ? String(memberCount) : '')
-                    await sock.sendMessage(id, { text: _gm, mentions: mentionJids(sock, [jid], [realNum]) })
+                    await sendVia(ctx, 'goodbye', sock, id, { text: _gm, mentions: mentionJids(sock, [jid], [realNum]) })
                 } else if (action === 'remove' && goodbyeOn) {
                     const wasKicked = author && author !== jid && !isBotJid(sock, author)
                     const statusLine = wasKicked ? '🔴 ' + mono('KICKED OUT') : '🔴 ' + mono('LEFT')
                     const lines = [SK_HEADER, '', '🩸 ' + mono('THE REALM FALLS SILENT'), '', '» ' + mono('STATUS') + '  •  ' + statusLine]
                     if (memberCount !== null) lines.push('» ' + mono('REMAINING') + '  •  ' + mono(String(memberCount)))
                     lines.push('', mono('YOUR PATH HAS LED YOU OUT.'), mono('NO CHAINS. NO REGRETS.'), '', '✧ ' + mono('GO WHERE YOUR FATE LEADS.'))
-                    await sock.sendMessage(id, { text: lines.join('\n') })
+                    await sendVia(ctx, 'goodbye', sock, id, { text: lines.join('\n') })
                 }
 
                 if (action === 'promote') {
@@ -2300,7 +2350,10 @@ const server = http.createServer(async (req, res) => {
         const rd = c => { if (!c) return null; const p = c.split('.'); if (p.length < 3) return null; const sg = p.pop(), e = p.pop(), v = p.join('.'); return (sg === sign(v + '.' + e) && +e > Date.now()) ? v : null }
         const ck = {}
         String(req.headers.cookie || '').split(';').forEach(x => { const i = x.indexOf('='); if (i > 0) ck[x.slice(0, i).trim()] = x.slice(i + 1).trim() })
-        const verified = rd(ck.sr_v) === 'ok', user = rd(ck.sr_s)
+        const verified = rd(ck.sr_v) === 'ok'
+        const sUsers = String(rd(ck.sr_s) || '').split('_').map(x => x.replace(/[^0-9]/g, '')).filter(Boolean)
+        const asN = String(req.headers['x-as'] || '').replace(/[^0-9]/g, '')
+        const user = asN ? (sUsers.includes(asN) ? asN : null) : (sUsers[sUsers.length - 1] || null)
         const J = (c, o, h) => { res.writeHead(c, Object.assign({ 'Content-Type': 'application/json' }, h || {})); res.end(JSON.stringify(o)) }
         const body = lim => new Promise(r => { let b = ''; req.on('data', c => { b += c; if (b.length > lim) req.destroy() }); req.on('end', () => r(b)) })
         const setc = (n, v, hrs) => n + '=' + v + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + Math.floor(hrs * 3600)
@@ -2383,10 +2436,11 @@ const server = http.createServer(async (req, res) => {
             const n = dg(p.number)
             const u = dashboardUsersCollection && n ? await dashboardUsersCollection.findOne({ username: n }).catch(() => null) : null
             if (!u || !p.password || u.password !== String(p.password).trim()) return J(403, { error: 'Wrong number or password.' })
-            return J(200, { ok: true, number: n }, { 'Set-Cookie': setc('sr_s', mk(n, 12), 12) })
+            const nl = sUsers.filter(x => x !== n).concat(n).slice(-6)
+            return J(200, { ok: true, number: n, users: nl }, { 'Set-Cookie': setc('sr_s', mk(nl.join('_'), 168), 168) })
         }
         if (url === '/api/logout') return J(200, { ok: true }, { 'Set-Cookie': setc('sr_s', '', 0) })
-        if (url === '/api/me') { const s = user && sessions['sess_' + user]; return user ? J(200, { number: user, status: s ? s.status : 'none' }) : J(401, { error: 'login' }) }
+        if (url === '/api/me') { const s = user && sessions['sess_' + user]; return J(200, { number: user || null, users: sUsers, status: s ? s.status : 'none' }) }
         if (url === '/api/settings') {
             if (!user) return J(401, { error: 'Log in first.' })
             const s = sessions['sess_' + user], ctx = s && s.ctx
@@ -2401,7 +2455,7 @@ const server = http.createServer(async (req, res) => {
                 else return J(400, { error: 'Invalid setting.' })
                 saveCtx(ctx)
             }
-            return J(200, { cfg: ctx.cfg })
+            return J(200, { cfg: ctx.cfg, number: user, images: IMG_KINDS.filter(k => fs.existsSync(imgFile(user, k))) })
         }
         if (url === '/api/group-settings') {
             if (!user) return J(401, { error: 'Log in first.' })
@@ -2553,11 +2607,14 @@ const server = http.createServer(async (req, res) => {
 
         if (url === '/api/image' && req.method === 'POST') {
             if (!user) return J(401, { error: 'Log in first.' })
-            let p = {}; try { p = JSON.parse(await body(4500000)) } catch (e) {}
-            const m = IMG[p.kind], buf = Buffer.from(String(p.data || ''), 'base64')
-            const okImg = buf.length > 100 && buf.length < 3000000 && ((buf[0] === 0x89 && buf[1] === 0x50) || (buf[0] === 0xff && buf[1] === 0xd8))
-            if (!m || !okImg) return J(400, { error: 'Send a PNG or JPG under 3 MB.' })
-            fs.writeFileSync(m, buf)
+            let p = {}; try { p = JSON.parse(await body(6500000)) } catch (e) {}
+            const kind = String(p.kind || '')
+            if (!IMG_KINDS.includes(kind)) return J(400, { error: 'Unknown image type.' })
+            if (p.remove) { await delImg(user, kind); return J(200, { ok: true, removed: true }) }
+            const buf = Buffer.from(String(p.data || ''), 'base64')
+            const okImg = buf.length > 100 && buf.length < 4000000 && ((buf[0] === 0x89 && buf[1] === 0x50) || (buf[0] === 0xff && buf[1] === 0xd8))
+            if (!okImg) return J(400, { error: 'Send a PNG or JPG under 4 MB.' })
+            await saveImg(user, kind, buf)
             return J(200, { ok: true })
         }
     }
@@ -3799,6 +3856,7 @@ async function restoreSessions() {
     await loadLogoFromMongo()
     await loadMenu2LogoFromMongo()
     await loadMenu2LogoFromMongo()
+    await restoreImgs()
 
     let ids = []
     if (connected) {
@@ -4143,9 +4201,10 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     if (cmd === 'ping') {
         const latency = Math.max(1, Date.now() - ((msg.messageTimestamp || 0) * 1000))
         const pingText = withFooter(`${SK_HEADER}\n\n✅ ${mono('PONG')}\n\n» ${mono('STATUS')}  •  🟢 ${mono('ONLINE')}\n» ${mono('LATENCY')}  •  ${mono(String(latency) + ' ms')}`)
-        if (fs.existsSync(PING_PATH)) {
+        const _pimg = getImg(ctx, 'ping')
+        if (_pimg) {
             try {
-                const buffer = fs.readFileSync(PING_PATH)
+                const buffer = _pimg
                 await sock.sendMessage(from, { image: buffer, caption: pingText }, { quoted: msg })
                 return
             } catch (e) { console.log('Ping image failed:', e?.message || e) }
@@ -4154,9 +4213,10 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     }
     if (cmd === 'alive') {
         const aliveText = skSuccess('ALIVE', 'READY')
-        if (fs.existsSync(ALIVE_PATH)) {
+        const _aimg = getImg(ctx, 'alive')
+        if (_aimg) {
             try {
-                const buffer = fs.readFileSync(ALIVE_PATH)
+                const buffer = _aimg
                 await sock.sendMessage(from, { image: buffer, caption: aliveText }, { quoted: msg })
                 return
             } catch (e) { console.log('Alive image failed:', e?.message || e) }
@@ -4181,9 +4241,10 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     }
     if (cmd === 'menu' || cmd === 'help') {
         const menuText = renderMenu(ctx, sock)
-        if (fs.existsSync(LOGO_PATH)) {
+        const _mimg = getImg(ctx, 'menu')
+        if (_mimg) {
             try {
-                const buffer = fs.readFileSync(LOGO_PATH)
+                const buffer = _mimg
                 await sock.sendMessage(from, { image: buffer, caption: menuText }, { quoted: msg })
                 return
             } catch (e) { console.log('Menu image failed:', e?.message || e) }
@@ -5114,8 +5175,9 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
 
     if (cmd === 'menu2') {
         try {
-            if (fs.existsSync(MENU2_LOGO_PATH)) {
-                try { await sock.sendMessage(from, { image: fs.readFileSync(MENU2_LOGO_PATH) }, { quoted: msg }) }
+            const _m2img = getImg(ctx, 'menu2')
+            if (_m2img) {
+                try { await sock.sendMessage(from, { image: _m2img }, { quoted: msg }) }
                 catch (e) { console.log('Menu2 image failed:', e?.message || e) }
             }
             await MENU2.sendMain(sock, from)
@@ -6207,8 +6269,9 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const delays = [3500, 1500, 1500, 1500, 1500, 3500]
 
         if (!targetNum) {
-            if (fs.existsSync(BIRTHDAY_PATH)) {
-                try { await sock.sendMessage(from, { image: fs.readFileSync(BIRTHDAY_PATH) }, { quoted: msg }) } catch (e) {}
+            const _bd2 = getImg(ctx, 'birthday')
+            if (_bd2) {
+                try { await sock.sendMessage(from, { image: _bd2 }, { quoted: msg }) } catch (e) {}
             }
             const sent = await reply(stages[0])
             const k = sent?.key || null
