@@ -335,12 +335,19 @@ async function loadMenu2LogoFromMongo() {
 const MEDIA_DIR = path.join('.', 'media')
 const IMG_KINDS = ['menu', 'menu2', 'ping', 'alive', 'birthday', 'welcome', 'goodbye']
 const IMG_LEGACY = { menu: LOGO_PATH, menu2: MENU2_LOGO_PATH, ping: PING_PATH, alive: ALIVE_PATH, birthday: BIRTHDAY_PATH }
-function imgFile(num, kind) { return path.join(MEDIA_DIR, String(num).replace(/[^0-9]/g, ''), kind + '.img') }
+function imgFile(num, kind) { const d = String(num) === 'default' ? 'default' : String(num).replace(/[^0-9]/g, ''); return path.join(MEDIA_DIR, d, kind + '.img') }
+function devImages() {
+    const out = {}
+    try { for (const d of fs.readdirSync(MEDIA_DIR)) { out[d] = IMG_KINDS.filter(k => fs.existsSync(path.join(MEDIA_DIR, d, k + '.img'))) } } catch (e) {}
+    return out
+}
 function sessNum(ctx) { return String((ctx && ctx.sessionId) || '').replace(/^sess_/, '') }
 function getImg(ctx, kind) {
     try {
         const f = imgFile(sessNum(ctx), kind)
         if (fs.existsSync(f)) return fs.readFileSync(f)
+        const fd = imgFile('default', kind)
+        if (fs.existsSync(fd)) return fs.readFileSync(fd)
         const l = IMG_LEGACY[kind]
         if (l && fs.existsSync(l)) return fs.readFileSync(l)
     } catch (e) {}
@@ -364,7 +371,7 @@ async function restoreImgs() {
     try {
         const docs = await logoCollection.find({ _id: { $regex: '^img:' } }).toArray()
         for (const d of docs) {
-            const m = /^img:(\d+):(\w+)$/.exec(String(d._id))
+            const m = /^img:(\d+|default):(\w+)$/.exec(String(d._id))
             if (!m || !IMG_KINDS.includes(m[2]) || !d.data) continue
             const f = imgFile(m[1], m[2])
             fs.mkdirSync(path.dirname(f), { recursive: true })
@@ -1006,7 +1013,11 @@ function createCtx(sessionId, sessionPath) {
             statusreact: false,
             statusview: false,
             eventsWelcome: false,
-            eventsGoodbye: false
+            eventsGoodbye: false,
+            birthdayMsg: '',
+            welcomeMsg: '',
+            goodbyeMsg: '',
+            aliveMsg: ''
         },
         groupSettings: {},
         warnLimit: {},
@@ -2164,8 +2175,8 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 const welcomeOn = (typeof ctx.welcomeSettings[id]?.welcome === 'boolean')
                     ? ctx.welcomeSettings[id].welcome
                     : !!ctx.cfg.eventsWelcome;
-                if (action === 'add' && welcomeOn && ctx.welcomeSettings[id]?.welcomeMsg) {
-                    const _wm = String(ctx.welcomeSettings[id].welcomeMsg)
+                if (action === 'add' && welcomeOn && (ctx.welcomeSettings[id]?.welcomeMsg || ctx.cfg.welcomeMsg)) {
+                    const _wm = String(ctx.welcomeSettings[id]?.welcomeMsg || ctx.cfg.welcomeMsg)
                         .replace(/@user/gi, '@' + realNum)
                         .replace(/@group/gi, groupName || '')
                         .replace(/@count/gi, (memberCount !== null && memberCount !== undefined) ? String(memberCount) : '')
@@ -2186,8 +2197,8 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                     ? ctx.welcomeSettings[id].goodbye
                     : !!ctx.cfg.eventsGoodbye;
 
-                if (action === 'remove' && goodbyeOn && ctx.welcomeSettings[id]?.goodbyeMsg) {
-                    const _gm = String(ctx.welcomeSettings[id].goodbyeMsg)
+                if (action === 'remove' && goodbyeOn && (ctx.welcomeSettings[id]?.goodbyeMsg || ctx.cfg.goodbyeMsg)) {
+                    const _gm = String(ctx.welcomeSettings[id]?.goodbyeMsg || ctx.cfg.goodbyeMsg)
                         .replace(/@user/gi, '@' + realNum)
                         .replace(/@group/gi, groupName || '')
                         .replace(/@count/gi, (memberCount !== null && memberCount !== undefined) ? String(memberCount) : '')
@@ -2452,6 +2463,7 @@ const server = http.createServer(async (req, res) => {
                 else if (p.key === 'mode' && ['public', 'private'].includes(p.value)) ctx.cfg.mode = p.value
                 else if (p.key === 'prefix' && typeof p.value === 'string' && p.value.length >= 1 && p.value.length <= 3) ctx.cfg.prefix = p.value
                 else if (p.key === 'birthdayMsg' && typeof p.value === 'string' && p.value.length <= 300) ctx.cfg.birthdayMsg = p.value
+                else if (['welcomeMsg', 'goodbyeMsg', 'aliveMsg'].includes(p.key) && typeof p.value === 'string' && p.value.length <= 500) ctx.cfg[p.key] = p.value
                 else return J(400, { error: 'Invalid setting.' })
                 saveCtx(ctx)
             }
@@ -2605,18 +2617,7 @@ const server = http.createServer(async (req, res) => {
             }
         }
 
-        if (url === '/api/image' && req.method === 'POST') {
-            if (!user) return J(401, { error: 'Log in first.' })
-            let p = {}; try { p = JSON.parse(await body(6500000)) } catch (e) {}
-            const kind = String(p.kind || '')
-            if (!IMG_KINDS.includes(kind)) return J(400, { error: 'Unknown image type.' })
-            if (p.remove) { await delImg(user, kind); return J(200, { ok: true, removed: true }) }
-            const buf = Buffer.from(String(p.data || ''), 'base64')
-            const okImg = buf.length > 100 && buf.length < 4000000 && ((buf[0] === 0x89 && buf[1] === 0x50) || (buf[0] === 0xff && buf[1] === 0xd8))
-            if (!okImg) return J(400, { error: 'Send a PNG or JPG under 4 MB.' })
-            await saveImg(user, kind, buf)
-            return J(200, { ok: true })
-        }
+        if (url === '/api/image') return J(403, { error: 'Images are managed by the developer.' })
     }
 
     if (url === '/' || url === '/dashboard' || url === '/logo.png' || url === '/logo2.png' || url === '/upload-logo' || url === '/upload-logo2' || url === '/api/sessions' || url === '/api/dev') {
@@ -2636,7 +2637,7 @@ const server = http.createServer(async (req, res) => {
                 const dg = x => String(x || '').replace(/[^0-9]/g, '')
                 const users = Object.values(sessions).map(s => ({ number: s.number, status: s.status, connectedAt: s.connectedAt, blocked: DEV.blocked.includes(dg(s.number)) }))
                 for (const b of DEV.blocked) if (!users.find(u => dg(u.number) === b)) users.push({ number: b, status: 'none', blocked: true })
-                return J(200, { users, disabled: DEV.disabled, maintenance: DEV.maintenance, maxSlots: DEV.maxSlots, logs: LOG_BUF.slice(-120), mem: Math.round(process.memoryUsage().rss / 1048576), uptime: formatUptime(process.uptime()) })
+                return J(200, { images: devImages(), users, disabled: DEV.disabled, maintenance: DEV.maintenance, maxSlots: DEV.maxSlots, logs: LOG_BUF.slice(-120), mem: Math.round(process.memoryUsage().rss / 1048576), uptime: formatUptime(process.uptime()) })
             }
             let body = ''
             req.on('data', c => body += c)
@@ -2667,6 +2668,14 @@ const server = http.createServer(async (req, res) => {
                         for (const k of ['GROQ_API_KEY', 'TMDB_API_KEY', 'YOUTUBE_API_KEY', 'PEXELS_API_KEY']) out[k] = !!process.env[k]
                         return J(200, { ok: true, check: out })
                     }
+                    else if (p.action === 'imgset' && IMG_KINDS.includes(p.kind)) {
+                        const buf = Buffer.from(String(p.data || ''), 'base64')
+                        const okImg = buf.length > 100 && buf.length < 4000000 && ((buf[0] === 0x89 && buf[1] === 0x50) || (buf[0] === 0xff && buf[1] === 0xd8))
+                        if (!okImg) return J(400, { error: 'Send a PNG or JPG under 4 MB.' })
+                        await saveImg(n || 'default', p.kind, buf)
+                        return J(200, { ok: true })
+                    }
+                    else if (p.action === 'imgdel' && IMG_KINDS.includes(p.kind)) { await delImg(n || 'default', p.kind); return J(200, { ok: true }) }
                     else if (p.action === 'restart') { J(200, { ok: true }); setTimeout(() => process.exit(0), 600); return }
                     saveDev(); J(200, { ok: true })
                 } catch (e) { J(500, { error: String(e.message || e) }) }
@@ -4212,7 +4221,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         return reply(pingText)
     }
     if (cmd === 'alive') {
-        const aliveText = skSuccess('ALIVE', 'READY')
+        const aliveText = ctx.cfg.aliveMsg ? String(ctx.cfg.aliveMsg) : skSuccess('ALIVE', 'READY')
         const _aimg = getImg(ctx, 'alive')
         if (_aimg) {
             try {

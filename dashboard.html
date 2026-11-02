@@ -6,7 +6,7 @@
 <title>SUKUNA REALM — Control Panel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Forum&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <style>
 :root{
@@ -14,8 +14,8 @@
     --crimson:#FACC15; --crimson-dim:#CA8A04; --gold:#F6D77A; --gold-dim:#A8832A;
     --ink:#F7F1E1; --ink-dim:#C9BDA0; --ink-faint:#8C8066; --line:#34291A;
     --blue:#3B82F6; --pink:#F472B6; --good:#4BAE7A; --warn:#D8A23B; --bad:#D8485C; --radius:10px;
-    --font-display:'Forum', Georgia, serif;
-    --font-body:'Manrope', -apple-system, sans-serif;
+    --font-display:'Cinzel', 'Forum', Georgia, serif;
+    --font-body:'Outfit', 'Manrope', -apple-system, sans-serif;
     --font-mono:'JetBrains Mono', ui-monospace, monospace;
     --safe-top:env(safe-area-inset-top,0px); --safe-bottom:env(safe-area-inset-bottom,0px);
     color-scheme: dark;
@@ -351,6 +351,79 @@ input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
 .hm-tip{border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:12.5px;color:var(--ink-dim);background:var(--surface);line-height:1.6;transition:opacity .4s}
 .hm-tip b{color:var(--gold)}
 </style>
+
+<style>
+/* nicer type */
+.page-title{background:linear-gradient(90deg,#fde68a,var(--gold) 55%,#fff);-webkit-background-clip:text;background-clip:text;color:transparent;letter-spacing:.07em;font-weight:600}
+.hdr-word,.auth-word{letter-spacing:.09em;font-weight:600}
+.subhead{letter-spacing:.14em;text-transform:uppercase;font-size:11px}
+body{font-weight:400;letter-spacing:.005em}
+textarea{width:100%;min-height:62px;resize:vertical;padding:10px 12px;background:var(--surface-raised);border:1px solid var(--line);color:var(--ink);border-radius:8px;font-size:13.5px;margin-bottom:14px;font-family:inherit;line-height:1.5}
+textarea::placeholder{color:var(--ink-faint)}
+label .hint{font-weight:400;color:var(--ink-faint);margin-left:6px;font-family:var(--font-mono);font-size:10.5px}
+/* custom dropdown (replaces the browser one) */
+.csel{position:relative;display:block;width:100%;margin-bottom:14px}
+.cc-box .csel,.anti-sub .csel,.cmd-row .csel{margin-bottom:0}
+.anti-sub .csel{flex:1;min-width:0}
+.csel-btn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;padding:11px 13px;background:var(--surface-raised);border:1px solid var(--line);border-radius:8px;color:var(--ink);font:inherit;font-size:13.5px;cursor:pointer;transition:border-color .15s}
+.anti-sub .csel-btn{padding:7px 9px;font-size:12px}
+.csel-lab{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.csel-btn::after{content:"";flex:none;width:7px;height:7px;border-right:2px solid var(--gold);border-bottom:2px solid var(--gold);transform:rotate(45deg) translateY(-2px);transition:transform .2s}
+.csel.open .csel-btn{border-color:var(--gold-dim)}
+.csel.open .csel-btn::after{transform:rotate(-135deg) translateY(-2px)}
+.csel-menu{position:fixed;z-index:1000;display:flex;flex-direction:column;background:#15110a;border:1px solid var(--gold-dim);border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,.65),0 0 0 1px rgba(250,204,21,.06);overflow:hidden;animation:cselIn .14s ease-out}
+@keyframes cselIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.csel-menu .csel-search{flex:none;width:calc(100% - 16px);margin:8px 8px 6px;padding:9px 11px;box-sizing:border-box;background:var(--surface-raised);border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:13.5px}
+.csel-list{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.csel-opt{padding:11px 14px;font-size:13.5px;color:var(--ink-dim);cursor:pointer;border-top:1px solid var(--line)}
+.csel-opt:first-child{border-top:none}
+.csel-opt:active{background:rgba(250,204,21,.1)}
+.csel-opt.sel{color:var(--gold);background:rgba(250,204,21,.08)}
+.csel-none{padding:14px;font-size:12.5px;color:var(--ink-faint);text-align:center}
+/* home extras */
+.hm-pulse{display:flex;align-items:center;gap:14px;border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--surface)}
+.hm-donut{position:relative;width:96px;height:96px;flex:none}
+.hm-donut svg{width:100%;height:100%;transform:rotate(-90deg)}
+.hm-donut circle{fill:none;stroke-width:9;stroke-linecap:butt;transition:stroke-dasharray .8s ease,stroke-dashoffset .8s ease}
+.hm-donut .bg{stroke:var(--surface-raised)}
+.hm-donut-mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.hm-donut-mid b{font-family:var(--font-display);font-size:21px;line-height:1}
+.hm-donut-mid span{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);margin-top:3px}
+.hm-spark{flex:1;min-width:0}
+.hm-spark svg{width:100%;height:62px;display:block}
+.hm-spark-cap{font-size:11px;color:var(--ink-faint);margin-top:6px;letter-spacing:.03em}
+.hm-spark-cap b{color:var(--gold);font-weight:600}
+.hm-cmds{display:flex;flex-wrap:wrap;gap:8px}
+.hm-cmd{padding:8px 13px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--gold);font-family:var(--font-mono);font-size:12.5px;cursor:pointer}
+.hm-cmd:active{background:rgba(250,204,21,.12);border-color:var(--gold-dim)}
+/* sessions */
+.ss-sum{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:14px;background:radial-gradient(120% 160% at 0% 0%,rgba(250,204,21,.12),transparent 60%),var(--surface)}
+.ss-sum b{font-family:var(--font-display);font-size:26px;line-height:1}
+.ss-sum span{font-size:12px;color:var(--ink-faint)}
+.ss-card{border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px;background:var(--surface);position:relative;overflow:hidden}
+.ss-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ink-faint)}
+.ss-card.on::before{background:var(--good);box-shadow:0 0 14px var(--good)}
+.ss-card.mid::before{background:var(--warn)}
+.ss-card.off::before{background:var(--bad)}
+.ss-top{display:flex;align-items:center;gap:13px}
+.ss-orb{position:relative;width:42px;height:42px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);background:var(--surface-raised)}
+.ss-orb span{width:12px;height:12px;border-radius:50%;background:var(--ink-faint)}
+.ss-card.on .ss-orb span{background:var(--good);box-shadow:0 0 12px var(--good);animation:pulse 1.8s ease-in-out infinite}
+.ss-card.mid .ss-orb span{background:var(--warn);animation:pulse 1s ease-in-out infinite}
+.ss-card.off .ss-orb span{background:var(--bad)}
+.ss-id{flex:1;min-width:0}
+.ss-num{font-family:var(--font-mono);font-size:15px;color:var(--ink);overflow:hidden;text-overflow:ellipsis}
+.ss-meta{font-size:11.5px;color:var(--ink-faint);margin-top:2px}
+.ss-badge{font-size:11px;font-weight:600;padding:4px 10px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
+.ss-badge.on{color:var(--good);border-color:rgba(75,174,122,.4);background:rgba(75,174,122,.1)}
+.ss-badge.mid{color:var(--warn);border-color:rgba(216,162,59,.4);background:rgba(216,162,59,.1)}
+.ss-badge.off{color:var(--bad);border-color:rgba(216,72,92,.4);background:rgba(216,72,92,.1)}
+.ss-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.ss-code{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding:11px 14px;border:1px dashed var(--gold-dim);border-radius:10px;background:rgba(250,204,21,.05)}
+.ss-code b{font-family:var(--font-mono);font-size:19px;letter-spacing:.12em;color:var(--gold)}
+.ss-actions{display:flex;gap:10px;margin-top:14px}
+.ss-actions .btn{flex:1;width:auto}
+</style>
 </head>
 <body>
 
@@ -417,28 +490,33 @@ input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
         </div>
         <div class="hm-clock" id="hmClock">--:--</div>
     </div>
+    <div class="hm-pulse">
+        <div class="hm-donut">
+            <svg viewBox="0 0 100 100"><circle class="bg" cx="50" cy="50" r="36"></circle><circle id="dnA" cx="50" cy="50" r="36" stroke="#4bae7a" stroke-dasharray="0 226.2"></circle><circle id="dnC" cx="50" cy="50" r="36" stroke="#d8a23b" stroke-dasharray="0 226.2"></circle><circle id="dnO" cx="50" cy="50" r="36" stroke="#d8485c" stroke-dasharray="0 226.2"></circle></svg>
+            <div class="hm-donut-mid"><b id="dnTxt">0/0</b><span>live</span></div>
+        </div>
+        <div class="hm-spark">
+            <svg viewBox="0 0 300 62" preserveAspectRatio="none"><defs><linearGradient id="spg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#facc15" stop-opacity=".35"/><stop offset="1" stop-color="#facc15" stop-opacity="0"/></linearGradient></defs><path id="spArea" d="" fill="url(#spg)"></path><polyline id="spLine" points="" fill="none" stroke="#facc15" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></polyline></svg>
+            <div class="hm-spark-cap">Realm pulse · <b id="spNow">0</b> live now</div>
+        </div>
+    </div>
     <div class="ledger">
         <div class="ledger-cell"><div class="ledger-num" id="hTotal">—</div><div class="ledger-label">Sessions</div></div>
         <div class="ledger-cell"><div class="ledger-num" id="hActive">—</div><div class="ledger-label">Active</div></div>
         <div class="ledger-cell"><div class="ledger-num" id="hConnecting">—</div><div class="ledger-label">Connecting</div></div>
         <div class="ledger-cell"><div class="ledger-num" id="hUptime">—</div><div class="ledger-label">Uptime</div></div>
     </div>
-    <div class="hm-health">
-        <div class="hm-bar"><span class="a" id="hmA" style="width:0"></span><span class="c" id="hmC" style="width:0"></span><span class="o" id="hmO" style="width:0"></span></div>
-        <div class="hm-legend"><span><b id="hmLA">0</b> live</span><span><b id="hmLC">0</b> connecting</span><span><b id="hmLO">0</b> offline</span></div>
-    </div>
     <div>
         <div class="subhead">Your numbers</div>
         <div id="homeMine"></div>
     </div>
     <div>
-        <div class="subhead">Quick actions</div>
-        <div class="hm-tiles">
-            <button class="hm-tile" data-goto="connect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M8 12 H16 M12 8 V16"/></svg><b>Connect</b><span>Link a number</span></button>
-            <button class="hm-tile" data-goto="sessions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7 H15 M9 11 H15"/></svg><b>Sessions</b><span>Status and reconnect</span></button>
-            <button class="hm-tile" data-goto="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 3 V6 M12 18 V21 M3 12 H6 M18 12 H21"/></svg><b>Settings</b><span>Prefix, mode, images</span></button>
-            <button class="hm-tile" data-goto="protection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3 L20 7 V12 C20 17 16.5 20 12 21 C7.5 20 4 17 4 12 V7 Z"/><path d="M9 12 L11 14 L15 10"/></svg><b>Groups</b><span>Protection and tools</span></button>
-        </div>
+        <div class="subhead">Popular commands · tap to copy</div>
+        <div class="hm-cmds"><button class="hm-cmd">.menu</button><button class="hm-cmd">.song</button><button class="hm-cmd">.mp4</button><button class="hm-cmd">.ping</button><button class="hm-cmd">.alive</button><button class="hm-cmd">.hbd</button></div>
+    </div>
+    <div class="hm-tiles">
+        <button class="hm-tile" data-goto="connect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M8 12 H16 M12 8 V16"/></svg><b>Connect</b><span>Link a number</span></button>
+        <button class="hm-tile" data-goto="sessions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7 H15 M9 11 H15"/></svg><b>Sessions</b><span>Status and reconnect</span></button>
     </div>
     <div class="hm-tip" id="hmTip"></div>
 </div>
@@ -448,7 +526,6 @@ input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
     <div class="panel">
         <label>Country</label>
         <div class="cc-box">
-            <input type="text" id="countryFilter" placeholder="Search country or code" autocomplete="off">
             <select id="countrySelect"></select>
         </div>
         <label>Number</label>
@@ -478,12 +555,18 @@ input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
     <div class="subhead">Auto</div>
     <div class="toggle-grid" id="autoToggles"></div>
 
-    <div class="subhead" style="margin-top:22px">Uploads</div>
+    <div class="subhead" style="margin-top:22px">Messages</div>
     <div class="panel">
-        <div id="uploadRows"></div>
-        <div class="up-note">Welcome and goodbye images are sent with the welcome and goodbye message in every group of the selected number. Each number keeps its own images.</div>
-        <label style="margin-top:14px">Birthday message (blank = random quote)</label>
-        <input type="text" id="birthdayMsgInput" maxlength="300" placeholder="Happy birthday{name}.">
+        <div class="up-note" style="margin:0 0 14px">These belong to the number chosen above, so changing them never affects another number. Leave a box empty to use the bot's own default. A group's own message (Groups, then Welcome) always wins.</div>
+        <label>Birthday message <span class="hint">empty = random quote</span></label>
+        <textarea id="birthdayMsgInput" maxlength="300" placeholder="Happy birthday{name}."></textarea>
+        <label>Welcome message <span class="hint">@user @group @count</span></label>
+        <textarea id="welcomeMsgCfg" maxlength="500" placeholder="Empty = the default welcome"></textarea>
+        <label>Goodbye message <span class="hint">@user @group</span></label>
+        <textarea id="goodbyeMsgCfg" maxlength="500" placeholder="Empty = the default goodbye"></textarea>
+        <label>Alive message <span class="hint">shown by the alive command</span></label>
+        <textarea id="aliveMsgCfg" maxlength="500" placeholder="Empty = the default alive text"></textarea>
+        <button class="btn" id="resetMsgsBtn">Reset all to default</button>
     </div>
 </div>
 
@@ -570,6 +653,13 @@ input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
         <input type="number" id="slotsInput">
         <div class="subhead">User registry</div>
         <div class="registry" id="registryTable"></div>
+        <div class="subhead">Images</div>
+        <div class="panel">
+            <label>Apply to</label>
+            <select id="devImgTarget"></select>
+            <div id="devImgRows"></div>
+            <div class="up-note">"All numbers" is the default every number uses. Pick one number to give it its own image instead. Welcome and goodbye images go out with the welcome and goodbye messages. Only you can change these.</div>
+        </div>
     </div>
 </div>
 
@@ -598,6 +688,72 @@ input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
 'use strict';
 function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;
     document.getElementById('toastLayer').appendChild(t);setTimeout(()=>t.remove(),3000)}
+/* ===== custom dropdowns: replaces the browser's own list everywhere ===== */
+let CS_OPEN=null;
+function closeMenu(){if(CS_OPEN){CS_OPEN.menu.remove();CS_OPEN.wrap.classList.remove('open');CS_OPEN=null}}
+function placeMenu(menu,btn){
+    const r=btn.getBoundingClientRect(),vh=window.innerHeight;
+    const below=vh-r.bottom-12,above=r.top-12,up=below<230&&above>below;
+    menu.style.left=r.left+'px';menu.style.width=r.width+'px';
+    menu.style.maxHeight=Math.max(150,Math.min(330,up?above:below))+'px';
+    if(up){menu.style.bottom=(vh-r.top+6)+'px';menu.style.top='auto'}else{menu.style.top=(r.bottom+6)+'px';menu.style.bottom='auto'}
+}
+function openMenu(sel,wrap,btn){
+    if(CS_OPEN&&CS_OPEN.sel===sel){closeMenu();return}
+    closeMenu();
+    const opts=[...sel.options];
+    const menu=document.createElement('div');menu.className='csel-menu';
+    menu.innerHTML=(opts.length>10?'<input type="text" class="csel-search" placeholder="Search..." autocomplete="off">':'')+'<div class="csel-list"></div>';
+    const list=menu.querySelector('.csel-list');
+    const draw=q=>{
+        const f=String(q||'').toLowerCase().trim();list.innerHTML='';
+        const clean=o=>o.textContent.toLowerCase().replace(/^[^a-z0-9+]+/,'');
+        let shown=opts.filter(o=>!f||clean(o).includes(f));
+        if(f)shown=shown.map((o,i)=>({o,k:clean(o).indexOf(f)*1000+i})).sort((a,b)=>a.k-b.k).map(x=>x.o);
+        shown.forEach(o=>{
+            const d=document.createElement('div');d.className='csel-opt'+(o.value===sel.value?' sel':'');
+            d.textContent=o.textContent;d.dataset.v=o.value;list.appendChild(d);
+        });
+        if(!list.children.length)list.innerHTML='<div class="csel-none">No match</div>';
+    };
+    draw('');
+    menu.addEventListener('click',e=>{
+        const t=e.target.closest('.csel-opt');if(!t)return;
+        sel.value=t.dataset.v;closeMenu();
+        sel.dispatchEvent(new Event('change',{bubbles:true}));
+    });
+    const s=menu.querySelector('.csel-search');if(s)s.addEventListener('input',()=>draw(s.value));
+    document.body.appendChild(menu);wrap.classList.add('open');placeMenu(menu,btn);
+    CS_OPEN={sel,wrap,menu,btn,t:Date.now()};
+    const cur=list.querySelector('.sel');if(cur)cur.scrollIntoView({block:'center'});
+}
+function enhanceSelect(sel){
+    if(sel._csel)return;sel._csel=true;
+    const wrap=document.createElement('div');wrap.className='csel';
+    const btn=document.createElement('button');btn.type='button';btn.className='csel-btn';
+    const lab=document.createElement('span');lab.className='csel-lab';btn.appendChild(lab);
+    sel.parentNode.insertBefore(wrap,sel);wrap.appendChild(btn);wrap.appendChild(sel);sel.style.display='none';
+    const refresh=()=>{const o=sel.options[sel.selectedIndex];lab.textContent=o?o.textContent:'Select...'};
+    const d=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value');
+    Object.defineProperty(sel,'value',{configurable:true,get(){return d.get.call(this)},set(v){d.set.call(this,v);refresh()}});
+    new MutationObserver(refresh).observe(sel,{childList:true,subtree:true,attributes:true,attributeFilter:['selected']});
+    btn.addEventListener('click',()=>openMenu(sel,wrap,btn));
+    refresh();
+}
+document.querySelectorAll('select').forEach(enhanceSelect);
+new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(n=>{
+    if(n.nodeType!==1)return;
+    if(n.tagName==='SELECT')enhanceSelect(n);else if(n.querySelectorAll)n.querySelectorAll('select').forEach(enhanceSelect);
+}))).observe(document.body,{childList:true,subtree:true});
+document.addEventListener('pointerdown',e=>{if(CS_OPEN&&!CS_OPEN.menu.contains(e.target)&&!CS_OPEN.wrap.contains(e.target))closeMenu()},true);
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu()});
+window.addEventListener('scroll',e=>{
+    if(!CS_OPEN||CS_OPEN.menu.contains(e.target))return;
+    if(Date.now()-CS_OPEN.t<600||CS_OPEN.menu.contains(document.activeElement))return;
+    closeMenu();
+},true);
+window.addEventListener('resize',()=>{if(CS_OPEN)placeMenu(CS_OPEN.menu,CS_OPEN.btn)});
+
 async function api(url,opts){
     opts=Object.assign({},opts||{});
     const h=Object.assign({},opts.headers||{});
@@ -725,7 +881,7 @@ function agoText(ts){
     const h=Math.floor(m/60);if(h<24)return h+'h '+(m%60)+'m';
     return Math.floor(h/24)+'d '+(h%24)+'h';
 }
-const HM_TIPS=['Send <b>.menu</b> in WhatsApp to see every command.','<b>.song</b> + a title sends the track as a voice note.','Add a <b>Welcome image</b> in Settings, then Uploads.','Switch between your numbers in <b>Settings</b>. Each keeps its own options.','Turn on <b>Antilink</b> per group in Groups, then Protection.'];
+const HM_TIPS=['Send <b>.menu</b> in WhatsApp to see every command.','<b>.song</b> + a title sends the track as a voice note.','Set your own <b>welcome</b> and <b>goodbye</b> messages in Settings.','Switch between your numbers in <b>Settings</b>. Each keeps its own options.','Turn on <b>Antilink</b> per group in Groups, then Protection.'];
 let hmTipI=0;
 function tickHome(){
     const d=new Date(),h=d.getHours();
@@ -749,11 +905,25 @@ async function loadHome(){
     const d=r.data;
     countUp('hTotal',d.total);countUp('hActive',d.active);countUp('hConnecting',d.connecting);
     document.getElementById('hUptime').textContent=d.uptime;
-    const tot=Math.max(1,d.total),off=d.offline!=null?d.offline:Math.max(0,d.total-d.active-d.connecting);
-    document.getElementById('hmA').style.width=(d.active/tot*100)+'%';
-    document.getElementById('hmC').style.width=(d.connecting/tot*100)+'%';
-    document.getElementById('hmO').style.width=(off/tot*100)+'%';
-    document.getElementById('hmLA').textContent=d.active;document.getElementById('hmLC').textContent=d.connecting;document.getElementById('hmLO').textContent=off;
+    const off=d.offline!=null?d.offline:Math.max(0,d.total-d.active-d.connecting);
+    // ring
+    const C=226.2,tot=Math.max(1,d.total);
+    const la=d.active/tot*C,lc=d.connecting/tot*C,lo=off/tot*C;
+    const seg=(id,len,start)=>{const e=document.getElementById(id);e.setAttribute('stroke-dasharray',Math.max(0,len-1.5)+' '+(C-Math.max(0,len-1.5)));e.setAttribute('stroke-dashoffset',-start)};
+    seg('dnA',la,0);seg('dnC',lc,la);seg('dnO',lo,la+lc);
+    document.getElementById('dnTxt').textContent=d.active+'/'+d.total;
+    document.getElementById('spNow').textContent=d.active;
+    // graph (kept on this device)
+    let pulse=[];try{pulse=JSON.parse(localStorage.getItem('sr_pulse')||'[]')}catch(e){}
+    if(!Array.isArray(pulse))pulse=[];
+    const last=pulse[pulse.length-1];
+    if(!last||Date.now()-last.t>15000){pulse.push({t:Date.now(),a:d.active,n:d.total});pulse=pulse.slice(-40);localStorage.setItem('sr_pulse',JSON.stringify(pulse))}
+    const max=Math.max(1,...pulse.map(p=>Math.max(p.a,p.n)));
+    const pts=pulse.map((p,i)=>[pulse.length>1?i/(pulse.length-1)*300:0,56-(p.a/max)*50]);
+    if(pts.length<2)pts.push([300,pts.length?pts[0][1]:56]);
+    const line=pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+    document.getElementById('spLine').setAttribute('points',line);
+    document.getElementById('spArea').setAttribute('d','M'+pts[0][0]+','+62+' L'+line.replace(/ /g,' L')+' L'+pts[pts.length-1][0]+',62 Z');
     const chip=document.getElementById('hmChip');
     const st=!d.total?['none','No sessions yet']:d.active===d.total?['on','All systems live']:d.active>0?['mid','Partly live']:['off','Offline'];
     chip.className='hm-chip '+st[0];document.getElementById('hmChipText').textContent=st[1];
@@ -765,16 +935,11 @@ async function loadHome(){
         const n=nums[i],m=rr.ok&&rr.data.mine;
         const cls=!m?'off':m.status==='active'?'on':/connect/.test(m.status)?'mid':'off';
         const since=m&&m.status==='active'?agoText(m.connectedAt):'';
-        return '<div class="hm-num '+cls+'"><div class="hm-num-top"><span class="dot '+(cls==='on'?'':cls==='mid'?'warn':'off')+'"></span><span class="hm-num-n">'+n+'</span><span class="hm-num-s">'+(m?m.status:'not found')+'</span></div>'
-            +(m?'<div class="hm-tags"><span class="hm-tag">mode: '+(m.mode||'?')+'</span><span class="hm-tag">prefix: '+(m.prefix||'?')+'</span>'+(since?'<span class="hm-tag">online '+since+'</span>':'')+'</div>':'')
-            +'<div class="hm-num-actions"><button class="btn" data-hm="settings" data-n="'+n+'">Settings</button><button class="btn" data-hm="protection" data-n="'+n+'">Groups</button></div></div>';
+        return '<div class="hm-num '+cls+'"><div class="hm-num-top"><span class="dot '+(cls==='on'?'':cls==='mid'?'warn':'off')+'"></span><span class="hm-num-n">'+n+'</span><span class="hm-num-s">'+(m?(m.status==='active'?'connected':m.status):'not connected')+'</span></div>'
+            +(m?'<div class="hm-tags"><span class="hm-tag">mode: '+(m.mode||'?')+'</span><span class="hm-tag">prefix: '+(m.prefix||'?')+'</span>'+(since?'<span class="hm-tag">online '+since+'</span>':'')+'</div>':'')+'</div>';
     }).join('');
-    box.querySelectorAll('[data-hm]').forEach(b=>b.addEventListener('click',()=>{
-        const n=b.dataset.n,page=b.dataset.hm;
-        if(loggedUsers.includes(n)){loggedInNumber=n;saveUsers();updateLoggedInLabel();gotoPage(page,true)}
-        else requireLogin(page,n);
-    }));
 }
+document.querySelectorAll('.hm-cmd').forEach(b=>b.addEventListener('click',()=>{navigator.clipboard?.writeText(b.textContent).catch(()=>{});toast('Copied '+b.textContent)}));
 setInterval(tickHome,1000);
 setInterval(()=>{if(document.getElementById('page-home').classList.contains('active'))rotateTip()},9000);
 
@@ -800,7 +965,6 @@ function updateCountryHint(){
     const local=document.getElementById('connectNumber').value.replace(/[^0-9]/g,'').replace(/^0+/,'');
     document.getElementById('countryHint').textContent=dial?('Full number: +'+dial+(local?' '+local:'')):'';
 }
-document.getElementById('countryFilter').addEventListener('input',e=>renderCountries(e.target.value));
 document.getElementById('countrySelect').addEventListener('change',e=>{if(e.target.value)localStorage.setItem('sr_cc',e.target.value);updateCountryHint()});
 document.getElementById('connectNumber').addEventListener('input',updateCountryHint);
 renderCountries('');
@@ -827,40 +991,56 @@ document.getElementById('connectBtn').addEventListener('click',async()=>{
 });
 
 /* ===== sessions ===== */
+function statusInfo(m){
+    if(!m)return {cls:'off',label:'Not connected'};
+    const s=String(m.status||'');
+    if(s==='active')return {cls:'on',label:'Connected'};
+    if(/connect/.test(s))return {cls:'mid',label:'Connecting...'};
+    if(/logged/.test(s))return {cls:'off',label:'Logged out'};
+    return {cls:'off',label:s||'Offline'};
+}
 async function loadSessions(){
     const tracked=localStorage.getItem('trackedNumber')||'';
+    const nums=[...new Set([tracked].concat(loggedUsers).filter(Boolean))];
     const body=document.getElementById('sessionBody');
-    if(!tracked){body.innerHTML=`<div class="panel">No number tracked on this device yet.</div>
-        <button class="btn" data-goto="connect" style="margin-top:10px">Connect a number</button>`;
+    if(!nums.length){
+        body.innerHTML='<div class="hm-empty">No number linked on this device yet.</div><button class="btn primary" data-goto="connect" style="margin-top:12px">Connect a number</button>';
         body.querySelector('[data-goto]').addEventListener('click',()=>gotoPage('connect'));
         return;
     }
-    const r=await api('/api/public?number='+encodeURIComponent(tracked));
-    const m=r.ok?r.data.mine:null;
-    if(!m){body.innerHTML='<div class="panel">Could not load that session.</div>';return}
-    body.innerHTML=`<div class="session ${m.status==='active'?'active':/connect/.test(m.status)?'connecting':'logged-out'} open">
-        <div class="session-row"><span class="session-number">${m.number}</span><span class="session-tag">${m.status}</span></div>
-        <div class="session-body" style="display:block">
-            ${m.pairingCode?`<div class="pairing-box"><span class="pairing-code">${m.pairingCode}</span>
-                <button class="copy-btn" id="copyPairing2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M5 16 V5 a2 2 0 0 1 2-2 H16"/></svg>Copy</button></div>`:''}
-            <div class="btn-row">
-                <button class="btn btn-sm" id="reconnectBtn">Reconnect</button>
-                <button class="btn btn-sm danger" id="disconnectBtn">Disconnect</button>
-            </div>
-        </div></div>`;
-    const cp=document.getElementById('copyPairing2');
-    if(cp)cp.addEventListener('click',()=>{navigator.clipboard?.writeText(m.pairingCode).catch(()=>{});toast('Code copied.')});
-    document.getElementById('reconnectBtn').addEventListener('click',async()=>{
-        const rr=await api('/api/act',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({number:tracked,action:'reconnect'})});
-        toast(rr.ok?'Reconnecting...':(rr.data.error||'Failed.'));
-        setTimeout(loadSessions,2000);
-    });
-    document.getElementById('disconnectBtn').addEventListener('click',async()=>{
-        const rr=await api('/api/act',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({number:tracked,action:'disconnect'})});
-        if(rr.status===401){toast('Log in with this number first.');requireLogin('sessions');return}
+    const res=await Promise.all(nums.map(n=>api('/api/public?number='+encodeURIComponent(n))));
+    const ms=res.map(rr=>rr.ok?rr.data.mine:null);
+    const live=ms.filter(m=>m&&m.status==='active').length;
+    let h='<div class="ss-sum"><div><b>'+live+' / '+nums.length+'</b><br><span>numbers connected right now</span></div><span>'+(live===nums.length?'All good':live?'Needs a look':'Offline')+'</span></div>';
+    h+=nums.map((n,i)=>{
+        const m=ms[i],st=statusInfo(m),since=m&&m.status==='active'?agoText(m.connectedAt):'';
+        const logged=loggedUsers.includes(n);
+        return '<div class="ss-card '+st.cls+'"><div class="ss-top"><div class="ss-orb"><span></span></div>'
+            +'<div class="ss-id"><div class="ss-num">'+n+'</div><div class="ss-meta">'+(m?(since?'Online for '+since:'Not online'):'No session on the server')+'</div></div>'
+            +'<span class="ss-badge '+st.cls+'">'+st.label+'</span></div>'
+            +'<div class="ss-tags">'+(m?'<span class="hm-tag">mode: '+(m.mode||'?')+'</span><span class="hm-tag">prefix: '+(m.prefix||'?')+'</span>':'')
+            +'<span class="hm-tag">'+(logged?'dashboard login ✓':'not logged in here')+'</span></div>'
+            +(m&&m.pairingCode?'<div class="ss-code"><b>'+m.pairingCode+'</b><button class="btn btn-sm" data-sscopy="'+m.pairingCode+'">Copy</button></div>':'')
+            +'<div class="ss-actions">'+(m
+                ?'<button class="btn" data-ss="reconnect" data-n="'+n+'">Reconnect</button><button class="btn danger" data-ss="disconnect" data-n="'+n+'">Disconnect</button>'
+                :'<button class="btn primary" data-ss="connect" data-n="'+n+'">Connect this number</button>')+'</div></div>';
+    }).join('');
+    body.innerHTML=h;
+    body.querySelectorAll('[data-sscopy]').forEach(b=>b.addEventListener('click',()=>{navigator.clipboard?.writeText(b.dataset.sscopy).catch(()=>{});toast('Code copied.')}));
+    body.querySelectorAll('[data-ss]').forEach(b=>b.addEventListener('click',async()=>{
+        const n=b.dataset.n,act=b.dataset.ss;
+        if(act==='connect'){gotoPage('connect');return}
+        if(act==='reconnect'){
+            const rr=await api('/api/act',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({number:n,action:'reconnect'})});
+            toast(rr.ok?'Reconnecting...':(rr.data.error||'Failed.'));
+            setTimeout(loadSessions,2000);return;
+        }
+        if(!confirm('Disconnect '+n+'? You will need to link it again.'))return;
+        const rr=await api('/api/act',{method:'POST',headers:{'Content-Type':'application/json','x-as':n},body:JSON.stringify({number:n,action:'disconnect'})});
+        if(rr.status===401){toast('Log in with this number first.');requireLogin('sessions',n);return}
         toast(rr.ok?'Disconnected.':(rr.data.error||'Failed.'));
         loadSessions();
-    });
+    }));
 }
 document.getElementById('reloadSessionBtn').addEventListener('click',loadSessions);
 
@@ -887,6 +1067,9 @@ async function loadSettings(){
     document.getElementById('prefixInput').value=cfg.prefix||'.';
     document.getElementById('modeSelect').value=cfg.mode||'public';
     document.getElementById('birthdayMsgInput').value=cfg.birthdayMsg||'';
+    document.getElementById('welcomeMsgCfg').value=cfg.welcomeMsg||'';
+    document.getElementById('goodbyeMsgCfg').value=cfg.goodbyeMsg||'';
+    document.getElementById('aliveMsgCfg').value=cfg.aliveMsg||'';
     box.innerHTML=AUTO.map(([k,l])=>`
         <div class="toggle">${l}<span class="switch"><input type="checkbox" data-key="${k}" ${cfg[k]?'checked':''}><span class="track"></span><span class="knob"></span></span></div>`).join('');
     document.querySelectorAll('[data-key]').forEach(cb=>cb.addEventListener('change',async()=>{
@@ -896,6 +1079,21 @@ async function loadSettings(){
     renderUploads(r.data.images||[]);
 }
 document.getElementById('settingsNumber').addEventListener('change',e=>switchNumber(e.target.value,'settings'));
+[['welcomeMsgCfg','welcomeMsg'],['goodbyeMsgCfg','goodbyeMsg'],['aliveMsgCfg','aliveMsg']].forEach(([id,key])=>{
+    document.getElementById(id).addEventListener('change',async()=>{
+        const rr=await api('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,value:document.getElementById(id).value})});
+        toast(rr.ok?'Saved.':(rr.data.error||'Failed.'));
+    });
+});
+document.getElementById('resetMsgsBtn').addEventListener('click',async()=>{
+    if(!confirm('Clear your custom messages and go back to the defaults?'))return;
+    for(const [id,key] of [['birthdayMsgInput','birthdayMsg'],['welcomeMsgCfg','welcomeMsg'],['goodbyeMsgCfg','goodbyeMsg'],['aliveMsgCfg','aliveMsg']]){
+        document.getElementById(id).value='';
+        await api('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,value:''})});
+    }
+    toast('Back to the defaults.');
+});
+
 document.getElementById('prefixInput').addEventListener('change',async(e)=>{
     const rr=await api('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:'prefix',value:e.target.value})});
     toast(rr.ok?'Prefix saved.':(rr.data.error||'Failed.'));
@@ -986,6 +1184,48 @@ document.getElementById('resealBtn').addEventListener('click',()=>{
     document.getElementById('sealPanel').style.display='block';
     document.getElementById('devKeyInput').value='';
 });
+let devImgTarget='',devLast=null;
+function devImgCall(payload){
+    return fetch('/api/dev',{method:'POST',headers:{'Content-Type':'application/json','x-dev-key':devKey},credentials:'same-origin',body:JSON.stringify(payload)})
+        .then(async r=>({ok:r.ok,data:await r.json().catch(()=>({}))}));
+}
+async function refreshDevImages(){
+    const rr=await fetch('/api/dev',{headers:{'x-dev-key':devKey},credentials:'same-origin'});
+    if(rr.ok){devLast=await rr.json();renderDevImages(devLast)}
+}
+function renderDevImages(d){
+    devLast=d;
+    const sel=document.getElementById('devImgTarget');if(!sel)return;
+    const nums=[...new Set((d.users||[]).filter(u=>!u.blocked).map(u=>u.number).filter(Boolean))];
+    sel.innerHTML='<option value="">All numbers (default)</option>'+nums.map(n=>'<option value="'+n+'">'+n+'</option>').join('');
+    sel.value=devImgTarget;if(sel.value!==devImgTarget){devImgTarget='';sel.value=''}
+    const have=(d.images&&d.images[devImgTarget||'default'])||[];
+    const box=document.getElementById('devImgRows');
+    box.innerHTML=UPLOADS.map(([k,l])=>{
+        const on=have.includes(k);
+        return '<div class="up-row"><div class="up-name"><span>'+l+'</span><span class="up-tag'+(on?' on':'')+'">'+(on?'✓ set':'not set')+'</span></div>'
+            +'<input type="file" id="dupf-'+k+'" accept="image/*"><button class="btn btn-sm" data-dup="'+k+'">Upload</button>'
+            +(on?'<button class="btn btn-sm ghost" data-dupx="'+k+'">Remove</button>':'')+'</div>';
+    }).join('');
+    box.querySelectorAll('[data-dup]').forEach(b=>b.addEventListener('click',async()=>{
+        const k=b.dataset.dup,file=document.getElementById('dupf-'+k).files[0];
+        if(!file){toast('Choose a file first.');return}
+        b.disabled=true;
+        try{
+            const data=await prepareImage(file);
+            const rr=await devImgCall({action:'imgset',kind:k,number:devImgTarget,data});
+            toast(rr.ok?'Image saved.':(rr.data.error||'Upload failed.'));
+            if(rr.ok)refreshDevImages();
+        }catch(e){toast(e.message||'Upload failed.')}
+        b.disabled=false;
+    }));
+    box.querySelectorAll('[data-dupx]').forEach(b=>b.addEventListener('click',async()=>{
+        const rr=await devImgCall({action:'imgdel',kind:b.dataset.dupx,number:devImgTarget});
+        toast(rr.ok?'Removed.':(rr.data.error||'Failed.'));
+        if(rr.ok)refreshDevImages();
+    }));
+}
+document.getElementById('devImgTarget').addEventListener('change',e=>{devImgTarget=e.target.value;if(devLast)renderDevImages(devLast)});
 function renderDevData(d){
     document.getElementById('maintenanceToggle').checked=!!d.maintenance;
     document.getElementById('slotsInput').value=d.maxSlots||0;
@@ -995,6 +1235,7 @@ function renderDevData(d){
                 :'<button class="btn btn-sm danger" data-kill="'+u.number+'">Kill</button>'}</span></div>`).join('');
     document.querySelectorAll('[data-kill]').forEach(b=>b.addEventListener('click',()=>devAction('kill',b.dataset.kill)));
     document.querySelectorAll('[data-unblock]').forEach(b=>b.addEventListener('click',()=>devAction('unblock',b.dataset.unblock)));
+    renderDevImages(d);
 }
 async function devAction(action,number,value){
     const r=await fetch('/api/dev',{method:'POST',headers:{'Content-Type':'application/json','x-dev-key':devKey},credentials:'same-origin',body:JSON.stringify({action,number,value})});
