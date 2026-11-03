@@ -343,11 +343,6 @@ input:disabled,button:disabled{opacity:.4;cursor:not-allowed}
 .hm-num-actions{display:flex;gap:8px;margin-top:11px}
 .hm-num-actions .btn{flex:1;width:auto;padding:8px 10px;font-size:12px}
 .hm-empty{border:1px dashed var(--line);border-radius:12px;padding:16px;font-size:13px;color:var(--ink-dim);text-align:center;line-height:1.6}
-.hm-tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.hm-tile{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);cursor:pointer;text-align:left;font-family:var(--font-body)}
-.hm-tile:active{transform:scale(.98)}
-.hm-tile svg{width:22px;height:22px;color:var(--gold)}
-.hm-tile b{font-size:13.5px}.hm-tile span{font-size:11.5px;color:var(--ink-faint)}
 .hm-tip{border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:12.5px;color:var(--ink-dim);background:var(--surface);line-height:1.6;transition:opacity .4s}
 .hm-tip b{color:var(--gold)}
 </style>
@@ -424,6 +419,13 @@ label .hint{font-weight:400;color:var(--ink-faint);margin-left:6px;font-family:v
 .ss-actions{display:flex;gap:10px;margin-top:14px}
 .ss-actions .btn{flex:1;width:auto}
 </style>
+
+<style>
+.cmd-item{display:flex;align-items:baseline;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+.cmd-item:first-child{border-top:none}
+.cmd-name{font-family:var(--font-mono);color:var(--gold);font-size:13px;flex:none}
+.cmd-desc{font-size:12px;color:var(--ink-faint);text-align:right;flex:1}
+</style>
 </head>
 <body>
 
@@ -463,6 +465,7 @@ label .hint{font-weight:400;color:var(--ink-faint);margin-left:6px;font-family:v
         <div class="drawer-item active" data-page="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 11 L12 4 L20 11 M6 10 V20 H18 V10"/></svg>Home</div>
         <div class="drawer-item" data-page="connect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M8 12 H16 M12 8 V16"/></svg>Connect</div>
         <div class="drawer-item" data-page="sessions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7 H15"/></svg>Sessions</div>
+        <div class="drawer-item" data-page="commands"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6 H20 M4 12 H20 M4 18 H12"/></svg>Commands</div>
         <div class="drawer-item locked" data-page="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 3 V6 M12 18 V21 M3 12 H6 M18 12 H21 M5.6 5.6 L7.8 7.8 M16.2 16.2 L18.4 18.4 M18.4 5.6 L16.2 7.8 M7.8 16.2 L5.6 18.4"/></svg>Settings</div>
         <div class="drawer-item locked" data-page="protection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3 L20 7 V12 C20 17 16.5 20 12 21 C7.5 20 4 17 4 12 V7 Z"/><path d="M9 12 L11 14 L15 10"/></svg>Groups</div>
         <div class="drawer-item locked" data-page="developer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3 L20 7 V12 C20 17 16.5 20 12 21 C7.5 20 4 17 4 12 V7 Z"/></svg>Developer</div>
@@ -514,11 +517,7 @@ label .hint{font-weight:400;color:var(--ink-faint);margin-left:6px;font-family:v
         <div class="subhead">Popular commands · tap to copy</div>
         <div class="hm-cmds"><button class="hm-cmd">.menu</button><button class="hm-cmd">.song</button><button class="hm-cmd">.mp4</button><button class="hm-cmd">.ping</button><button class="hm-cmd">.alive</button><button class="hm-cmd">.hbd</button></div>
     </div>
-    <div class="hm-tiles">
-        <button class="hm-tile" data-goto="connect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M8 12 H16 M12 8 V16"/></svg><b>Connect</b><span>Link a number</span></button>
-        <button class="hm-tile" data-goto="sessions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7 H15 M9 11 H15"/></svg><b>Sessions</b><span>Status and reconnect</span></button>
-    </div>
-    <div class="hm-tip" id="hmTip"></div>
+        <div class="hm-tip" id="hmTip"></div>
 </div>
 
 <div class="page" id="page-connect">
@@ -542,6 +541,12 @@ label .hint{font-weight:400;color:var(--ink-faint);margin-left:6px;font-family:v
     <div id="sessionBody"></div>
 </div>
 
+<div class="page" id="page-commands">
+    <div class="page-title">Commands</div>
+    <input type="text" id="cmdFilter" placeholder="Search a command" autocomplete="off" style="margin-bottom:14px">
+    <div id="commandsBody"><div class="hm-empty">Loading...</div></div>
+</div>
+
 <div class="page" id="page-settings">
     <div class="page-title">Settings</div>
     <div class="panel">
@@ -557,7 +562,6 @@ label .hint{font-weight:400;color:var(--ink-faint);margin-left:6px;font-family:v
 
     <div class="subhead" style="margin-top:22px">Messages</div>
     <div class="panel">
-        <div class="up-note" style="margin:0 0 14px">These belong to the number chosen above, so changing them never affects another number. Leave a box empty to use the bot's own default. A group's own message (Groups, then Welcome) always wins.</div>
         <label>Birthday message <span class="hint">empty = random quote</span></label>
         <textarea id="birthdayMsgInput" maxlength="300" placeholder="Happy birthday{name}."></textarea>
         <label>Welcome message <span class="hint">@user @group @count</span></label>
@@ -653,6 +657,12 @@ label .hint{font-weight:400;color:var(--ink-faint);margin-left:6px;font-family:v
         <input type="number" id="slotsInput">
         <div class="subhead">User registry</div>
         <div class="registry" id="registryTable"></div>
+        <div class="subhead">System</div>
+        <div class="panel" id="devSysInfo"></div>
+        <div class="subhead">Command usage <button class="btn btn-sm ghost" id="devUsageReset" style="float:right;width:auto;padding:4px 11px">Reset</button></div>
+        <div class="panel" id="devUsage"></div>
+        <div class="subhead">Recent commands</div>
+        <div class="panel" id="devRecent"></div>
         <div class="subhead">Images</div>
         <div class="panel">
             <label>Apply to</label>
@@ -672,7 +682,54 @@ label .hint{font-weight:400;color:var(--ink-faint);margin-left:6px;font-family:v
     <div class="page-title">Contact owner</div>
     <div class="panel owner-card">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="12" cy="8" r="3.3"/><path d="M5 20 C5 15.5 8 13.5 12 13.5 C16 13.5 19 15.5 19 20"/></svg>
-        <p class="owner-bio">Marvellous — built SUKUNA REALM from the ground up on Termux, then took it all the way to a live SkyHost deployment with MongoDB Atlas. Runs on WhatsApp via Baileys, with a Telegram control panel on the side. If something's broken, there's a decent chance it's already been found and fixed at 5am.</p>
+        <pre class="owner-bio" style="white-space:pre-wrap;font-family:var(--font-mono);font-size:11.5px;line-height:1.7">╭━━━〔 🩸 SUKUNA BOT 🩸 〕━━━╮
+┃ 👑 ᴏᴡɴᴇʀ : Cᴜʀsᴇᴅ Kɪɴɢ
+┃ ⚙️ ᴅᴇᴠᴇʟᴏᴘᴇʀ : Mᴀʀᴠᴇʟʟᴏᴜs
+┃ 🇳🇬 ᴄᴏᴜɴᴛʀʏ : Nɪɢᴇʀɪᴀ
+┃ 🎂 ᴅᴏʙ : 02 Nᴏᴠᴇᴍʙᴇʀ 2006
+╰━━━━━━━━━━━━━━━━━━━━━━━━╯
+
+🩸 「 THE STORY BEHIND SUKUNA 」 🩸
+
+Welcome to the world of SUKUNA BOT — a WhatsApp automation project built with creativity, ambition, and a vision for something greater.
+
+Developed by Marvellous, known as Cursed King, SUKUNA BOT is designed to make WhatsApp interactions smoother through useful commands, automated responses, and powerful tools.
+
+⚡ 「 WHAT SUKUNA BRINGS 」
+
+➤ 🤖 Smart command-based automation
+➤ 💬 Automated replies and messaging tools
+➤ 🛡️ Group moderation and protection features
+➤ ⚙️ Customizable bot settings
+➤ 🚀 Continuous improvements and new features
+
+🔧 「 BEHIND THE DEVELOPMENT 」
+
+Every project starts with an idea. SUKUNA BOT represents the journey of turning that idea into reality through programming, testing, troubleshooting, and continuous development.
+
+The mission is to create a bot that is practical, reliable, easy to use, and capable of growing with its users. The dashboard provides a central interface for organizing controls and settings, while future updates can introduce more tools and improvements.
+
+👑 「 THE VISION 」
+
+The goal isn't just to build another WhatsApp bot. It's to develop a system that stands out through its features, stability, customization, and user experience.
+
+With every update, SUKUNA BOT moves closer to that vision — one command, one improvement, and one step at a time.
+
+╭━━━〔 🩸 PROJECT IDENTITY 🩸 〕━━━╮
+┃ 🤖 ɴᴀᴍᴇ : SUKUNA BOT
+┃ 👑 ᴏᴡɴᴇʀ : Cᴜʀsᴇᴅ Kɪɴɢ
+┃ 💻 ᴅᴇᴠᴇʟᴏᴘᴇʀ : Mᴀʀᴠᴇʟʟᴏᴜs
+┃ 🌍 ᴏʀɪɢɪɴ : Nɪɢᴇʀɪᴀ
+┃ 🎯 ᴍɪssɪᴏɴ : Aᴜᴛᴏᴍᴀᴛᴇ • Sɪᴍᴘʟɪғʏ • Iᴍᴘʀᴏᴠᴇ
+╰━━━━━━━━━━━━━━━━━━━━━━━━╯
+
+🩸 BUILT WITH VISION.
+⚡ POWERED BY INNOVATION.
+👑 CARRIED BY THE CURSED KING.
+
+━━━━━━━━━━━━━━━━━━━━━━
+© SUKUNA BOT • ALL RIGHTS RESERVED
+━━━━━━━━━━━━━━━━━━━━━━</pre>
         <div class="owner-links">
             <a class="btn primary" href="https://wa.me/2347059187029" target="_blank" rel="noopener">WhatsApp — wa.me/2347059187029</a>
             <a class="btn" href="https://t.me/marvsyb" target="_blank" rel="noopener">Telegram — t.me/marvsyb</a>
@@ -690,7 +747,7 @@ function toast(msg){const t=document.createElement('div');t.className='toast';t.
     document.getElementById('toastLayer').appendChild(t);setTimeout(()=>t.remove(),3000)}
 /* ===== custom dropdowns: replaces the browser's own list everywhere ===== */
 let CS_OPEN=null;
-function closeMenu(){if(CS_OPEN){CS_OPEN.menu.remove();CS_OPEN.wrap.classList.remove('open');CS_OPEN=null}}
+function closeMenu(){if(CS_OPEN){CS_OPEN.menu.remove();CS_OPEN.wrap.classList.remove('open');CS_OPEN=null;unlockBody()}}
 function placeMenu(menu,btn){
     const r=btn.getBoundingClientRect(),vh=window.innerHeight;
     const below=vh-r.bottom-12,above=r.top-12,up=below<230&&above>below;
@@ -698,9 +755,13 @@ function placeMenu(menu,btn){
     menu.style.maxHeight=Math.max(150,Math.min(330,up?above:below))+'px';
     if(up){menu.style.bottom=(vh-r.top+6)+'px';menu.style.top='auto'}else{menu.style.top=(r.bottom+6)+'px';menu.style.bottom='auto'}
 }
+let CS_SCROLL_Y=0;
+function lockBody(){CS_SCROLL_Y=window.scrollY||window.pageYOffset||0;document.body.style.position='fixed';document.body.style.top=(-CS_SCROLL_Y)+'px';document.body.style.left='0';document.body.style.right='0'}
+function unlockBody(){document.body.style.position='';document.body.style.top='';document.body.style.left='';document.body.style.right='';window.scrollTo(0,CS_SCROLL_Y)}
 function openMenu(sel,wrap,btn){
     if(CS_OPEN&&CS_OPEN.sel===sel){closeMenu();return}
     closeMenu();
+    lockBody();
     const opts=[...sel.options];
     const menu=document.createElement('div');menu.className='csel-menu';
     menu.innerHTML=(opts.length>10?'<input type="text" class="csel-search" placeholder="Search..." autocomplete="off">':'')+'<div class="csel-list"></div>';
@@ -747,11 +808,6 @@ new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(n=>{
 }))).observe(document.body,{childList:true,subtree:true});
 document.addEventListener('pointerdown',e=>{if(CS_OPEN&&!CS_OPEN.menu.contains(e.target)&&!CS_OPEN.wrap.contains(e.target))closeMenu()},true);
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu()});
-window.addEventListener('scroll',e=>{
-    if(!CS_OPEN||CS_OPEN.menu.contains(e.target))return;
-    if(Date.now()-CS_OPEN.t<600||CS_OPEN.menu.contains(document.activeElement))return;
-    closeMenu();
-},true);
 window.addEventListener('resize',()=>{if(CS_OPEN)placeMenu(CS_OPEN.menu,CS_OPEN.btn)});
 
 async function api(url,opts){
@@ -846,7 +902,7 @@ document.getElementById('loginBtn').addEventListener('click',async()=>{
 const drawer=document.getElementById('drawer'),overlay=document.getElementById('drawerOverlay');
 document.getElementById('menuBtn').addEventListener('click',()=>{drawer.classList.add('open');overlay.classList.add('open')});
 overlay.addEventListener('click',()=>{drawer.classList.remove('open');overlay.classList.remove('open')});
-const LOGIN_GATED=['settings','protection'];
+const LOGIN_GATED=['settings','protection','commands'];
 function gotoPage(name,skipGateCheck){
     if(!skipGateCheck&&LOGIN_GATED.includes(name)&&!loggedInNumber){requireLogin(name,localStorage.getItem('trackedNumber')||'');return}
     document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -861,6 +917,7 @@ function gotoPage(name,skipGateCheck){
     if(name==='settings')loadSettings();
     if(name==='protection')loadProtection();
     if(name==='logs')loadLogs();
+    if(name==='commands')loadCommands();
 }
 document.querySelectorAll('.drawer-item').forEach(i=>i.addEventListener('click',()=>gotoPage(i.dataset.page)));
 document.querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>gotoPage(b.dataset.goto)));
@@ -1078,6 +1135,35 @@ async function loadSettings(){
     }));
     renderUploads(r.data.images||[]);
 }
+/* ===== commands (every command, grouped, including the ones not shown in .menu) ===== */
+let CMD_CATALOG=null;
+function renderCommandsList(filter){
+    const box=document.getElementById('commandsBody');if(!box)return;
+    if(!CMD_CATALOG){box.innerHTML='<div class="hm-empty">Could not load the command list.</div>';return}
+    const f=String(filter||'').trim().toLowerCase();
+    const sec=(title,cmds,open)=>{
+        const rows=cmds.filter(c=>{const n=(c.name||c).toLowerCase();return !f||n.includes(f)||(c.desc||'').toLowerCase().includes(f)});
+        if(!rows.length)return '';
+        return '<div class="subhead" style="margin-top:'+(open?0:18)+'px">'+title+' · '+rows.length+'</div><div class="panel" style="padding:4px 14px">'
+            +rows.map(c=>'<div class="cmd-item"><span class="cmd-name">.'+( c.name||c)+'</span>'+(c.desc?'<span class="cmd-desc">'+escHtml(c.desc)+'</span>':'')+'</div>').join('')
+            +'</div>';
+    };
+    let h='';
+    (CMD_CATALOG.sections||[]).forEach((s,i)=>{h+=sec(s.title,s.commands,i===0)});
+    if((CMD_CATALOG.hidden||[]).length){
+        h+='<div class="subhead" style="margin-top:22px">Not shown in .menu</div>';
+        CMD_CATALOG.hidden.forEach(s=>{h+=sec(s.title,s.commands)});
+    }
+    box.innerHTML=h||'<div class="hm-empty">No command matches "'+escHtml(filter)+'".</div>';
+}
+async function loadCommands(){
+    const box=document.getElementById('commandsBody');box.innerHTML='<div class="hm-empty">Loading...</div>';
+    const r=await api('/api/commands');
+    if(r.status===401){requireLogin('commands',loggedInNumber||localStorage.getItem('trackedNumber')||'');return}
+    if(!r.ok){box.innerHTML='<div class="hm-empty">'+escHtml(r.data.error||'Could not load commands.')+'</div>';return}
+    CMD_CATALOG=r.data;renderCommandsList('');
+}
+document.getElementById('cmdFilter').addEventListener('input',e=>renderCommandsList(e.target.value));
 document.getElementById('settingsNumber').addEventListener('change',e=>switchNumber(e.target.value,'settings'));
 [['welcomeMsgCfg','welcomeMsg'],['goodbyeMsgCfg','goodbyeMsg'],['aliveMsgCfg','aliveMsg']].forEach(([id,key])=>{
     document.getElementById(id).addEventListener('change',async()=>{
@@ -1226,6 +1312,29 @@ function renderDevImages(d){
     }));
 }
 document.getElementById('devImgTarget').addEventListener('change',e=>{devImgTarget=e.target.value;if(devLast)renderDevImages(devLast)});
+function devSysInfo(d){
+    const box=document.getElementById('devSysInfo');if(!box)return;
+    box.innerHTML='<div class="cmd-item"><span class="cmd-name">node</span><span class="cmd-desc">'+escHtml(d.node||'?')+'</span></div>'
+        +'<div class="cmd-item"><span class="cmd-name">platform</span><span class="cmd-desc">'+escHtml(d.platform||'?')+'</span></div>'
+        +'<div class="cmd-item"><span class="cmd-name">pid</span><span class="cmd-desc">'+escHtml(String(d.pid||'?'))+'</span></div>'
+        +'<div class="cmd-item"><span class="cmd-name">memory</span><span class="cmd-desc">'+escHtml(String(d.mem||'?'))+' MB</span></div>'
+        +'<div class="cmd-item"><span class="cmd-name">uptime</span><span class="cmd-desc">'+escHtml(d.uptime||'?')+'</span></div>';
+}
+function devUsage(d){
+    const box=document.getElementById('devUsage');if(!box)return;
+    const rows=Object.entries(d.usage||{}).sort((a,b)=>b[1]-a[1]).slice(0,20);
+    box.innerHTML=rows.length?rows.map(([c,n])=>'<div class="cmd-item"><span class="cmd-name">.'+escHtml(c)+'</span><span class="cmd-desc">'+n+' time'+(n===1?'':'s')+'</span></div>').join(''):'<div class="hm-empty">No commands run yet.</div>';
+}
+function devRecent(d){
+    const box=document.getElementById('devRecent');if(!box)return;
+    const rows=d.recentCommands||[];
+    box.innerHTML=rows.length?rows.map(r=>'<div class="cmd-item"><span class="cmd-name">.'+escHtml(r.cmd)+'</span><span class="cmd-desc">'+escHtml(r.number||'?')+(r.group?' · group':'')+' · '+agoText(r.t)+'</span></div>').join(''):'<div class="hm-empty">Nothing yet.</div>';
+}
+document.getElementById('devUsageReset').addEventListener('click',async()=>{
+    const rr=await devImgCall({action:'resetusage'});
+    toast(rr.ok?'Cleared.':'Failed.');
+    if(rr.ok&&devLast){devLast.usage={};devLast.recentCommands=[];devUsage(devLast);devRecent(devLast)}
+});
 function renderDevData(d){
     document.getElementById('maintenanceToggle').checked=!!d.maintenance;
     document.getElementById('slotsInput').value=d.maxSlots||0;
@@ -1235,7 +1344,7 @@ function renderDevData(d){
                 :'<button class="btn btn-sm danger" data-kill="'+u.number+'">Kill</button>'}</span></div>`).join('');
     document.querySelectorAll('[data-kill]').forEach(b=>b.addEventListener('click',()=>devAction('kill',b.dataset.kill)));
     document.querySelectorAll('[data-unblock]').forEach(b=>b.addEventListener('click',()=>devAction('unblock',b.dataset.unblock)));
-    renderDevImages(d);
+    renderDevImages(d);devSysInfo(d);devUsage(d);devRecent(d);
 }
 async function devAction(action,number,value){
     const r=await fetch('/api/dev',{method:'POST',headers:{'Content-Type':'application/json','x-dev-key':devKey},credentials:'same-origin',body:JSON.stringify({action,number,value})});
@@ -1337,7 +1446,7 @@ async function loadGroupInfo(){
     document.getElementById('gaLinkOut').innerHTML='';
     const r=await api('/api/group-info?group='+encodeURIComponent(currentGroup));
     if(!r.ok){card.textContent=r.data.error||'Could not load this group.';return}
-    groupMeta=r.data;
+    groupMeta=r.data;groupMeta.members=groupMeta.members||[];
     const admins=groupMeta.members.filter(m=>m.admin).length;
     card.innerHTML='<b>'+escHtml(groupMeta.name)+'</b><br>'+groupMeta.members.length+' members · '+admins+' admins · '+(groupMeta.muted?'muted (admins only)':'open to everyone')
         +(groupMeta.desc?'<br><span style="color:var(--ink-faint)">'+escHtml(groupMeta.desc.slice(0,160))+'</span>':'');

