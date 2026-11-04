@@ -426,6 +426,16 @@ label .hint{font-weight:400;color:var(--ink-faint);margin-left:6px;font-family:v
 .cmd-name{font-family:var(--font-mono);color:var(--gold);font-size:13px;flex:none}
 .cmd-desc{font-size:12px;color:var(--ink-faint);text-align:right;flex:1}
 </style>
+
+<style>
+.cmd-item{cursor:pointer;-webkit-tap-highlight-color:rgba(250,204,21,.15)}
+.cmd-item:active{background:rgba(250,204,21,.08)}
+.cmd-copy{font-size:10.5px;color:var(--ink-faint);opacity:.7}
+.cmd-group{padding:10px 0;border-top:1px solid var(--line)}
+.cmd-group:first-child{border-top:none}
+.cmd-group-name{font-family:var(--font-mono);color:var(--gold);font-size:13px;margin-bottom:6px}
+.cmd-group .cmd-item{padding:7px 0 7px 12px;border-top:none}
+</style>
 </head>
 <body>
 
@@ -657,8 +667,9 @@ label .hint{font-weight:400;color:var(--ink-faint);margin-left:6px;font-family:v
         <input type="number" id="slotsInput">
         <div class="subhead">User registry</div>
         <div class="registry" id="registryTable"></div>
-        <div class="subhead">System</div>
+        <div class="subhead">System <button class="btn btn-sm ghost" id="devFreeMem" style="float:right;width:auto;padding:4px 11px">Free memory</button></div>
         <div class="panel" id="devSysInfo"></div>
+        <div id="devMemWarn"></div>
         <div class="subhead">Command usage <button class="btn btn-sm ghost" id="devUsageReset" style="float:right;width:auto;padding:4px 11px">Reset</button></div>
         <div class="panel" id="devUsage"></div>
         <div class="subhead">Recent commands</div>
@@ -1141,11 +1152,17 @@ function renderCommandsList(filter){
     const box=document.getElementById('commandsBody');if(!box)return;
     if(!CMD_CATALOG){box.innerHTML='<div class="hm-empty">Could not load the command list.</div>';return}
     const f=String(filter||'').trim().toLowerCase();
+    const prefix=(window.BOT_PREFIX||'.');
+    const copyRow=(label,desc)=>'<div class="cmd-item" data-copy="'+escHtml(label)+'"><span class="cmd-name">'+prefix+escHtml(label)+'</span>'+(desc?'<span class="cmd-desc">'+escHtml(desc)+'</span>':'<span class="cmd-copy">tap to copy</span>')+'</div>';
     const sec=(title,cmds,open)=>{
-        const rows=cmds.filter(c=>{const n=(c.name||c).toLowerCase();return !f||n.includes(f)||(c.desc||'').toLowerCase().includes(f)});
+        const rows=cmds.filter(c=>{const n=(c.name||c).toLowerCase();return !f||n.includes(f)||(c.desc||'').toLowerCase().includes(f)||(c.usage||[]).some(u=>u.toLowerCase().includes(f))});
         if(!rows.length)return '';
         return '<div class="subhead" style="margin-top:'+(open?0:18)+'px">'+title+' · '+rows.length+'</div><div class="panel" style="padding:4px 14px">'
-            +rows.map(c=>'<div class="cmd-item"><span class="cmd-name">.'+( c.name||c)+'</span>'+(c.desc?'<span class="cmd-desc">'+escHtml(c.desc)+'</span>':'')+'</div>').join('')
+            +rows.map(c=>{
+                const name=c.name||c;
+                if(c.usage&&c.usage.length) return '<div class="cmd-group"><div class="cmd-group-name">.'+escHtml(name)+(c.desc?' <span class="cmd-desc">'+escHtml(c.desc)+'</span>':'')+'</div>'+c.usage.map(u=>copyRow(u)).join('')+'</div>';
+                return copyRow(name,c.desc);
+            }).join('')
             +'</div>';
     };
     let h='';
@@ -1155,8 +1172,14 @@ function renderCommandsList(filter){
         CMD_CATALOG.hidden.forEach(s=>{h+=sec(s.title,s.commands)});
     }
     box.innerHTML=h||'<div class="hm-empty">No command matches "'+escHtml(filter)+'".</div>';
+    box.querySelectorAll('[data-copy]').forEach(el=>el.addEventListener('click',()=>{
+        const text=prefix+el.dataset.copy;
+        navigator.clipboard?.writeText(text).catch(()=>{});
+        toast('Copied '+text);
+    }));
 }
 async function loadCommands(){
+    if(!window.BOT_PREFIX){const s=await api('/api/settings');if(s.ok&&s.data.cfg)window.BOT_PREFIX=s.data.cfg.prefix||'.'}
     const box=document.getElementById('commandsBody');box.innerHTML='<div class="hm-empty">Loading...</div>';
     const r=await api('/api/commands');
     if(r.status===401){requireLogin('commands',loggedInNumber||localStorage.getItem('trackedNumber')||'');return}
@@ -1314,12 +1337,21 @@ function renderDevImages(d){
 document.getElementById('devImgTarget').addEventListener('change',e=>{devImgTarget=e.target.value;if(devLast)renderDevImages(devLast)});
 function devSysInfo(d){
     const box=document.getElementById('devSysInfo');if(!box)return;
-    box.innerHTML='<div class="cmd-item"><span class="cmd-name">node</span><span class="cmd-desc">'+escHtml(d.node||'?')+'</span></div>'
-        +'<div class="cmd-item"><span class="cmd-name">platform</span><span class="cmd-desc">'+escHtml(d.platform||'?')+'</span></div>'
-        +'<div class="cmd-item"><span class="cmd-name">pid</span><span class="cmd-desc">'+escHtml(String(d.pid||'?'))+'</span></div>'
-        +'<div class="cmd-item"><span class="cmd-name">memory</span><span class="cmd-desc">'+escHtml(String(d.mem||'?'))+' MB</span></div>'
-        +'<div class="cmd-item"><span class="cmd-name">uptime</span><span class="cmd-desc">'+escHtml(d.uptime||'?')+'</span></div>';
+    box.innerHTML='<div class="cmd-item" style="cursor:default"><span class="cmd-name">node</span><span class="cmd-desc">'+escHtml(d.node||'?')+'</span></div>'
+        +'<div class="cmd-item" style="cursor:default"><span class="cmd-name">platform</span><span class="cmd-desc">'+escHtml(d.platform||'?')+'</span></div>'
+        +'<div class="cmd-item" style="cursor:default"><span class="cmd-name">pid</span><span class="cmd-desc">'+escHtml(String(d.pid||'?'))+'</span></div>'
+        +'<div class="cmd-item" style="cursor:default"><span class="cmd-name">memory</span><span class="cmd-desc">'+escHtml(String(d.mem||'?'))+' MB</span></div>'
+        +'<div class="cmd-item" style="cursor:default"><span class="cmd-name">uptime</span><span class="cmd-desc">'+escHtml(d.uptime||'?')+'</span></div>';
+    const warn=document.getElementById('devMemWarn');
+    if(warn){
+        const mem=Number(d.mem)||0,limit=512,pct=Math.min(100,Math.round(mem/limit*100));
+        if(mem>0) warn.innerHTML='<div class="notice" style="border-color:'+(pct>80?'var(--bad)':pct>60?'var(--warn)':'var(--line)')+';margin-top:10px">'
+            +mem+' MB of your '+limit+' MB plan limit ('+pct+'%).'+(pct>80?' Tap <b>Free memory</b>, or restart if it keeps climbing.':'')+'</div>';
+        else warn.innerHTML='';
+    }
 }
+
+
 function devUsage(d){
     const box=document.getElementById('devUsage');if(!box)return;
     const rows=Object.entries(d.usage||{}).sort((a,b)=>b[1]-a[1]).slice(0,20);
@@ -1330,6 +1362,15 @@ function devRecent(d){
     const rows=d.recentCommands||[];
     box.innerHTML=rows.length?rows.map(r=>'<div class="cmd-item"><span class="cmd-name">.'+escHtml(r.cmd)+'</span><span class="cmd-desc">'+escHtml(r.number||'?')+(r.group?' · group':'')+' · '+agoText(r.t)+'</span></div>').join(''):'<div class="hm-empty">Nothing yet.</div>';
 }
+document.getElementById('devFreeMem').addEventListener('click',async()=>{
+    const btn=document.getElementById('devFreeMem');btn.disabled=true;btn.textContent='Clearing...';
+    const rr=await devImgCall({action:'freemem'});
+    btn.disabled=false;btn.textContent='Free memory';
+    if(!rr.ok){toast(rr.data.error||'Failed.');return}
+    const d=rr.data;
+    toast(d.freed>0?('Freed '+d.freed+' MB ('+d.before+' → '+d.after+' MB).'):('Already lean: '+d.after+' MB.')+(d.filesRemoved?' Cleared '+d.filesRemoved+' leftover file(s).':''));
+    if(devLast){devLast.mem=d.after;devSysInfo(devLast)}
+});
 document.getElementById('devUsageReset').addEventListener('click',async()=>{
     const rr=await devImgCall({action:'resetusage'});
     toast(rr.ok?'Cleared.':'Failed.');

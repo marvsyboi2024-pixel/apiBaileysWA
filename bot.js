@@ -2697,6 +2697,7 @@ const server = http.createServer(async (req, res) => {
                     }
                     else if (p.action === 'imgdel' && IMG_KINDS.includes(p.kind)) { await delImg(n || 'default', p.kind); return J(200, { ok: true }) }
                     else if (p.action === 'resetusage') { CMD_USAGE.counts = {}; CMD_USAGE.recent = []; return J(200, { ok: true }) }
+                    else if (p.action === 'freemem') { return J(200, Object.assign({ ok: true }, freeMemory())) }
                     else if (p.action === 'restart') { J(200, { ok: true }); setTimeout(() => process.exit(0), 600); return }
                     saveDev(); J(200, { ok: true })
                 } catch (e) { J(500, { error: String(e.message || e) }) }
@@ -6202,6 +6203,14 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         return reply(skLine('📊', 'POLL RESULTS', `${poll.question}\n\n${lines}`))
     }
 
+    if (cmd === 'freemem' || cmd === 'clearram') {
+        if (!owner) return reply(skDenied('OWNER'))
+        const r = freeMemory()
+        return reply(skInfo('🧹', 'MEMORY FREED', [
+            ['BEFORE', r.before + ' MB'], ['AFTER', r.after + ' MB'], ['FREED', r.freed + ' MB'],
+            ['GC', r.gcRan ? 'ran' : 'not available (needs --expose-gc)'], ['TEMP FILES', String(r.filesRemoved)]
+        ]))
+    }
     if (cmd === 'hbd' || cmd === 'birthday') {
         const raw = args.join(' ')
         const parts = raw.split('|').map(s => s.trim()).filter(Boolean)
@@ -7028,7 +7037,47 @@ function buildCommandCatalog(ctx, sock) {
         const c = cmdRe.exec(line)
         if (c && cur) cur.commands.push({ name: c[1], desc: c[2] })
     }
-    return { sections: sections.filter(s => s.commands.length), hidden: HIDDEN_CMD_GROUPS }
+    for (const s of sections) for (const c of s.commands) if (USAGE_EXAMPLES[c.name]) c.usage = USAGE_EXAMPLES[c.name]
+    const hiddenOut = HIDDEN_CMD_GROUPS.map(g => ({ title: g.title, commands: g.commands.map(name => USAGE_EXAMPLES[name] ? { name, usage: USAGE_EXAMPLES[name] } : name) }))
+    return { sections: sections.filter(s => s.commands.length), hidden: hiddenOut }
+}
+
+const USAGE_EXAMPLES = {
+    hbd: ['hbd Grace', 'hbd 2348012345678 | Grace', 'hbd Marv | Grace', 'hbd Marv | 2348012345678 | Grace'],
+    birthday: ['birthday Grace', 'birthday 2348012345678 | Grace'],
+    pin: ['pin 24h', 'pin 7d', 'pin 30d'],
+    poll: ['poll Best food? | Rice | Amala'],
+    debt: ['debt @user 5000 lunch'],
+    debtor: ['debtor @user 5000 lunch'],
+    creditor: ['creditor @user 5000 lunch'],
+    iou: ['iou @user 5000 lunch'],
+    owed: ['owed @user 5000 lunch'],
+    edits: ['edits 2 the new line here'],
+    translate: ['translate es Good morning'],
+    walink: ['walink 2348012345678 | Hey there'],
+    vcard: ['vcard 2348012345678 | John'],
+    img: ['img sunset beach', 'img sunset beach 3'],
+    delaytime: ['delaytime 5'],
+    slowmode: ['slowmode 30'],
+    broadcast1: ['broadcast1 2348012345678 | Hello'],
+    bg: ['bg 12036xxxxxxxx-xxxxx@g.us | Hello everyone'],
+}
+
+function freeMemory() {
+    const before = Math.round(process.memoryUsage().rss / 1048576)
+    let gcRan = false
+    try { if (global.gc) { global.gc(); gcRan = true } } catch (e) {}
+    let filesRemoved = 0
+    try {
+        for (const f of fs.readdirSync('/tmp')) {
+            if (/^(song|video|tt|yt)_.*\.(mp3|mp4|webm|m4a|opus|ogg)$/i.test(f)) {
+                try { fs.unlinkSync(path.join('/tmp', f)); filesRemoved++ } catch (e) {}
+            }
+        }
+    } catch (e) {}
+    CMD_USAGE.recent = CMD_USAGE.recent.slice(0, 40)
+    const after = Math.round(process.memoryUsage().rss / 1048576)
+    return { before, after, freed: Math.max(0, before - after), gcRan, filesRemoved }
 }
 
 function renderMenu(ctx, sock) {
