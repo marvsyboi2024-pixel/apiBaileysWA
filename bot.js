@@ -5598,32 +5598,61 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     if (cmd === 'ai') {
         const question = args.join(' ')
         if (!question) return reply(skError('Usage: ' + prefix + 'ai <question>'))
-        if (!global.__GROQ__) return reply(skError('GROQ_API_KEY not set. Add it in the dashboard (Developer, then API Keys) or as an env var.'))
+        if (!global.__GROQ__) return reply(skError('GROQ_API_KEY not set. Add it in the dashboard or env var.'))
+        
+        const headLine = `${SK_HEADER}\n\n🤖 ${mono('AI')}\n\n» ${mono('QUESTION')}  •  ${mono(question.slice(0, 200))}\n\n⏳ ${mono('Searching the web...')}`
+        let noticeMsg = null
+        try { noticeMsg = await sock.sendMessage(from, { text: headLine }, { quoted: msg }) } catch(e) {}
+
         try {
+            // 1. Fetch Web Search Results (DuckDuckGo Lite)
+            let webContext = ""
+            try {
+                const searchUrl = 'https://lite.duckduckgo.com/lite/?q=' + encodeURIComponent(question)
+                const html = await httpGetText(searchUrl, 15000)
+                // Extract text from table rows
+                const snippets = [...html.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)]
+                    .map(m => m[1].replace(/<[^>]+>/g, '').trim())
+                    .filter(t => t.length > 20 && !t.includes('DuckDuckGo'))
+                    .slice(0, 5).join('\n\n')
+                if (snippets) webContext = `\n\n[WEB SEARCH RESULTS]:\n${snippets}\n\n`
+            } catch (err) { console.log('Web search err:', err.message) }
+
+            // 2. Ask Groq with Web Context
             const url = 'https://api.groq.com/openai/v1/chat/completions'
             const data = await groqPost(url, { model: 'auto',
-                messages: [ { role: 'system', content: 'You are an adaptive WhatsApp assistant. For factual requests (like game settings, specs, or data), be strictly precise and robotic; no greetings or intros, just the exact data. For fun requests (like jokes, stories, or casual chat), be a normal, friendly assistant, use emojis, and be expressive. Never use markdown tables or HTML tags. Keep it readable.' }, { role: 'user', content: question } ]
+                messages: [
+                    { role: 'system', content: 'You are a friendly, smart WhatsApp assistant. Explain your answers nicely with reasons and emojis. Do not use markdown tables or HTML tags. Keep it readable. ' + webContext },
+                    { role: 'user', content: question }
+                ]
             }, { 'Authorization': `Bearer ${global.__GROQ__}` }, 60000)
+            
             const answer = data?.choices?.[0]?.message?.content
-            if (!answer) return reply(skError('No response from AI.'))
+            if (!answer) throw new Error('No response from AI.')
+            
+            // 3. Format and send
             const cleanAns = __plainText(answer).slice(0, 2000)
-            const outText = `${SK_HEADER}
-
-🤖 ${mono('AI')}
-
-» ${mono('QUESTION')}  •  ${mono(question.slice(0, 200))}
-
-${cleanAns}
-
-${SK_FOOTER}`
-            return reply(outText)
+            const monoAns = mono(cleanAns)
+            const outText = `${SK_HEADER}\n\n🤖 ${mono('AI')}\n\n» ${mono('QUESTION')}  •  ${mono(question.slice(0, 200))}\n\n${monoAns}\n\n${SK_FOOTER}`
+            
+            if (noticeMsg && noticeMsg.key) {
+                await sock.sendMessage(from, { text: outText, edit: noticeMsg.key })
+            } else {
+                await reply(outText)
+            }
+            
         } catch (e) {
             console.log('[REAL AI ERROR]:', e.message)
-            return reply(skError('AI request failed: ' + (e?.message || 'unknown')))
+            if (noticeMsg && noticeMsg.key) {
+                await sock.sendMessage(from, { text: skError('AI request failed: ' + (e?.message || 'unknown')), edit: noticeMsg.key })
+            } else {
+                await reply(skError('AI request failed.'))
+            }
         }
+        return
     }
 
-    if (cmd === 'walink') {
+        if (cmd === 'walink') {
         const raw = args.join(' ')
         const sep = raw.indexOf('|')
         const numPart = (sep === -1 ? raw : raw.slice(0, sep)).replace(/[^0-9]/g, '')
