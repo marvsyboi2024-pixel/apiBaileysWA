@@ -5660,7 +5660,7 @@ NON-NEGOTIABLE RULES:
 
             // 4. plain, readable text -- only the labels use the bot's own brand style
             const cleanAns = __plainText(answer).trim().slice(0, 2000)
-            const finalText = `${SK_HEADER}\n\n🤖 ${smallCaps('AI')}\n\n» ${smallCaps('QUESTION')}  •  ${question.slice(0, 100)}\n\n${cleanAns}\n\n${SK_FOOTER}`
+            const finalText = `${SK_HEADER}\n\n🤖 ${smallCaps('AI')}\n\n» ${smallCaps('QUESTION')}  •  ${question.slice(0, 100)}\n\n${smallCaps(cleanAns)}\n\n${SK_FOOTER}`
 
             if (noticeMsg && noticeMsg.key) {
                 await sock.sendMessage(from, { text: finalText, edit: noticeMsg.key })
