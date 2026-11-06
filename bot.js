@@ -5634,8 +5634,15 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
 
             // 3. ASK AI WITH STRICT SENSITIVITY RULES
             const url = 'https://api.groq.com/openai/v1/chat/completions'
-            const systemPrompt = `You are a friendly, smart WhatsApp assistant. 
-    If the user asks for game settings (like Free Fire sensitivity), explain briefly why these values are chosen (e.g., 60Hz vs 120Hz displays) and use emojis. Use the exact standard values (General, Red Dot, 2x, 4x, Sniper, Free Look). Do not use markdown tables. Keep it readable. ${webContext}`
+            const systemPrompt = `You are a gaming expert. 
+    If the user asks for Free Fire sensitivity, you MUST follow these rules:
+    1. NEVER use decimals. Only use whole numbers between 0 and 200.
+    2. For 120Hz phones (iPhones), use: General 140, Red Dot 130, 2x 120, 4x 110, Sniper 80, Free Look 130.
+    3. For 60Hz phones (itel, etc), use: General 195, Red Dot 190, 2x 180, 4x 165, Sniper 95, Free Look 155.
+    4. Output the settings with emojis.
+    5. Add ONE short sentence at the bottom explaining why these values match the phone's refresh rate.
+    6. DO NOT use any titles before the explanation. Do NOT write "Reason:", "Why:", or "Explanation:". Just write the sentence directly. Do NOT include greetings.
+    For ANY other non-gaming question, act like a normal friendly assistant. ${webContext}`
 
             const data = await groqPost(url, { model: 'auto',
                 messages: [
