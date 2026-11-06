@@ -5602,7 +5602,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             const url = 'https://api.groq.com/openai/v1/chat/completions'
             const data = await groqPost(url, { model: 'auto',
-                messages: [{ role: 'system', content: 'You are a precise, no-nonsense assistant. Answer the user request directly using the fewest words possible. DO NOT include greetings, intros, or step-by-step tutorials. If providing settings, format them as a simple list of \"Name: Value\". Do not use markdown tables. Keep it robotic and exact.' }, { role: 'user', content: question }]
+                messages: [ { role: 'system', content: 'You are an adaptive WhatsApp assistant. For factual requests (like game settings, specs, or data), be strictly precise and robotic; no greetings or intros, just the exact data. For fun requests (like jokes, stories, or casual chat), be a normal, friendly assistant, use emojis, and be expressive. Never use markdown tables or HTML tags. Keep it readable.' }, { role: 'user', content: question } ]
             }, { 'Authorization': `Bearer ${global.__GROQ__}` }, 60000)
             const answer = data?.choices?.[0]?.message?.content
             if (!answer) return reply(skError('No response from AI.'))
