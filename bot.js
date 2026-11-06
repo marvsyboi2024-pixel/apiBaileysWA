@@ -5620,57 +5620,54 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try { noticeMsg = await sock.sendMessage(from, { text: headLine }, { quoted: msg }) } catch(e) {}
 
         try {
-            // 2. DEEP WEB SEARCH (Find specs and sensitivity)
+            // 2. GENERAL WEB SEARCH -- uses the user's own question, not a hardcoded topic
             let webContext = ""
             try {
-                const query = encodeURIComponent(question + " Free Fire sensitivity settings");
-                const searchUrl = 'https://lite.duckduckgo.com/lite/?q=' + query;
-                const html = await httpGetText(searchUrl, 15000);
+                const searchUrl = 'https://lite.duckduckgo.com/lite/?q=' + encodeURIComponent(question)
+                const html = await httpGetText(searchUrl, 15000)
                 const snippets = [...html.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)]
                     .map(m => m[1].replace(/<[^>]+>/g, '').trim())
                     .filter(t => t.length > 15 && !t.includes('DuckDuckGo'))
-                    .slice(0, 10).join('\n\n');
-                if (snippets) webContext = `\n\n[REAL WEB DATA]:\n${snippets}\n\n`;
+                    .slice(0, 8).join('\n\n')
+                if (snippets) webContext = `\n\n[SEARCH RESULTS FOR REFERENCE]:\n${snippets}\n\n`
             } catch (err) { console.log('Web search err:', err.message) }
 
-            // 3. DYNAMIC AI PROMPT (No hardcoded numbers)
+            // 3. SUKUNA REALM INTELLIGENCE -- a precise, accurate, energetic general-purpose assistant
             const url = 'https://api.groq.com/openai/v1/chat/completions'
-            const systemPrompt = `You are a highly intelligent gaming hardware expert. 
-            
-            The user is asking for Free Fire sensitivity for a specific phone. 
-            I have provided [REAL WEB DATA] below containing search results for this phone.
-            
-            YOUR TASK:
-            1. Read the [REAL WEB DATA] carefully.
-            2. Find the most reliable, community-tested Free Fire sensitivity settings for this exact phone model.
-            3. If multiple sources conflict, prioritize the most recent settings (look for dates like 2025 or 2026 in the text). If no date is found, choose the settings that are most commonly recommended for the device's hardware (e.g., if it has low RAM and a 60Hz screen, prioritize higher General/Red Dot values to compensate for touch latency).
-            4. Output the settings as a clean list with emojis.
-            5. Add ONE short sentence explaining why these specific values were chosen (e.g., "These values compensate for the 60Hz touch sampling rate").
-            6. DO NOT write "Reason:" or "Why:". Just write the sentence.
-            7. DO NOT use greetings or write long paragraphs.
-            
-            [REAL WEB DATA]: ${webContext}`
+            const systemPrompt = `You are the SUKUNA REALM Intelligence, a sharp, fast, no-nonsense AI answering inside a WhatsApp chat.
 
-            const data = await groqPost(url, { model: 'auto',
+NON-NEGOTIABLE RULES:
+1. Precision over flair. Get the facts right before anything else. Never invent a number, a name, a setting, or a fact you are not sure of.
+2. If [SEARCH RESULTS FOR REFERENCE] is present below, read it carefully and prefer it over your own memory for anything current, specific, or product-related (settings, prices, versions, names, dates). If it conflicts with your memory, trust the newer, more specific source. If several sources disagree and you cannot tell which is right, say so in one short line instead of guessing.
+3. If you are not confident in an answer, say so plainly in one short line ("Not fully sure, but...") instead of sounding certain about a guess.
+4. Energetic delivery: confident, punchy, zero throat-clearing. No greetings, no "Sure!", no "I'd be happy to help", no filler, no apologies. Start straight with the answer.
+5. Stay tight. A direct question gets a direct, short answer. A list only when the content is genuinely list-shaped (settings, steps, options) -- then use clean lines with emojis as bullets, not paragraphs.
+6. Match the question's actual subject. Do not force an unrelated topic (like gaming settings) onto a question that isn't about that.
+7. Plain, normal text only -- no stylised fonts, no markdown headers, no asterisks for bold.
+
+[SEARCH RESULTS FOR REFERENCE]:${webContext}`
+
+            const data = await groqPost(url, { model: 'openai/gpt-oss-120b',
+                temperature: 0.4,
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: question }
                 ]
             }, { 'Authorization': `Bearer ${global.__GROQ__}` }, 30000)
-            
+
             const answer = data?.choices?.[0]?.message?.content
             if (!answer) throw new Error('No response from AI.')
-            
-            // 4. FORMAT TO SMALL CAPS
-            const cleanAns = __plainText(answer).slice(0, 2000)
-            const finalText = `${SK_HEADER}\n\n🤖 ${smallCaps('AI')}\n\n» ${smallCaps('QUESTION')}  •  ${smallCaps(question.slice(0, 100))}\n\n${smallCaps(cleanAns)}\n\n${SK_FOOTER}`
-            
+
+            // 4. plain, readable text -- only the labels use the bot's own brand style
+            const cleanAns = __plainText(answer).trim().slice(0, 2000)
+            const finalText = `${SK_HEADER}\n\n🤖 ${smallCaps('AI')}\n\n» ${smallCaps('QUESTION')}  •  ${question.slice(0, 100)}\n\n${cleanAns}\n\n${SK_FOOTER}`
+
             if (noticeMsg && noticeMsg.key) {
                 await sock.sendMessage(from, { text: finalText, edit: noticeMsg.key })
             } else {
                 await reply(finalText)
             }
-            
+
         } catch (e) {
             console.log('[REAL AI ERROR]:', e.message)
             const errText = `${SK_HEADER}\n\n❌ ${smallCaps('ERROR')}\n\n» ${smallCaps('REASON')}  •  ${smallCaps(e.message.slice(0, 100))}\n\n${SK_FOOTER}`
