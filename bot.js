@@ -1010,6 +1010,64 @@ async function httpGetText(url, timeoutMs = 10000) {
     const buffer = await httpGetBuffer(url, timeoutMs)
     return buffer.toString('utf-8')
 }
+async function groqPost(url, body, headers = {}, timeoutMs = 30000) {
+    const key = String(global.__GROQ__ || '')
+    if (!global.__groqModels || Date.now() - (global.__groqModelsAt || 0) > 600000) {
+        const ids = await new Promise((resolve, reject) => {
+            const rq = https.request({ hostname: 'api.groq.com', path: '/openai/v1/models', method: 'GET', headers: { 'Authorization': 'Bearer ' + key } }, r => {
+                const ch = []
+                r.on('data', c => ch.push(c))
+                r.on('end', () => {
+                    const t = Buffer.concat(ch).toString('utf-8')
+                    if ((r.statusCode || 0) >= 400) return reject(new Error('Groq /models HTTP ' + r.statusCode + ': ' + t.slice(0, 200)))
+                    try { resolve((JSON.parse(t).data || []).map(m => m.id)) } catch (e) { reject(new Error('Invalid JSON from Groq /models')) }
+                })
+            })
+            rq.on('error', reject)
+            rq.setTimeout(15000, () => rq.destroy(new Error('timeout')))
+            rq.end()
+        })
+        global.__groqModels = ids
+        global.__groqModelsAt = Date.now()
+        console.log('[GROQ] key ending ...' + key.slice(-4) + ' can use:', ids.join(', '))
+    }
+    const bad = /whisper|tts|playai|orpheus|guard|embed/i
+    const chat = global.__groqModels.filter(id => !bad.test(id))
+    const pref = ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.1-8b-instant', 'qwen/qwen3-32b']
+    let order = [...pref.filter(m => chat.includes(m)), ...chat.filter(m => !pref.includes(m))]
+    if (global.__groqGood && order.includes(global.__groqGood)) order = [global.__groqGood, ...order.filter(m => m !== global.__groqGood)]
+    if (!order.length) throw new Error('No chat model available on this Groq key. Models: ' + global.__groqModels.join(', '))
+    let lastErr
+    for (const m of order.slice(0, 4)) {
+        try {
+            const out = await httpPostJson(url, Object.assign({}, body, { model: m }), headers, timeoutMs)
+            const msg = out && out.choices && out.choices[0] && out.choices[0].message
+            if (msg && typeof msg.content === 'string') msg.content = msg.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
+            global.__groqGood = m
+            return out
+        } catch (e) {
+            lastErr = e
+            console.log('[GROQ] model ' + m + ' failed:', String(e.message).slice(0, 160))
+            if (!/HTTP (400|403|404|429)/.test(e.message)) break
+        }
+    }
+    throw lastErr
+}
+
+function __plainText(s) {
+    return String(s || '')
+        .replace(/```[a-zA-Z]*\n?([\s\S]*?)```/g, '$1')
+        .replace(/`([^`\n]+)`/g, '$1')
+        .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+        .replace(/__([^_\n]+)__/g, '$1')
+        .replace(/(^|[\s(])\*(?=\S)([^*\n]*\S)\*(?=[\s).,!?:;]|$)/g, '$1$2')
+        .replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm, '')
+        .replace(/^[ \t]*[-*][ \t]+/gm, '\u2022 ')
+        .replace(/^[ \t]*>[ \t]?/gm, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+}
+
 async function httpPostJson(url, body, headers = {}, timeoutMs = 20000) {
     return new Promise((resolve, reject) => {
         const data = JSON.stringify(body)
@@ -2395,6 +2453,8 @@ async function startConfirmCountdown(sock, ctx, from) {
 
 
 
+const __isLocalReq = req => /localhost|127\.0\.0\.1/.test(String(req.headers.host || '')) && !req.headers['x-forwarded-for'] && /^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(String(req.socket.remoteAddress || ''))
+
 const server = http.createServer(async (req, res) => {
     const url = req.url.split('?')[0]
     {
@@ -2681,6 +2741,82 @@ const server = http.createServer(async (req, res) => {
             }
         }
 
+        if (url === '/api/templates') {
+            if (!user) return J(401, { error: 'Log in first.' })
+            if (!settingsCollection) return J(503, { error: 'Database not connected.' })
+            if (req.method === 'GET') {
+                const d = await settingsCollection.findOne({ _id: 'templates' }).catch(() => null)
+                return J(200, { templates: (d && d.list) || [] })
+            }
+            let p = {}; try { p = JSON.parse(await body(4000)) } catch (e) {}
+            const d2 = await settingsCollection.findOne({ _id: 'templates' }).catch(() => null)
+            let list = (d2 && d2.list) || []
+            if (p.action === 'save') {
+                const t = { id: p.id || ('t' + Date.now()), name: String(p.name || 'Untitled').slice(0, 60), kind: String(p.kind || 'other'), text: String(p.text || '').slice(0, 1000) }
+                list = list.filter(x => x.id !== t.id); list.unshift(t); list = list.slice(0, 50)
+            } else if (p.action === 'delete') {
+                list = list.filter(x => x.id !== p.id)
+            } else return J(400, { error: 'Unknown action.' })
+            await settingsCollection.updateOne({ _id: 'templates' }, { $set: { list } }, { upsert: true })
+            return J(200, { templates: list })
+        }
+        if (url === '/api/dev-keys') {
+            if (!user) return J(401, { error: 'Log in first.' })
+            if (!__isLocalReq(req) && String(req.headers['x-dev-key'] || '') !== (process.env.DEV_KEY || '')) return J(403, { error: 'Wrong developer key.' })
+            const NAMES = ['GROQ_API_KEY', 'TMDB_API_KEY', 'YOUTUBE_API_KEY', 'PEXELS_API_KEY']
+            if (req.method === 'GET') return J(200, { keys: NAMES.map(n => ({ name: n, set: !!getKey(n), source: KEY_OVERRIDES[n] ? 'dashboard' : (process.env[n] ? 'env' : 'none') })) })
+            let p = {}; try { p = JSON.parse(await body(2000)) } catch (e) {}
+            if (!NAMES.includes(p.name)) return J(400, { error: 'Unknown key.' })
+            if (p.action === 'clear') { delete KEY_OVERRIDES[p.name]; await saveKeyOverride(p.name, undefined); delete KEY_OVERRIDES[p.name] }
+            else await saveKeyOverride(p.name, String(p.value || ''))
+            return J(200, { ok: true })
+        }
+        if (url === '/api/analytics') {
+            if (!user) return J(401, { error: 'Log in first.' })
+            if (!settingsCollection) return J(503, { error: 'Database not connected.' })
+            const today = new Date().toISOString().slice(0, 10)
+            const total = Object.keys(sessions).length, active = Object.values(sessions).filter(s => s.status === 'active').length
+            await settingsCollection.updateOne({ _id: 'analytics:' + today }, { $set: { date: today, total, active } }, { upsert: true }).catch(() => {})
+            const docs = await settingsCollection.find({ _id: { $regex: '^analytics:' } }).sort({ date: 1 }).limit(60).toArray().catch(() => [])
+            return J(200, { history: docs.map(d => ({ date: d.date, total: d.total, active: d.active })) })
+        }
+        if (url === '/api/ai' && req.method === 'POST') {
+            global.__aiAtt = global.__aiAtt || {}
+            const aip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '')
+            const hits = global.__aiAtt[aip] = (global.__aiAtt[aip] || []).filter(x => Date.now() - x < 60000)
+            if (hits.length >= 10) return J(429, { error: 'Too many questions at once. Wait a moment.' })
+            hits.push(Date.now())
+            if (!global.__GROQ__) return J(503, { error: 'The assistant is not set up yet (no Groq key).' })
+            let p = {}; try { p = JSON.parse(await body(4000)) } catch (e) {}
+            const history = (Array.isArray(p.history) ? p.history.slice(-10) : [])
+                .filter(h => h && (h.role === 'user' || h.role === 'assistant') && h.content)
+                .map(h => ({ role: h.role, content: String(h.content).slice(0, 2000) }))
+            const question = String(p.question || '').slice(0, 600)
+            if (!question) return J(400, { error: 'Ask something first.' })
+            const cat = buildCommandCatalog()
+            const cmdList = cat.sections.flatMap(s => s.commands.slice(0, 6).map(c => '.' + (c.name || c))).slice(0, 60).join(', ')
+            const sys = 'You are the SUKUNA REALM assistant, built into this WhatsApp bot\'s dashboard. '
+                + 'Reply in plain text only: no markdown, no asterisks, no backticks, no headings, no tables. Use short paragraphs, and write steps as lines like 1) 2) 3). Answer fully and helpfully, like a normal friendly chat assistant. The dashboard menu has ONLY these pages: Home, Connect, Sessions, Commands, Settings, Groups, Developer, Logs, Media, API Keys, Analytics, Templates, Contact owner. Never invent buttons, tabs, gear icons or settings that are not in that list. '
+                + 'You know this bot has commands like: ' + cmdList + ' (and more, grouped on the Commands page). '
+                + 'If someone asks what a command does, explain it in general terms and say plainly when you are not sure of the exact details. '
+                + 'You can explain or write small bits of code if asked, but you are not primarily a coding tool. '
+                + 'If someone wants to reach the human owner, tell them to use the "Contact owner" page in this dashboard. '
+                + 'Never claim to be able to take real actions yourself (you cannot block, disconnect, or change settings) — point them to the right dashboard page instead.'
+            try {
+                const data = await groqPost('https://api.groq.com/openai/v1/chat/completions', { model: 'auto',
+                    messages: [{ role: 'system', content: sys }, ...history, { role: 'user', content: question }]
+                }, { 'Authorization': `Bearer ${global.__GROQ__}` }, 30000)
+                const answer = data?.choices?.[0]?.message?.content || 'No response.'
+                return J(200, { answer: __plainText(answer).slice(0, 4000) })
+            } catch (e) { console.log('[REAL AI ERROR]:', e.message); return J(502, { error: 'The assistant could not respond. Try again.' }) }
+        }
+        if (url === '/api/commands') {
+            if (!user) return J(401, { error: 'Log in first.' })
+            const s = sessions['sess_' + user]
+            return J(200, buildCommandCatalog(s && s.ctx, s && s.sock))
+        }
+
+
         if (url === '/api/image') return J(403, { error: 'Images are managed by the developer.' })
     }
 
@@ -2695,8 +2831,8 @@ const server = http.createServer(async (req, res) => {
         if (url === '/api/dev') {
             const J = (c, o) => { res.writeHead(c, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)) }
             const key = process.env.DEV_KEY || ''
-            if (!key) return J(403, { error: 'Set DEV_KEY in your .env to use developer tools.' })
-            if (req.headers['x-dev-key'] !== key) return J(403, { error: 'Wrong developer key.' })
+            if (!key && !__isLocalReq(req)) return J(403, { error: 'Set DEV_KEY in your .env to use developer tools.' })
+            if (!__isLocalReq(req) && req.headers['x-dev-key'] !== key) return J(403, { error: 'Wrong developer key.' })
             if (req.method === 'GET') {
                 const dg = x => String(x || '').replace(/[^0-9]/g, '')
                 const users = Object.values(sessions).map(s => ({ number: s.number, status: s.status, connectedAt: s.connectedAt, blocked: DEV.blocked.includes(dg(s.number)) }))
@@ -2750,79 +2886,6 @@ const server = http.createServer(async (req, res) => {
                 } catch (e) { J(500, { error: String(e.message || e) }) }
             })
             return
-        }
-
-        if (url === '/api/templates') {
-            if (!user) return J(401, { error: 'Log in first.' })
-            if (!settingsCollection) return J(503, { error: 'Database not connected.' })
-            if (req.method === 'GET') {
-                const d = await settingsCollection.findOne({ _id: 'templates' }).catch(() => null)
-                return J(200, { templates: (d && d.list) || [] })
-            }
-            let p = {}; try { p = JSON.parse(await body(4000)) } catch (e) {}
-            const d2 = await settingsCollection.findOne({ _id: 'templates' }).catch(() => null)
-            let list = (d2 && d2.list) || []
-            if (p.action === 'save') {
-                const t = { id: p.id || ('t' + Date.now()), name: String(p.name || 'Untitled').slice(0, 60), kind: String(p.kind || 'other'), text: String(p.text || '').slice(0, 1000) }
-                list = list.filter(x => x.id !== t.id); list.unshift(t); list = list.slice(0, 50)
-            } else if (p.action === 'delete') {
-                list = list.filter(x => x.id !== p.id)
-            } else return J(400, { error: 'Unknown action.' })
-            await settingsCollection.updateOne({ _id: 'templates' }, { $set: { list } }, { upsert: true })
-            return J(200, { templates: list })
-        }
-        if (url === '/api/dev-keys') {
-            if (String(req.headers['x-dev-key'] || '') !== (process.env.DEV_KEY || '')) return J(403, { error: 'Wrong developer key.' })
-            const NAMES = ['GROQ_API_KEY', 'TMDB_API_KEY', 'YOUTUBE_API_KEY', 'PEXELS_API_KEY']
-            if (req.method === 'GET') return J(200, { keys: NAMES.map(n => ({ name: n, set: !!getKey(n), source: KEY_OVERRIDES[n] ? 'dashboard' : (process.env[n] ? 'env' : 'none') })) })
-            let p = {}; try { p = JSON.parse(await body(2000)) } catch (e) {}
-            if (!NAMES.includes(p.name)) return J(400, { error: 'Unknown key.' })
-            if (p.action === 'clear') { delete KEY_OVERRIDES[p.name]; await saveKeyOverride(p.name, undefined); delete KEY_OVERRIDES[p.name] }
-            else await saveKeyOverride(p.name, String(p.value || ''))
-            return J(200, { ok: true })
-        }
-        if (url === '/api/analytics') {
-            if (!user) return J(401, { error: 'Log in first.' })
-            if (!settingsCollection) return J(503, { error: 'Database not connected.' })
-            const today = new Date().toISOString().slice(0, 10)
-            const total = Object.keys(sessions).length, active = Object.values(sessions).filter(s => s.status === 'active').length
-            await settingsCollection.updateOne({ _id: 'analytics:' + today }, { $set: { date: today, total, active } }, { upsert: true }).catch(() => {})
-            const docs = await settingsCollection.find({ _id: { $regex: '^analytics:' } }).sort({ date: 1 }).limit(60).toArray().catch(() => [])
-            return J(200, { history: docs.map(d => ({ date: d.date, total: d.total, active: d.active })) })
-        }
-        if (url === '/api/ai' && req.method === 'POST') {
-            global.__aiAtt = global.__aiAtt || {}
-            const aip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '')
-            const hits = global.__aiAtt[aip] = (global.__aiAtt[aip] || []).filter(x => Date.now() - x < 60000)
-            if (hits.length >= 10) return J(429, { error: 'Too many questions at once. Wait a moment.' })
-            hits.push(Date.now())
-            if (!global.__GROQ__) return J(503, { error: 'The assistant is not set up yet (no Groq key).' })
-            let p = {}; try { p = JSON.parse(await body(4000)) } catch (e) {}
-            const history = Array.isArray(p.history) ? p.history.slice(-10) : []
-            const question = String(p.question || '').slice(0, 600)
-            if (!question) return J(400, { error: 'Ask something first.' })
-            const cat = buildCommandCatalog()
-            const cmdList = cat.sections.flatMap(s => s.commands.slice(0, 6).map(c => '.' + (c.name || c))).slice(0, 60).join(', ')
-            const sys = 'You are the SUKUNA REALM assistant, built into this WhatsApp bot\'s dashboard. '
-                + 'You speak like calm, friendly customer support: short, clear, no fluff. '
-                + 'You know this bot has commands like: ' + cmdList + ' (and more, grouped on the Commands page). '
-                + 'If someone asks what a command does, answer from what a reasonable bot of this kind would do, and say you are not fully certain of exact argument order if you are not. '
-                + 'You can explain or write small bits of code if asked, but you are not primarily a coding tool. '
-                + 'If someone wants to reach the human owner, tell them to use the "Contact owner" page in this dashboard. '
-                + 'Never claim to be able to take real actions yourself (you cannot block, disconnect, or change settings) — point them to the right dashboard page instead.'
-            try {
-                const data = await httpPostJson('https://api.groq.com/openai/v1/chat/completions', {
-                    model: 'openai/gpt-oss-120b',
-                    messages: [{ role: 'system', content: sys }, ...history, { role: 'user', content: question }]
-                }, { 'Authorization': `Bearer ${global.__GROQ__}` }, 30000)
-                const answer = data?.choices?.[0]?.message?.content || 'No response.'
-                return J(200, { answer: answer.slice(0, 2000) })
-            } catch (e) { return J(502, { error: 'The assistant could not respond. Try again.' }) }
-        }
-        if (url === '/api/commands') {
-            if (!user) return J(401, { error: 'Log in first.' })
-            const s = sessions['sess_' + user]
-            return J(200, buildCommandCatalog(s && s.ctx, s && s.sock))
         }
 
         if (url === '/api/sessions') {
@@ -5535,18 +5598,17 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!global.__GROQ__) return reply(skError('GROQ_API_KEY not set. Add it in the dashboard (Developer, then API Keys) or as an env var.'))
         try {
             const url = 'https://api.groq.com/openai/v1/chat/completions'
-            const data = await httpPostJson(url, {
-                model: 'openai/gpt-oss-120b',
+            const data = await groqPost(url, { model: 'auto',
                 messages: [{ role: 'user', content: question }]
             }, { 'Authorization': `Bearer ${global.__GROQ__}` }, 60000)
             const answer = data?.choices?.[0]?.message?.content
             if (!answer) return reply(skError('No response from AI.'))
             return reply(skInfo('🤖', 'AI', [
                 ['QUESTION', question.slice(0, 200)],
-                ['ANSWER', answer.slice(0, 1500)]
+                ['ANSWER', __plainText(answer).slice(0, 1500)]
             ]))
         } catch (e) {
-            console.log('.ai error:', e?.message || e)
+            console.log('[REAL AI ERROR]:', e.message)
             return reply(skError('AI request failed: ' + (e?.message || 'unknown')))
         }
     }

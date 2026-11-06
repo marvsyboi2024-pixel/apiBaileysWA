@@ -190,3 +190,9 @@ Desktop.ini
 backups/
 .env
 bot.js.backup
+node_modules/
+*.bak
+bot.old.js
+bot.before-*.js
+patch*.py
+*.log
