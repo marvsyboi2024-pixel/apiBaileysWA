@@ -1056,6 +1056,9 @@ async function groqPost(url, body, headers = {}, timeoutMs = 30000) {
 
 function __plainText(s) {
     return String(s || '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/\|/g, ' ')
         .replace(/```[a-zA-Z]*\n?([\s\S]*?)```/g, '$1')
         .replace(/`([^`\n]+)`/g, '$1')
         .replace(/\*\*([^*\n]+)\*\*/g, '$1')
