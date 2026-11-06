@@ -5623,32 +5623,33 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             // 2. DEEP WEB SEARCH (Find specs and sensitivity)
             let webContext = ""
             try {
-                const query = encodeURIComponent(question + " Free Fire sensitivity refresh rate");
+                const query = encodeURIComponent(question + " Free Fire sensitivity settings");
                 const searchUrl = 'https://lite.duckduckgo.com/lite/?q=' + query;
                 const html = await httpGetText(searchUrl, 15000);
                 const snippets = [...html.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)]
                     .map(m => m[1].replace(/<[^>]+>/g, '').trim())
                     .filter(t => t.length > 15 && !t.includes('DuckDuckGo'))
-                    .slice(0, 8).join('\n\n');
+                    .slice(0, 10).join('\n\n');
                 if (snippets) webContext = `\n\n[REAL WEB DATA]:\n${snippets}\n\n`;
             } catch (err) { console.log('Web search err:', err.message) }
 
-            // 3. SMART AI PROMPT
+            // 3. DYNAMIC AI PROMPT (No hardcoded numbers)
             const url = 'https://api.groq.com/openai/v1/chat/completions'
             const systemPrompt = `You are a highly intelligent gaming hardware expert. 
             
-            The user is asking about a specific phone. You must use the [REAL WEB DATA] provided below to find the phone's exact screen refresh rate (e.g., 60Hz, 90Hz, 120Hz). 
+            The user is asking for Free Fire sensitivity for a specific phone. 
+            I have provided [REAL WEB DATA] below containing search results for this phone.
             
-            If the web data contains the exact Free Fire sensitivity for this phone, use it.
-            If it does NOT, you MUST calculate the exact values using these strict rules:
-            - 60Hz screens need HIGH sensitivity (General: ~195, Red Dot: ~190, 2x: 180, 4x: 165, Sniper: 95, Free Look: 155).
-            - 90Hz screens need MEDIUM sensitivity (General: ~178, Red Dot: ~170, 2x: 158, 4x: 144, Sniper: 89, Free Look: 74).
-            - 120Hz screens (like iPhones) need LOWER sensitivity (General: ~140, Red Dot: ~130, 2x: 120, 4x: 110, Sniper: 80, Free Look: 130).
+            YOUR TASK:
+            1. Read the [REAL WEB DATA] carefully.
+            2. Find the most reliable, community-tested Free Fire sensitivity settings for this exact phone model.
+            3. If multiple sources conflict, prioritize the most recent settings (look for dates like 2025 or 2026 in the text). If no date is found, choose the settings that are most commonly recommended for the device's hardware (e.g., if it has low RAM and a 60Hz screen, prioritize higher General/Red Dot values to compensate for touch latency).
+            4. Output the settings as a clean list with emojis.
+            5. Add ONE short sentence explaining why these specific values were chosen (e.g., "These values compensate for the 60Hz touch sampling rate").
+            6. DO NOT write "Reason:" or "Why:". Just write the sentence.
+            7. DO NOT use greetings or write long paragraphs.
             
-            NEVER use decimals. Only use whole numbers.
-            Add ONE short sentence at the bottom explaining why the values match the device's refresh rate. 
-            DO NOT write "Reason:" or "Why:". Just write the sentence.
-            DO NOT use greetings. ${webContext}`
+            [REAL WEB DATA]: ${webContext}`
 
             const data = await groqPost(url, { model: 'auto',
                 messages: [
@@ -5660,7 +5661,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const answer = data?.choices?.[0]?.message?.content
             if (!answer) throw new Error('No response from AI.')
             
-            // 4. FORMAT TO SMALL CAPS (Removed mono from AI and QUESTION)
+            // 4. FORMAT TO SMALL CAPS
             const cleanAns = __plainText(answer).slice(0, 2000)
             const finalText = `${SK_HEADER}\n\n🤖 ${smallCaps('AI')}\n\n» ${smallCaps('QUESTION')}  •  ${smallCaps(question.slice(0, 100))}\n\n${smallCaps(cleanAns)}\n\n${SK_FOOTER}`
             
@@ -5682,7 +5683,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         return
     }
 
-                if (cmd === 'walink') {
+                    if (cmd === 'walink') {
         const raw = args.join(' ')
         const sep = raw.indexOf('|')
         const numPart = (sep === -1 ? raw : raw.slice(0, sep)).replace(/[^0-9]/g, '')
