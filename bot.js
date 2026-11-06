@@ -120,7 +120,21 @@ const MENU2 = require('./menu2.js')
 const silentLogger = P({ level: 'silent' })
 const sessions = {}
 const LOG_BUF = []
-{ const _l = console.log.bind(console); console.log = (...a) => { try { LOG_BUF.push(new Date().toISOString().slice(11, 19) + ' ' + a.map(x => typeof x === 'string' ? x : (x && x.message) || JSON.stringify(x)).join(' ')); if (LOG_BUF.length > 200) LOG_BUF.shift() } catch (e) {} _l(...a) } }
+{
+    const _l = console.log.bind(console);
+    console.log = (...a) => {
+        try {
+            const msgStr = a.map(x => typeof x === 'string' ? x : (x && x.message) || JSON.stringify(x)).join(' ');
+            LOG_BUF.push(new Date().toISOString().slice(11, 19) + ' ' + msgStr);
+            if (LOG_BUF.length > 200) LOG_BUF.shift();
+            
+            // ONLY PRINT TO TERMUX IF IT'S AN ERROR OR STARTUP
+            if (/error|fail|exception|reject|crash|warn|timeout|invalid|not found|listening on port/i.test(msgStr)) {
+                _l(...a);
+            }
+        } catch (e) {}
+    }
+}
 const DEV = { blocked: [], disabled: [], maintenance: false, ownerOnly: false, maxSlots: 0 }
 const OWNER_NUMBER = '2347059187029'
 const ASSISTANT_NUMBER = '2348139761928'
@@ -5621,8 +5635,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             // 3. ASK AI WITH STRICT SENSITIVITY RULES
             const url = 'https://api.groq.com/openai/v1/chat/completions'
             const systemPrompt = `You are a friendly, smart WhatsApp assistant. 
-            If the user asks for Free Fire sensitivity for a 60Hz phone (like itel A60s), you MUST use these exact high values: General: 195, Red Dot: 190, 2x Scope: 180, 4x Scope: 165, Sniper Scope: 95, Free Look: 155. NEVER use low values like 85.
-            Explain briefly why these high values help (drag headshots, 60Hz screen). Use emojis. Keep it readable. ${webContext}`
+    If the user asks for game settings (like Free Fire sensitivity), explain briefly why these values are chosen (e.g., 60Hz vs 120Hz displays) and use emojis. Use the exact standard values (General, Red Dot, 2x, 4x, Sniper, Free Look). Do not use markdown tables. Keep it readable. ${webContext}`
 
             const data = await groqPost(url, { model: 'auto',
                 messages: [
