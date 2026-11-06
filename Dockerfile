@@ -23,4 +23,4 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --omit=dev
 COPY . .
-CMD ["node", "bot.js"]
+CMD ["node", "--expose-gc", "--max-old-space-size=384", "bot.js"]

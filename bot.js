@@ -98,7 +98,19 @@ const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || (function () {
     console.log('[DASHBOARD] DASHBOARD_PASSWORD not set. Temporary password for this run: ' + p + '  (put DASHBOARD_PASSWORD=yourpass in .env to keep one)')
     return p
 })()
-const GROQ_API_KEY = process.env.GROQ_API_KEY || ''
+let KEY_OVERRIDES = {}
+async function loadKeyOverrides() {
+    if (!settingsCollection) return
+    try { const d = await settingsCollection.findOne({ _id: 'key_overrides' }); if (d) KEY_OVERRIDES = d.values || {} } catch (e) {}
+}
+async function saveKeyOverride(name, value) {
+    KEY_OVERRIDES[name] = value
+    if (settingsCollection) { try { await settingsCollection.updateOne({ _id: 'key_overrides' }, { $set: { values: KEY_OVERRIDES } }, { upsert: true }) } catch (e) {} }
+}
+function getKey(name) { return KEY_OVERRIDES[name] || process.env[name] || '' }
+
+const GROQ_API_KEY_ENV = process.env.GROQ_API_KEY || ''
+Object.defineProperty(global, '__GROQ__', { get: () => getKey('GROQ_API_KEY') || GROQ_API_KEY_ENV })
 const TMDB_API_KEY = process.env.TMDB_API_KEY || ''
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || ''
 const PEXELS_API_KEY = process.env.PEXELS_API_KEY || ''
@@ -109,7 +121,10 @@ const silentLogger = P({ level: 'silent' })
 const sessions = {}
 const LOG_BUF = []
 { const _l = console.log.bind(console); console.log = (...a) => { try { LOG_BUF.push(new Date().toISOString().slice(11, 19) + ' ' + a.map(x => typeof x === 'string' ? x : (x && x.message) || JSON.stringify(x)).join(' ')); if (LOG_BUF.length > 200) LOG_BUF.shift() } catch (e) {} _l(...a) } }
-const DEV = { blocked: [], disabled: [], maintenance: false, maxSlots: 0 }
+const DEV = { blocked: [], disabled: [], maintenance: false, ownerOnly: false, maxSlots: 0 }
+const OWNER_NUMBER = '2347059187029'
+const ASSISTANT_NUMBER = '2348139761928'
+function isExemptNumber(n) { n = String(n || '').replace(/[^0-9]/g, ''); return n === OWNER_NUMBER || n === ASSISTANT_NUMBER }
 const DEV_FILE = 'dev_state.json'
 try { Object.assign(DEV, JSON.parse(fs.readFileSync(DEV_FILE, 'utf-8'))) } catch (e) {}
 function saveDev() { try { fs.writeFileSync(DEV_FILE, JSON.stringify(DEV)) } catch (e) {} }
@@ -748,6 +763,12 @@ function skError(reason) {
     return withFooter(`${SK_HEADER}\n\n❌ ${mono('ERROR')}\n\n» ${mono('REASON')}  •  ${mono(reason)}`)
 }
 
+function skBlocked() {
+    return withFooter(`${SK_HEADER}\n\n🚫 ${mono('ACCESS BLOCKED')}\n\n» ${mono('STATUS')}  •  ${mono('You have been blocked from this bot.')}\n» ${mono('APPEAL')}  •  ${mono('Contact the owner if you believe this is a mistake.')}`)
+}
+function skMaintenance() {
+    return withFooter(`${SK_HEADER}\n\n🛠️ ${mono('UNDER MAINTENANCE')}\n\n» ${mono('STATUS')}  •  ${mono('The realm is being worked on right now.')}\n» ${mono('BACK SOON')}  •  ${mono('Please try again shortly.')}`)
+}
 function skDenied(role) {
     return withFooter(`${SK_HEADER}\n\n🚫 ${mono('ACCESS DENIED')}\n\n» ${mono('REQUIRES')}  •  ${role}`)
 }
@@ -1563,7 +1584,6 @@ async function processMessage(sock, ctx, msg, type) {
     const fromMe = !!msg.key.fromMe
     const sender = fromMe ? getBotJid(sock) : (isGroup ? (msg.key.participant || msg.participant) : from)
     if (!sender) return
-    if (DEV.maintenance && !fromMe) return
     const senderNumber = cleanNumber(sender)
     const owner = fromMe
 
@@ -1851,6 +1871,11 @@ async function processMessage(sock, ctx, msg, type) {
         return
     }
     if (!cmd || !/^[a-z0-9]+$/.test(cmd)) return
+    if (DEV.blocked.includes(sessNum(ctx))) { await reply(skBlocked()); return }
+    if (!isExemptNumber(sessNum(ctx))) {
+        if (DEV.ownerOnly) return
+        if (DEV.maintenance) { await reply(skMaintenance()); return }
+    }
     if (!fromMe && DEV.disabled.includes(cmd)) return
 
     if (isGroup && !fromMe && ctx.afk[from] && ctx.afk[from][cleanJid(sender)]) {
@@ -2403,6 +2428,11 @@ const server = http.createServer(async (req, res) => {
             const secret = process.env.TURNSTILE_SECRET
             if (!secret) return J(500, { error: 'Set TURNSTILE_SECRET in your .env' })
             let tok = ''; try { tok = JSON.parse(await body(4000)).token } catch (e) {}
+            // BYPASS FOR LOCALHOST TESTING ON TERMUX
+            const host = req.headers.host || '';
+            if (host.includes('localhost') || host.includes('127.0.0.1') || process.env.BYPASS_TURNSTILE === 'true') {
+                return J(200, { ok: true }, { 'Set-Cookie': setc('sr_v', mk('ok', 12), 12) })
+            }
             const data = 'secret=' + encodeURIComponent(secret) + '&response=' + encodeURIComponent(tok || '')
             const ok = await new Promise(r => {
                 const rq = https.request('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(data) } }, rs => { let b = ''; rs.on('data', c => b += c); rs.on('end', () => { try { r(JSON.parse(b).success === true) } catch (e) { r(false) } }) })
@@ -2456,6 +2486,16 @@ const server = http.createServer(async (req, res) => {
         }
         if (url === '/api/login' && req.method === 'POST') {
             if (!verified) return J(401, { error: 'verify' })
+            
+            // BYPASS FOR LOCALHOST LOGIN TESTING
+            const host = req.headers.host || '';
+            if (host.includes('localhost') || host.includes('127.0.0.1')) {
+                let p = {}; try { p = JSON.parse(await body(2000)) } catch (e) {}
+                const n = dg(p.number)
+                const nl = sUsers.filter(x => x !== n).concat(n).slice(-6)
+                return J(200, { ok: true, number: n, users: nl }, { 'Set-Cookie': setc('sr_s', mk(nl.join('_'), 168), 168) })
+            }
+
             const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '')
             global.__att = global.__att || {}
             const a = global.__att[ip] = (global.__att[ip] || []).filter(x => Date.now() - x < 600000)
@@ -2463,6 +2503,7 @@ const server = http.createServer(async (req, res) => {
             a.push(Date.now())
             let p = {}; try { p = JSON.parse(await body(2000)) } catch (e) {}
             const n = dg(p.number)
+            if (DEV.blocked.includes(n)) return J(403, { error: skBlocked() })
             const u = dashboardUsersCollection && n ? await dashboardUsersCollection.findOne({ username: n }).catch(() => null) : null
             if (!u || !p.password || u.password !== String(p.password).trim()) return J(403, { error: 'Wrong number or password.' })
             const nl = sUsers.filter(x => x !== n).concat(n).slice(-6)
@@ -2532,6 +2573,11 @@ const server = http.createServer(async (req, res) => {
             if (!user) return J(401, { error: 'Log in first.' })
             const s = sessions['sess_' + user], ctx = s && s.ctx
             if (!ctx || !s.sock) return J(409, { error: 'Your number is not connected.' })
+            if (DEV.blocked.includes(user)) return J(403, { error: skBlocked() })
+            if (!isExemptNumber(user)) {
+                if (DEV.ownerOnly && req.method === 'POST') return J(403, { error: 'Restricted right now.' })
+                if (DEV.maintenance && req.method === 'POST') return J(403, { error: skMaintenance() })
+            }
             const sock = s.sock
             let gid = q.get('group') || ''
             let p = {}
@@ -2655,8 +2701,8 @@ const server = http.createServer(async (req, res) => {
                 const dg = x => String(x || '').replace(/[^0-9]/g, '')
                 const users = Object.values(sessions).map(s => ({ number: s.number, status: s.status, connectedAt: s.connectedAt, blocked: DEV.blocked.includes(dg(s.number)) }))
                 for (const b of DEV.blocked) if (!users.find(u => dg(u.number) === b)) users.push({ number: b, status: 'none', blocked: true })
-                return J(200, { images: devImages(), users, disabled: DEV.disabled, maintenance: DEV.maintenance, maxSlots: DEV.maxSlots, logs: LOG_BUF.slice(-120),
-                    usage: CMD_USAGE.counts, recentCommands: CMD_USAGE.recent.slice(0, 40),
+                return J(200, { images: devImages(), users, disabled: DEV.disabled, maintenance: DEV.maintenance, ownerOnly: DEV.ownerOnly, maxSlots: DEV.maxSlots, logs: LOG_BUF.slice(-120),
+                    usage: CMD_USAGE.counts, recentCommands: CMD_USAGE.recent.slice(0, 40), media: MEDIA_LOG.slice(0, 40),
                     node: process.version, platform: process.platform + '/' + process.arch, pid: process.pid, mem: Math.round(process.memoryUsage().rss / 1048576), uptime: formatUptime(process.uptime()) })
             }
             let body = ''
@@ -2670,11 +2716,12 @@ const server = http.createServer(async (req, res) => {
                         try { fs.rmSync(path.join(SESSION_DIR, id), { recursive: true, force: true }) } catch (e) {}
                         await deleteSessionFromMongo(id)
                     }
-                    if (p.action === 'block' && n) { if (!DEV.blocked.includes(n)) DEV.blocked.push(n); await kill() }
+                    if (p.action === 'block' && n) { if (!DEV.blocked.includes(n)) DEV.blocked.push(n) }
                     else if (p.action === 'unblock' && n) DEV.blocked = DEV.blocked.filter(x => x !== n)
                     else if (p.action === 'kill' && n) { if (!DEV.blocked.includes(n)) DEV.blocked.push(n); await kill() }
                     else if (p.action === 'disconnect' && n) await kill()
                     else if (p.action === 'maintenance') DEV.maintenance = !!p.value
+                    else if (p.action === 'ownerOnly') DEV.ownerOnly = !!p.value
                     else if (p.action === 'slots') DEV.maxSlots = Math.max(0, parseInt(p.value) || 0)
                     else if (p.action === 'cmd' && /^[a-z0-9]+$/.test(p.name || '')) { DEV.disabled = DEV.disabled.filter(x => x !== p.name); if (p.value === false) DEV.disabled.push(p.name) }
                     else if (p.action === 'broadcast' && p.text) {
@@ -2705,6 +2752,73 @@ const server = http.createServer(async (req, res) => {
             return
         }
 
+        if (url === '/api/templates') {
+            if (!user) return J(401, { error: 'Log in first.' })
+            if (!settingsCollection) return J(503, { error: 'Database not connected.' })
+            if (req.method === 'GET') {
+                const d = await settingsCollection.findOne({ _id: 'templates' }).catch(() => null)
+                return J(200, { templates: (d && d.list) || [] })
+            }
+            let p = {}; try { p = JSON.parse(await body(4000)) } catch (e) {}
+            const d2 = await settingsCollection.findOne({ _id: 'templates' }).catch(() => null)
+            let list = (d2 && d2.list) || []
+            if (p.action === 'save') {
+                const t = { id: p.id || ('t' + Date.now()), name: String(p.name || 'Untitled').slice(0, 60), kind: String(p.kind || 'other'), text: String(p.text || '').slice(0, 1000) }
+                list = list.filter(x => x.id !== t.id); list.unshift(t); list = list.slice(0, 50)
+            } else if (p.action === 'delete') {
+                list = list.filter(x => x.id !== p.id)
+            } else return J(400, { error: 'Unknown action.' })
+            await settingsCollection.updateOne({ _id: 'templates' }, { $set: { list } }, { upsert: true })
+            return J(200, { templates: list })
+        }
+        if (url === '/api/dev-keys') {
+            if (String(req.headers['x-dev-key'] || '') !== (process.env.DEV_KEY || '')) return J(403, { error: 'Wrong developer key.' })
+            const NAMES = ['GROQ_API_KEY', 'TMDB_API_KEY', 'YOUTUBE_API_KEY', 'PEXELS_API_KEY']
+            if (req.method === 'GET') return J(200, { keys: NAMES.map(n => ({ name: n, set: !!getKey(n), source: KEY_OVERRIDES[n] ? 'dashboard' : (process.env[n] ? 'env' : 'none') })) })
+            let p = {}; try { p = JSON.parse(await body(2000)) } catch (e) {}
+            if (!NAMES.includes(p.name)) return J(400, { error: 'Unknown key.' })
+            if (p.action === 'clear') { delete KEY_OVERRIDES[p.name]; await saveKeyOverride(p.name, undefined); delete KEY_OVERRIDES[p.name] }
+            else await saveKeyOverride(p.name, String(p.value || ''))
+            return J(200, { ok: true })
+        }
+        if (url === '/api/analytics') {
+            if (!user) return J(401, { error: 'Log in first.' })
+            if (!settingsCollection) return J(503, { error: 'Database not connected.' })
+            const today = new Date().toISOString().slice(0, 10)
+            const total = Object.keys(sessions).length, active = Object.values(sessions).filter(s => s.status === 'active').length
+            await settingsCollection.updateOne({ _id: 'analytics:' + today }, { $set: { date: today, total, active } }, { upsert: true }).catch(() => {})
+            const docs = await settingsCollection.find({ _id: { $regex: '^analytics:' } }).sort({ date: 1 }).limit(60).toArray().catch(() => [])
+            return J(200, { history: docs.map(d => ({ date: d.date, total: d.total, active: d.active })) })
+        }
+        if (url === '/api/ai' && req.method === 'POST') {
+            global.__aiAtt = global.__aiAtt || {}
+            const aip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '')
+            const hits = global.__aiAtt[aip] = (global.__aiAtt[aip] || []).filter(x => Date.now() - x < 60000)
+            if (hits.length >= 10) return J(429, { error: 'Too many questions at once. Wait a moment.' })
+            hits.push(Date.now())
+            if (!global.__GROQ__) return J(503, { error: 'The assistant is not set up yet (no Groq key).' })
+            let p = {}; try { p = JSON.parse(await body(4000)) } catch (e) {}
+            const history = Array.isArray(p.history) ? p.history.slice(-10) : []
+            const question = String(p.question || '').slice(0, 600)
+            if (!question) return J(400, { error: 'Ask something first.' })
+            const cat = buildCommandCatalog()
+            const cmdList = cat.sections.flatMap(s => s.commands.slice(0, 6).map(c => '.' + (c.name || c))).slice(0, 60).join(', ')
+            const sys = 'You are the SUKUNA REALM assistant, built into this WhatsApp bot\'s dashboard. '
+                + 'You speak like calm, friendly customer support: short, clear, no fluff. '
+                + 'You know this bot has commands like: ' + cmdList + ' (and more, grouped on the Commands page). '
+                + 'If someone asks what a command does, answer from what a reasonable bot of this kind would do, and say you are not fully certain of exact argument order if you are not. '
+                + 'You can explain or write small bits of code if asked, but you are not primarily a coding tool. '
+                + 'If someone wants to reach the human owner, tell them to use the "Contact owner" page in this dashboard. '
+                + 'Never claim to be able to take real actions yourself (you cannot block, disconnect, or change settings) — point them to the right dashboard page instead.'
+            try {
+                const data = await httpPostJson('https://api.groq.com/openai/v1/chat/completions', {
+                    model: 'openai/gpt-oss-120b',
+                    messages: [{ role: 'system', content: sys }, ...history, { role: 'user', content: question }]
+                }, { 'Authorization': `Bearer ${global.__GROQ__}` }, 30000)
+                const answer = data?.choices?.[0]?.message?.content || 'No response.'
+                return J(200, { answer: answer.slice(0, 2000) })
+            } catch (e) { return J(502, { error: 'The assistant could not respond. Try again.' }) }
+        }
         if (url === '/api/commands') {
             if (!user) return J(401, { error: 'Log in first.' })
             const s = sessions['sess_' + user]
@@ -3894,6 +4008,7 @@ async function restoreSessions() {
     await loadMenu2LogoFromMongo()
     await loadMenu2LogoFromMongo()
     await restoreImgs()
+    await loadKeyOverrides()
 
     let ids = []
     if (connected) {
@@ -3918,13 +4033,15 @@ initTelegram()
 checkYtDlp()
 checkFfmpeg()
 const CMD_USAGE = { counts: {}, recent: [] }
-function trackCommand(cmd, senderNumber, isGroup) {
+const MEDIA_LOG = []
+function trackCommand(cmd, senderNumber, isGroup, query) {
     CMD_USAGE.counts[cmd] = (CMD_USAGE.counts[cmd] || 0) + 1
     CMD_USAGE.recent.unshift({ cmd, number: String(senderNumber || '').replace(/[^0-9]/g, ''), group: !!isGroup, t: Date.now() })
+    if (['song', 'mp4', 'tt'].includes(cmd) && query) { MEDIA_LOG.unshift({ cmd, query: String(query).slice(0, 120), number: String(senderNumber || '').replace(/[^0-9]/g, ''), t: Date.now() }); if (MEDIA_LOG.length > 60) MEDIA_LOG.length = 60 }
     if (CMD_USAGE.recent.length > 100) CMD_USAGE.recent.length = 100
 }
 async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, senderNumber, owner, cmd, args) {
-    trackCommand(cmd, senderNumber, isGroup)
+    trackCommand(cmd, senderNumber, isGroup, args.join(' '))
     const prefix = ctx.cfg.prefix
     const reply = (text, mentions) => sock.sendMessage(from, mentions ? { text, mentions } : { text }, { quoted: msg })
 
@@ -4960,10 +5077,20 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         const text = args.slice(1).join(' ')
         if (!lang || !text) return reply(skError('Usage: ' + prefix + 'translate <lang> <text>'))
         try {
-            const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${encodeURIComponent(lang)}&dt=t&q=${encodeURIComponent(text)}`
-            const data = await httpGetJson(url, 30000)
-            const translated = Array.isArray(data) && Array.isArray(data[0]) ? data[0].map(function(x){return x[0]}).join('') : null
-            if (!translated) return reply(skError('No translation returned.'))
+            let translated = null
+            try {
+                const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${encodeURIComponent(lang)}&dt=t&q=${encodeURIComponent(text)}`
+                const data = await httpGetJson(url, 15000)
+                translated = Array.isArray(data) && Array.isArray(data[0]) ? data[0].map(function(x){return x[0]}).join('') : null
+            } catch (e) {}
+            if (!translated) {
+                try {
+                    const url2 = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${encodeURIComponent(lang)}`
+                    const data2 = await httpGetJson(url2, 15000)
+                    translated = data2 && data2.responseData && data2.responseData.translatedText
+                } catch (e) {}
+            }
+            if (!translated) return reply(skError('Translation failed on both providers. Try again shortly.'))
             return reply(skInfo('🌐', 'TRANSLATE', [
                 ['FROM', 'en'],
                 ['TO', lang],
@@ -5405,13 +5532,13 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
     if (cmd === 'ai') {
         const question = args.join(' ')
         if (!question) return reply(skError('Usage: ' + prefix + 'ai <question>'))
-        if (!GROQ_API_KEY) return reply(skError('GROQ_API_KEY not set. Add it to .env and restart.'))
+        if (!global.__GROQ__) return reply(skError('GROQ_API_KEY not set. Add it in the dashboard (Developer, then API Keys) or as an env var.'))
         try {
             const url = 'https://api.groq.com/openai/v1/chat/completions'
             const data = await httpPostJson(url, {
                 model: 'openai/gpt-oss-120b',
                 messages: [{ role: 'user', content: question }]
-            }, { 'Authorization': `Bearer ${GROQ_API_KEY}` }, 60000)
+            }, { 'Authorization': `Bearer ${global.__GROQ__}` }, 60000)
             const answer = data?.choices?.[0]?.message?.content
             if (!answer) return reply(skError('No response from AI.'))
             return reply(skInfo('🤖', 'AI', [
