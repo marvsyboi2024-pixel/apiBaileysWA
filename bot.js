@@ -5602,14 +5602,21 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         try {
             const url = 'https://api.groq.com/openai/v1/chat/completions'
             const data = await groqPost(url, { model: 'auto',
-                messages: [{ role: 'user', content: question }]
+                messages: [{ role: 'system', content: 'You are a WhatsApp assistant. Never use markdown tables, pipes (|), or HTML tags (like <br>). Use emojis, bullet points, and WhatsApp formatting (*bold*, _italic_) for structure. Keep it clean and readable.' }, { role: 'user', content: question }]
             }, { 'Authorization': `Bearer ${global.__GROQ__}` }, 60000)
             const answer = data?.choices?.[0]?.message?.content
             if (!answer) return reply(skError('No response from AI.'))
-            return reply(skInfo('🤖', 'AI', [
-                ['QUESTION', question.slice(0, 200)],
-                ['ANSWER', __plainText(answer).slice(0, 1500)]
-            ]))
+            const cleanAns = __plainText(answer).slice(0, 2000)
+            const outText = `${SK_HEADER}
+
+🤖 ${mono('AI')}
+
+» ${mono('QUESTION')}  •  ${mono(question.slice(0, 200))}
+
+${cleanAns}
+
+${SK_FOOTER}`
+            return reply(outText)
         } catch (e) {
             console.log('[REAL AI ERROR]:', e.message)
             return reply(skError('AI request failed: ' + (e?.message || 'unknown')))
