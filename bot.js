@@ -5614,35 +5614,41 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         if (!question) return reply(skError('Usage: ' + prefix + 'ai <question>'))
         if (!global.__GROQ__) return reply(skError('GROQ_API_KEY not set. Add it in the dashboard or env var.'))
         
-        // 1. CLEAN LOADING LAYOUT (No header, no footer)
+        // 1. CLEAN LOADING LAYOUT
         const headLine = `⏳ ${smallCaps('SCANNING THE WEB FOR ACCURATE DATA...')}`
         let noticeMsg = null
         try { noticeMsg = await sock.sendMessage(from, { text: headLine }, { quoted: msg }) } catch(e) {}
 
         try {
-            // 2. WEB SEARCH (DuckDuckGo Lite)
+            // 2. DEEP WEB SEARCH (Find specs and sensitivity)
             let webContext = ""
             try {
-                const searchUrl = 'https://lite.duckduckgo.com/lite/?q=' + encodeURIComponent(question)
-                const html = await httpGetText(searchUrl, 10000)
+                const query = encodeURIComponent(question + " Free Fire sensitivity refresh rate");
+                const searchUrl = 'https://lite.duckduckgo.com/lite/?q=' + query;
+                const html = await httpGetText(searchUrl, 15000);
                 const snippets = [...html.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)]
                     .map(m => m[1].replace(/<[^>]+>/g, '').trim())
-                    .filter(t => t.length > 20 && !t.includes('DuckDuckGo'))
-                    .slice(0, 4).join('\n\n')
-                if (snippets) webContext = `\n\n[WEB DATA]:\n${snippets}\n\n`
+                    .filter(t => t.length > 15 && !t.includes('DuckDuckGo'))
+                    .slice(0, 8).join('\n\n');
+                if (snippets) webContext = `\n\n[REAL WEB DATA]:\n${snippets}\n\n`;
             } catch (err) { console.log('Web search err:', err.message) }
 
-            // 3. ASK AI WITH STRICT SENSITIVITY RULES
+            // 3. SMART AI PROMPT
             const url = 'https://api.groq.com/openai/v1/chat/completions'
-            const systemPrompt = `You are a gaming expert. 
-    If the user asks for Free Fire sensitivity, you MUST follow these rules:
-    1. NEVER use decimals. Only use whole numbers between 0 and 200.
-    2. For 120Hz phones (iPhones), use: General 140, Red Dot 130, 2x 120, 4x 110, Sniper 80, Free Look 130.
-    3. For 60Hz phones (itel, etc), use: General 195, Red Dot 190, 2x 180, 4x 165, Sniper 95, Free Look 155.
-    4. Output the settings with emojis.
-    5. Add ONE short sentence at the bottom explaining why these values match the phone's refresh rate.
-    6. DO NOT use any titles before the explanation. Do NOT write "Reason:", "Why:", or "Explanation:". Just write the sentence directly. Do NOT include greetings.
-    For ANY other non-gaming question, act like a normal friendly assistant. ${webContext}`
+            const systemPrompt = `You are a highly intelligent gaming hardware expert. 
+            
+            The user is asking about a specific phone. You must use the [REAL WEB DATA] provided below to find the phone's exact screen refresh rate (e.g., 60Hz, 90Hz, 120Hz). 
+            
+            If the web data contains the exact Free Fire sensitivity for this phone, use it.
+            If it does NOT, you MUST calculate the exact values using these strict rules:
+            - 60Hz screens need HIGH sensitivity (General: ~195, Red Dot: ~190, 2x: 180, 4x: 165, Sniper: 95, Free Look: 155).
+            - 90Hz screens need MEDIUM sensitivity (General: ~178, Red Dot: ~170, 2x: 158, 4x: 144, Sniper: 89, Free Look: 74).
+            - 120Hz screens (like iPhones) need LOWER sensitivity (General: ~140, Red Dot: ~130, 2x: 120, 4x: 110, Sniper: 80, Free Look: 130).
+            
+            NEVER use decimals. Only use whole numbers.
+            Add ONE short sentence at the bottom explaining why the values match the device's refresh rate. 
+            DO NOT write "Reason:" or "Why:". Just write the sentence.
+            DO NOT use greetings. ${webContext}`
 
             const data = await groqPost(url, { model: 'auto',
                 messages: [
@@ -5654,9 +5660,9 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const answer = data?.choices?.[0]?.message?.content
             if (!answer) throw new Error('No response from AI.')
             
-            // 4. FORMAT OUTPUT (Small Caps, Premium Layout)
+            // 4. FORMAT TO SMALL CAPS (Removed mono from AI and QUESTION)
             const cleanAns = __plainText(answer).slice(0, 2000)
-            const finalText = `${SK_HEADER}\n\n🤖 ${mono('AI')}\n\n» ${mono('QUESTION')}  •  ${mono(question.slice(0, 100))}\n\n${smallCaps(cleanAns)}\n\n${SK_FOOTER}`
+            const finalText = `${SK_HEADER}\n\n🤖 ${smallCaps('AI')}\n\n» ${smallCaps('QUESTION')}  •  ${smallCaps(question.slice(0, 100))}\n\n${smallCaps(cleanAns)}\n\n${SK_FOOTER}`
             
             if (noticeMsg && noticeMsg.key) {
                 await sock.sendMessage(from, { text: finalText, edit: noticeMsg.key })
@@ -5666,7 +5672,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             
         } catch (e) {
             console.log('[REAL AI ERROR]:', e.message)
-            const errText = `${SK_HEADER}\n\n❌ ${mono('ERROR')}\n\n» ${mono('REASON')}  •  ${mono(e.message.slice(0, 100))}\n\n${SK_FOOTER}`
+            const errText = `${SK_HEADER}\n\n❌ ${smallCaps('ERROR')}\n\n» ${smallCaps('REASON')}  •  ${smallCaps(e.message.slice(0, 100))}\n\n${SK_FOOTER}`
             if (noticeMsg && noticeMsg.key) {
                 await sock.sendMessage(from, { text: errText, edit: noticeMsg.key })
             } else {
@@ -5676,7 +5682,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
         return
     }
 
-            if (cmd === 'walink') {
+                if (cmd === 'walink') {
         const raw = args.join(' ')
         const sep = raw.indexOf('|')
         const numPart = (sep === -1 ? raw : raw.slice(0, sep)).replace(/[^0-9]/g, '')
