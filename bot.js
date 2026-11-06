@@ -5622,7 +5622,7 @@ async function handleCommand(sock, ctx, msg, content, from, isGroup, sender, sen
             const url = 'https://api.groq.com/openai/v1/chat/completions'
             const data = await groqPost(url, { model: 'auto',
                 messages: [
-                    { role: 'system', content: 'You are a friendly WhatsApp assistant. If the user asks for game settings (like Free Fire sensitivity), ONLY provide the exact standard values (General, Red Dot, 2x, 4x, Sniper/AWM, Free Look) with NO explanations, NO 'Why' sections, and NO fake scopes (like 6x or 12x). For casual chat, be friendly. Never use markdown tables or HTML tags. ' + webContext },
+                    { role: 'system', content: 'You are a friendly WhatsApp assistant. If the user asks for game settings (like Free Fire sensitivity), ONLY provide the exact standard values (General, Red Dot, 2x, 4x, Sniper/AWM, Free Look) with NO explanations, NO "Why" sections, and NO fake scopes (like 6x or 12x). For casual chat, be friendly. Never use markdown tables or HTML tags. ' + webContext },
                     { role: 'user', content: question }
                 ]
             }, { 'Authorization': `Bearer ${global.__GROQ__}` }, 60000)
