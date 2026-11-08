@@ -135,71 +135,13 @@ const LOG_BUF = []
         } catch (e) {}
     }
 }
-const DEV = { blocked: [], blockLog: [], disabled: [], maintenance: false, ownerOnly: false, maxSlots: 0 }
+const DEV = { blocked: [], disabled: [], maintenance: false, ownerOnly: false, maxSlots: 0 }
 const OWNER_NUMBER = '2347059187029'
 const ASSISTANT_NUMBER = '2348139761928'
 function isExemptNumber(n) { n = String(n || '').replace(/[^0-9]/g, ''); return n === OWNER_NUMBER || n === ASSISTANT_NUMBER }
-const DEV_FILE = path.join(__dirname, 'dev_state.json')
-try { Object.assign(DEV, JSON.parse(fs.readFileSync(fs.existsSync(DEV_FILE) ? DEV_FILE : 'dev_state.json', 'utf-8'))) } catch (e) {}
-if (!Array.isArray(DEV.blockLog)) DEV.blockLog = []
-function saveDev() {
-    try { fs.writeFileSync(DEV_FILE, JSON.stringify(DEV)) } catch (e) {}
-    if (settingsCollection) settingsCollection.updateOne({ _id: 'dev_state' }, { $set: { value: JSON.parse(JSON.stringify(DEV)) } }, { upsert: true }).catch(() => {})
-}
-async function loadDevFromMongo() {
-    if (!settingsCollection) return
-    try {
-        const d = await settingsCollection.findOne({ _id: 'dev_state' })
-        if (d && d.value) {
-            const blocked = new Set([...(DEV.blocked || []), ...(d.value.blocked || [])])
-            const log = [...(DEV.blockLog || []), ...(d.value.blockLog || [])]
-            const seen = new Set()
-            const merged = log.filter(e => { const k = e.number + '|' + e.at; if (seen.has(k)) return false; seen.add(k); return true })
-            Object.assign(DEV, d.value)
-            DEV.blocked = [...blocked]
-            DEV.blockLog = merged.slice(-300)
-            if (!Array.isArray(DEV.disabled)) DEV.disabled = []
-        }
-        saveDev()
-    } catch (e) {}
-}
-function devLogBlock(n, how) {
-    const e = DEV.blockLog.find(x => x.number === n && !x.unblockedAt)
-    if (e) { e.how = how; return }
-    DEV.blockLog.push({ number: n, how, at: Date.now() })
-    DEV.blockLog = DEV.blockLog.slice(-300)
-}
-function devLogUnblock(n) { for (const e of DEV.blockLog) if (e.number === n && !e.unblockedAt) e.unblockedAt = Date.now() }
-function devBlockedList() {
-    return DEV.blocked.map(n => { const e = [...DEV.blockLog].reverse().find(x => x.number === n && !x.unblockedAt); return { number: n, how: e ? e.how : 'blocked', at: e ? e.at : 0 } })
-}
-const DEV_TOK = new Map()
-function devTokOk(req) {
-    const t = String(req.headers['x-dev-token'] || '')
-    const e = t && DEV_TOK.get(t)
-    if (!e) return false
-    if (e < Date.now()) { DEV_TOK.delete(t); return false }
-    DEV_TOK.set(t, Date.now() + 3600000)
-    return true
-}
-setInterval(() => { const n = Date.now(); for (const [t, e] of DEV_TOK) if (e < n) DEV_TOK.delete(t) }, 600000).unref()
-function hostMemory() {
-    const rd = f => { try { return fs.readFileSync(f, 'utf8').trim() } catch (e) { return '' } }
-    const total = os.totalmem()
-    let lim = rd('/sys/fs/cgroup/memory.max'), cur = rd('/sys/fs/cgroup/memory.current'), v2 = !!cur
-    if (!cur) { lim = rd('/sys/fs/cgroup/memory/memory.limit_in_bytes'); cur = rd('/sys/fs/cgroup/memory/memory.usage_in_bytes') }
-    let limitB = Number(lim), source = 'container'
-    if (!lim || lim === 'max' || !isFinite(limitB) || limitB <= 0 || limitB > total * 2) { limitB = total; source = 'host' }
-    let usedB = Number(cur)
-    if (!isFinite(usedB) || usedB <= 0) { usedB = total - os.freemem(); source = 'host' }
-    else {
-        const st = rd(v2 ? '/sys/fs/cgroup/memory.stat' : '/sys/fs/cgroup/memory/memory.stat')
-        const m = st.match(/^(?:inactive_file|total_inactive_file) (\d+)/m)
-        if (m) usedB = Math.max(0, usedB - Number(m[1]))
-    }
-    const limit = Math.round(limitB / 1048576), used = Math.min(limit, Math.round(usedB / 1048576))
-    return { used, limit, free: Math.max(0, limit - used), source }
-}
+const DEV_FILE = 'dev_state.json'
+try { Object.assign(DEV, JSON.parse(fs.readFileSync(DEV_FILE, 'utf-8'))) } catch (e) {}
+function saveDev() { try { fs.writeFileSync(DEV_FILE, JSON.stringify(DEV)) } catch (e) {}; try { srSaveDevMongo() } catch (e) {} }
 const reconnectState = {}
 const reconnectCooldown = {}
 
@@ -264,7 +206,7 @@ async function initMongo() {
         logoCollection = db.collection('logo')
         dashboardUsersCollection = db.collection('dashboard_users')
         try { await authCollection.createIndex({ sid: 1 }) } catch (e) {}
-        console.log('[MONGO] Connected!')
+        console.log('[MONGO] Connected!'); try { srLoadDevMongo() } catch (e) {}
         return true
     } catch (e) {
         console.log('[MONGO] Connection failed:', e.message)
@@ -2528,358 +2470,705 @@ async function startConfirmCountdown(sock, ctx, from) {
 
 
 
-// ===== assistant: normal mode, dashboard control, owner mode =====
-const AI_THEME_NAMES = ['Obsidian Gold', 'Midnight Sapphire', 'Royal Amethyst', 'Emerald Noir', 'Burgundy & Gold', 'Rose Gold Dusk', 'Arctic Aurora', 'Carbon Copper', 'Onyx Platinum', 'Deep Ocean Teal', 'Nebula Violet', 'Mocha Bronze', 'Sunset Amber', 'Forest Moss', 'Sakura Twilight', 'Graphite Silver', 'Champagne Ivory', 'Pearl Blush']
-const AI_TEXT_NAMES = ['Ivory Cream', 'Pure White', 'Champagne Gold', 'Rose', 'Mint', 'Sky Ice', 'Lavender', 'Peach', 'Silver', 'Amber', 'default']
-const AI_PAGES = ['home', 'connect', 'sessions', 'commands', 'settings', 'protection', 'wishes', 'themes', 'logs', 'media', 'apikeys', 'analytics', 'templates', 'owner']
-const AI_SETTING_KEYS = ['typing', 'delay', 'read', 'online', 'autoreact', 'statusreact', 'statusview', 'eventsWelcome', 'eventsGoodbye']
-function aiFn(name, description, properties, required) { return { type: 'function', function: { name, description, parameters: { type: 'object', properties: properties || {}, required: required || [] } } } }
-const AI_TOOLS = [
-    aiFn('set_theme', 'Change the dashboard colour theme.', { name: { type: 'string', enum: AI_THEME_NAMES } }, ['name']),
-    aiFn('set_text_colour', 'Change the dashboard text colour. Use default to go back to the theme text colour.', { name: { type: 'string', enum: AI_TEXT_NAMES } }, ['name']),
-    aiFn('set_light_dark', 'Switch the dashboard between light and dark mode.', { mode: { type: 'string', enum: ['light', 'dark'] } }, ['mode']),
-    aiFn('open_page', 'Open a dashboard page.', { page: { type: 'string', enum: AI_PAGES } }, ['page']),
-    aiFn('connect_number', 'Link a WhatsApp number and show its pairing code. The number must include the country code, digits only.', { number: { type: 'string' } }, ['number']),
-    aiFn('disconnect_number', 'Disconnect the number that is logged in on this device. The user is asked to confirm first.', {}),
-    aiFn('toggle_setting', 'Turn one of the logged-in number\'s bot settings on or off.', { setting: { type: 'string', enum: AI_SETTING_KEYS }, value: { type: 'boolean' } }, ['setting', 'value']),
-    aiFn('set_bot_mode', 'Set the logged-in number\'s bot mode to public or private.', { mode: { type: 'string', enum: ['public', 'private'] } }, ['mode'])
-]
-function aiActionsFromCalls(calls) {
-    const actions = []
-    for (const tc of calls || []) {
-        let a = {}; try { a = JSON.parse(tc.function.arguments || '{}') } catch (e) {}
-        const n = tc.function && tc.function.name
-        if (n === 'set_theme' && AI_THEME_NAMES.includes(a.name)) actions.push({ type: 'theme', name: a.name })
-        else if (n === 'set_text_colour' && AI_TEXT_NAMES.includes(a.name)) actions.push({ type: 'text', name: a.name })
-        else if (n === 'set_light_dark' && ['light', 'dark'].includes(a.mode)) actions.push({ type: 'mode', value: a.mode })
-        else if (n === 'open_page' && AI_PAGES.includes(a.page)) actions.push({ type: 'page', page: a.page })
-        else if (n === 'connect_number') { const d = String(a.number || '').replace(/[^0-9]/g, ''); if (d.length >= 8 && d.length <= 15) actions.push({ type: 'connect', number: d }) }
-        else if (n === 'disconnect_number') actions.push({ type: 'disconnect', confirm: true })
-        else if (n === 'toggle_setting' && AI_SETTING_KEYS.includes(a.setting) && typeof a.value === 'boolean') actions.push({ type: 'setting', key: a.setting, value: a.value })
-        else if (n === 'set_bot_mode' && ['public', 'private'].includes(a.mode)) actions.push({ type: 'botmode', value: a.mode })
-    }
-    return actions.slice(0, 4)
-}
-function aiActionText(actions) {
-    const t = actions.map(a => a.type === 'theme' ? 'Switching to ' + a.name + '.' : a.type === 'text' ? (a.name === 'default' ? 'Back to the theme text colour.' : 'Text colour set to ' + a.name + '.') : a.type === 'mode' ? 'Switching to ' + a.value + ' mode.' : a.type === 'page' ? 'Opening ' + a.page + '.' : a.type === 'connect' ? 'Linking +' + a.number + '. Your pairing code will show here in a moment.' : a.type === 'disconnect' ? 'This logs your number out of the bot. Do you want me to go ahead?' : a.type === 'setting' ? 'Turning ' + a.key + ' ' + (a.value ? 'on' : 'off') + '.' : a.type === 'botmode' ? 'Setting the bot to ' + a.value + ' mode.' : '')
-    return t.filter(Boolean).join(' ')
-}
-async function aiNormal(question, history) {
-    let cmdList = ''
-    try { const cat = buildCommandCatalog(); cmdList = cat.sections.flatMap(s => s.commands.slice(0, 6).map(c => '.' + (c.name || c))).slice(0, 60).join(', ') } catch (e) {}
-    const sys = 'You are the Realm Assistant inside the SUKUNA REALM WhatsApp bot dashboard. '
-        + 'You ONLY help with this bot and this dashboard: its commands, pages, settings, connecting a number, themes, wishes and groups. '
-        + 'If the user asks about anything else (other bots, general coding, news, homework, chit-chat beyond a short greeting), answer in one short sentence that you only help with this bot and dashboard, and offer something you can do. '
-        + 'Reply in plain text only: no markdown, no asterisks, no backticks, no headings. Keep answers short (1 to 4 sentences). Steps go on lines like 1) 2) 3). '
-        + 'Dashboard pages: Home, Connect, Sessions, Commands, Settings, Groups, Wishes (birthday wishes, group actions, broadcast), Logs, Media, API Keys, Analytics, Templates, Themes, Contact owner. '
-        + 'The developer area opens by tapping live at the top right and needs a developer key you do not have and cannot give. Never reveal keys, passwords or hidden phrases, and never discuss how to enter any owner or developer mode. '
-        + 'You can act on the dashboard only through the provided tools, and only when the user clearly asks you to do something (change theme, change text colour, light or dark mode, open a page, connect a number, disconnect their number, toggle a setting, set bot mode). Never claim you did something without calling a tool. For questions, just answer. '
-        + 'You cannot block, kill or unblock numbers. Known commands include: ' + cmdList + ' (more on the Commands page). If you are not sure what a command does, say so. '
-        + 'To reach the human owner, point to the Contact owner page.'
-    const url = 'https://api.groq.com/openai/v1/chat/completions'
-    const hdr = { 'Authorization': 'Bearer ' + global.__GROQ__ }
-    const messages = [{ role: 'system', content: sys }, ...history, { role: 'user', content: question }]
-    let data
-    try { data = await groqPost(url, { model: 'auto', messages, tools: AI_TOOLS, tool_choice: 'auto', temperature: 0.3, max_tokens: 500 }, hdr, 30000) }
-    catch (e) { data = await groqPost(url, { model: 'auto', messages, temperature: 0.3, max_tokens: 500 }, hdr, 30000) }
-    const msg = (data && data.choices && data.choices[0] && data.choices[0].message) || {}
-    const actions = aiActionsFromCalls(msg.tool_calls)
-    let answer = __plainText(msg.content || '').trim()
-    if (actions.length && !answer) answer = aiActionText(actions)
-    if (actions.some(a => a.type === 'disconnect')) answer = aiActionText(actions.filter(a => a.type === 'disconnect'))
-    return { answer: (answer || 'No response.').slice(0, 1500), actions }
+/* ===== SR KIT (inserted by patch_server.py): dev session, owner mode, AI tools, wishes, AI code pipeline ===== */
+function srHostMem() {
+    const MB = 1048576
+    const total = os.totalmem(), free = os.freemem()
+    let limit = total, used = total - free, source = 'system'
+    const rdf = f => { try { return fs.readFileSync(f, 'utf8').trim() } catch (e) { return null } }
+    let lim = rdf('/sys/fs/cgroup/memory.max'), cur = rdf('/sys/fs/cgroup/memory.current')
+    if (lim === null) { lim = rdf('/sys/fs/cgroup/memory/memory.limit_in_bytes'); cur = rdf('/sys/fs/cgroup/memory/memory.usage_in_bytes') }
+    if (lim && lim !== 'max' && +lim > 0 && +lim < total * 1.5) { limit = +lim; if (cur && +cur >= 0) used = +cur; source = 'container' }
+    return { limitMB: Math.round(limit / MB), usedMB: Math.round(used / MB), freeMB: Math.max(0, Math.round((limit - used) / MB)), rssMB: Math.round(process.memoryUsage().rss / MB), source }
 }
 
-// ---------- owner mode ----------
-const OWN = { fails: 0, lockedUntil: 0, staged: {}, cache: {}, awaiting: null, summary: '', lastPush: null, counts: {} }
-function ownEnv() { return { phrase: process.env.OWNER_PHRASE_HASH || '', pass: process.env.OWNER_PASS_HASH || '', secret: process.env.OWNER_SECRET || '' } }
-function ownEnabled() { const e = ownEnv(); return !!(e.phrase && e.pass && e.secret.length >= 16) }
-function ownNorm(s) { return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim() }
-function ownSafeEq(a, b) { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y) }
-function ownPhraseOk(norm) { return ownSafeEq(crypto.createHash('sha256').update(norm).digest('hex'), ownEnv().phrase.toLowerCase()) }
-function ownPassOk(pw) {
+DEV.blockedInfo = DEV.blockedInfo || {}
+function srInfoFromLog(log) {
+    const o = {}
+    for (const e of Array.isArray(log) ? log : []) { if (e && e.number && !e.unblockedAt) o[e.number] = { at: e.at || null, via: e.how === 'kill' ? 'kill' : 'block' } }
+    return o
+}
+{ const m = srInfoFromLog(DEV.blockLog); for (const k of Object.keys(m)) if (!DEV.blockedInfo[k]) DEV.blockedInfo[k] = m[k] }
+function srSaveDevMongo() {
     try {
-        const [salt, hash] = ownEnv().pass.split(':')
-        const got = crypto.scryptSync(String(pw), Buffer.from(salt, 'hex'), 64).toString('hex')
-        return ownSafeEq(got, hash.toLowerCase())
-    } catch (e) { return false }
+        if (!settingsCollection) return
+        settingsCollection.updateOne({ _id: 'dev_state' }, { $set: { blocked: DEV.blocked, blockedInfo: DEV.blockedInfo, disabled: DEV.disabled, maintenance: DEV.maintenance, ownerOnly: DEV.ownerOnly, maxSlots: DEV.maxSlots } }, { upsert: true }).catch(() => {})
+    } catch (e) {}
 }
-function ownSign(obj) { const b = Buffer.from(JSON.stringify(obj)).toString('base64url'); return b + '.' + crypto.createHmac('sha256', ownEnv().secret).update(b).digest('base64url') }
-function ownVerify(tok, type) {
-    if (!tok) return null
-    const [b, mac] = String(tok).split('.'); if (!b || !mac) return null
-    if (!ownSafeEq(mac, crypto.createHmac('sha256', ownEnv().secret).update(b).digest('base64url'))) return null
-    try { const o = JSON.parse(Buffer.from(b, 'base64url').toString('utf8')); return (o.t === type && o.exp > Date.now()) ? o : null } catch (e) { return null }
+async function srLoadDevMongo() {
+    try {
+        if (!settingsCollection) return
+        const d = await settingsCollection.findOne({ _id: 'dev_state' })
+        if (!d) { srSaveDevMongo(); return }
+        const v = (d.value && typeof d.value === 'object') ? d.value : d
+        for (const n of v.blocked || []) if (!DEV.blocked.includes(n)) DEV.blocked.push(n)
+        DEV.blockedInfo = Object.assign({}, srInfoFromLog(v.blockLog), v.blockedInfo || {}, DEV.blockedInfo || {})
+        for (const n of v.disabled || []) if (!DEV.disabled.includes(n)) DEV.disabled.push(n)
+        saveDev()
+    } catch (e) {}
 }
-function ownCookies(req) { const out = {}; String(req.headers.cookie || '').split(';').forEach(p => { const i = p.indexOf('='); if (i > 0) out[p.slice(0, i).trim()] = p.slice(i + 1).trim() }); return out }
-function ownCookie(req, name, val, maxAge) { const sec = (req.headers['x-forwarded-proto'] === 'https' || req.socket.encrypted) ? '; Secure' : ''; return name + '=' + val + '; Path=/; HttpOnly; SameSite=Strict; Max-Age=' + maxAge + sec }
-const OWN_IDLE = 3600000, OWN_DEVICE = 30 * 86400000
+function srBlockedList() {
+    return DEV.blocked.map(n => ({ number: n, at: (DEV.blockedInfo[n] || {}).at || null, via: (DEV.blockedInfo[n] || {}).via || 'block' }))
+}
 
-function ghCfg() { return { token: process.env.GITHUB_TOKEN || '', repo: process.env.GITHUB_REPO || '', branch: process.env.GITHUB_BRANCH || 'main', dir: String(process.env.GITHUB_DIR || '').replace(/^\/+|\/+$/g, '') } }
-function ghOk() { const c = ghCfg(); return !!(c.token && /^[\w.-]+\/[\w.-]+$/.test(c.repo)) }
-function ghPath(file) { const c = ghCfg(); return (c.dir ? c.dir + '/' : '') + file }
-function ghReq(method, apiPath, bodyObj, raw) {
-    const c = ghCfg()
+/* ---------- owner mode: secrets live only as hashes in env vars ---------- */
+const SR_OWN = {
+    configured: () => !!(process.env.OWNER_SECRET && process.env.OWNER_PASS_HASH && process.env.OWNER_PHRASE_HASH),
+    sign: v => crypto.createHmac('sha256', process.env.OWNER_SECRET || 'x').update(v).digest('hex').slice(0, 40),
+    mk(v, hrs) { const e = Date.now() + hrs * 3600000; return v + '.' + e + '.' + SR_OWN.sign(v + '.' + e) },
+    rd(c) { if (!c) return null; const p = String(c).split('.'); if (p.length < 3) return null; const sg = p.pop(), e = p.pop(), v = p.join('.'); return (sg === SR_OWN.sign(v + '.' + e) && +e > Date.now()) ? v : null },
+    cookie: (n, v, hrs) => n + '=' + v + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + Math.floor(hrs * 3600),
+    norm: s => String(s || '').trim().toLowerCase().replace(/\s+/g, ' '),
+    check(input, stored) {
+        try {
+            const [t, salt, h] = String(stored).split(':')
+            if (t !== 's1') return false
+            const d = crypto.scryptSync(String(input), Buffer.from(salt, 'hex'), 32), b = Buffer.from(h, 'hex')
+            return b.length === d.length && crypto.timingSafeEqual(d, b)
+        } catch (e) { return false }
+    },
+    state(ck) {
+        const t = SR_OWN.rd(ck.sr_ot), o = SR_OWN.rd(ck.sr_om), pw = SR_OWN.rd(ck.sr_op)
+        const dev = t && t.startsWith('t:') ? t.slice(2) : null
+        return { trusted: dev, on: !!(o && o.startsWith('o:')), id: o && o.startsWith('o:') ? o.slice(2) : dev, pw: pw === 'pw' }
+    }
+}
+function srLocked(ip) { const f = (global.__ownFail = global.__ownFail || {})[ip]; return f && f.until > Date.now() }
+function srFail(ip) { const f = (global.__ownFail[ip] = global.__ownFail[ip] || { n: 0, until: 0 }); f.n++; if (f.n >= 5) { f.until = Date.now() + 15 * 60000; f.n = 0 } }
+
+/* returns null when the message is not an owner-mode keyword; else { answer, cookies, mode, owner } */
+function srOwnerKeywords(C, text) {
+    if (!SR_OWN.configured()) return null
+    const ck = C.ck, ip = C.ip, st = SR_OWN.state(ck), t = SR_OWN.norm(text)
+    const grant = (id, newTrust) => {
+        const cs = [SR_OWN.cookie('sr_om', SR_OWN.mk('o:' + id, 1), 1), SR_OWN.cookie('sr_op', '', 0)]
+        if (newTrust) cs.push(SR_OWN.cookie('sr_ot', SR_OWN.mk('t:' + id, 720), 720))
+        return cs
+    }
+    if (st.pw) {
+        if (srLocked(ip)) return { answer: 'Too many attempts. Try again in 15 minutes.', cookies: [SR_OWN.cookie('sr_op', '', 0)], owner: false }
+        if (SR_OWN.check(text, process.env.OWNER_PASS_HASH)) {
+            global.__ownFail && delete global.__ownFail[ip]
+            const id = st.trusted || crypto.randomBytes(8).toString('hex')
+            return { answer: 'Owner mode is on. This browser is remembered, so next time just say: owner mode.', cookies: grant(id, true), owner: true }
+        }
+        srFail(ip)
+        return { answer: 'That is not right.', cookies: [SR_OWN.cookie('sr_op', '', 0)], owner: false }
+    }
+    if (t === 'owner mode' && st.trusted) {
+        if (srLocked(ip)) return { answer: 'Too many attempts. Try again in 15 minutes.', cookies: [], owner: false }
+        return { answer: 'Owner mode is on.', cookies: grant(st.trusted, false), owner: true }
+    }
+    if (t === 'exit owner mode' && st.on) return { answer: 'Owner mode is off.', cookies: [SR_OWN.cookie('sr_om', '', 0)], owner: false }
+    if (t === 'forget this device' && (st.on || st.trusted)) return { answer: 'This browser is forgotten. Owner mode is off.', cookies: [SR_OWN.cookie('sr_om', '', 0), SR_OWN.cookie('sr_ot', '', 0)], owner: false }
+    if (SR_OWN.check(t, process.env.OWNER_PHRASE_HASH)) {
+        if (srLocked(ip)) return { answer: 'Too many attempts. Try again in 15 minutes.', cookies: [], owner: false }
+        return { answer: 'Password?', cookies: [SR_OWN.cookie('sr_op', SR_OWN.mk('pw', 0.1), 0.1)], mode: 'password', owner: false }
+    }
+    return null
+}
+
+/* ---------- AI knowledge helpers ---------- */
+const SR_THEMES = ['Obsidian Gold', 'Midnight Sapphire', 'Royal Amethyst', 'Emerald Noir', 'Burgundy & Gold', 'Rose Gold Dusk', 'Arctic Aurora', 'Carbon Copper', 'Onyx Platinum', 'Deep Ocean Teal', 'Nebula Violet', 'Mocha Bronze', 'Sunset Amber', 'Forest Moss', 'Sakura Twilight', 'Graphite Silver', 'Champagne Ivory', 'Pearl Blush']
+const SR_TCOLORS = ['Theme default', 'Ivory Cream', 'Pure White', 'Champagne Gold', 'Rose Gold', 'Mint', 'Sky Ice', 'Lavender', 'Peach', 'Silver', 'Amber']
+const SR_PAGES = ['home', 'connect', 'sessions', 'commands', 'settings', 'protection', 'logs', 'media', 'apikeys', 'analytics', 'templates', 'themes', 'wishes', 'owner']
+function srPickName(list, q) {
+    const n = String(q || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+    if (!n) return null
+    return list.find(x => x.toLowerCase().replace(/[^a-z0-9]/g, '') === n) || list.find(x => x.toLowerCase().replace(/[^a-z0-9]/g, '').includes(n)) || list.find(x => n.includes(x.toLowerCase().replace(/[^a-z0-9]/g, ''))) || null
+}
+function srCatalogText() {
+    try {
+        return buildCommandCatalog().sections.map(s => s.title + ': ' + s.commands.map(c => '.' + c.name + ' (' + c.desc + ')').join(', ')).join('\n').slice(0, 3800)
+    } catch (e) { return '' }
+}
+const SR_PUBLIC_PROMPT = () =>
+    'You are the Realm Assistant inside the SUKUNA REALM WhatsApp bot dashboard. You ONLY help with this bot and this dashboard: what commands do, how to use settings, how to connect a number, themes, groups, the Wishes page, and fixing problems with them. '
+    + 'Be precise and short: usually 2 to 5 sentences, no filler, no greetings unless greeted. Plain text only: no markdown, no asterisks, no backticks, no headings. For steps, write lines like 1) 2) 3). '
+    + 'Do NOT write code and do NOT explain how to build WhatsApp bots or anything unrelated; for that, say in one sentence that you can only help with this bot and dashboard. '
+    + 'The dashboard menu has ONLY these pages: Home, Connect, Sessions, Commands, Settings, Groups, Logs, Media, API Keys, Analytics, Templates, Themes, Wishes, Contact owner. Never invent buttons, tabs or settings outside that list. '
+    + 'If you are not sure about a command detail, say so plainly instead of guessing. '
+    + 'You can act on the dashboard when the user explicitly asks (change theme, text colour, light or dark mode, open a page, connect or disconnect their number, change a setting): use the tools for that. Never use a tool unless the user clearly asked. '
+    + 'Commands of this bot:\n' + srCatalogText()
+const SR_OWNER_PROMPT = () =>
+    'You are the Realm Assistant in OWNER MODE for the SUKUNA REALM WhatsApp bot (Node.js, Baileys, one bot.js file plus dashboard.html). The person talking to you is the verified owner. '
+    + 'Answer precisely. Plain text only in chat, no markdown. You may write code snippets when asked. '
+    + 'You can use tools for dashboard actions and owner actions (block, unblock, kill session, maintenance, owner-only, free memory) but ONLY when the owner clearly asks. '
+    + 'If the owner wants a new command, tell them to say: create a command. If they want to change bot.js or the dashboard, tell them to say what to change, starting with: edit. '
+    + 'Commands of this bot:\n' + srCatalogText()
+
+const SR_TOOLS_PUBLIC = [
+    { type: 'function', function: { name: 'set_theme', description: 'Change the dashboard colour theme.', parameters: { type: 'object', properties: { name: { type: 'string', enum: SR_THEMES } }, required: ['name'] } } },
+    { type: 'function', function: { name: 'set_text_color', description: 'Change the dashboard text colour.', parameters: { type: 'object', properties: { name: { type: 'string', enum: SR_TCOLORS } }, required: ['name'] } } },
+    { type: 'function', function: { name: 'set_mode', description: 'Switch the dashboard between light and dark mode.', parameters: { type: 'object', properties: { mode: { type: 'string', enum: ['light', 'dark'] } }, required: ['mode'] } } },
+    { type: 'function', function: { name: 'open_page', description: 'Open a dashboard page.', parameters: { type: 'object', properties: { page: { type: 'string', enum: SR_PAGES } }, required: ['page'] } } },
+    { type: 'function', function: { name: 'connect_number', description: 'Start connecting a WhatsApp number (digits with country code).', parameters: { type: 'object', properties: { number: { type: 'string' } }, required: ['number'] } } },
+    { type: 'function', function: { name: 'disconnect_number', description: 'Disconnect the logged-in number.', parameters: { type: 'object', properties: {} } } },
+    { type: 'function', function: { name: 'set_setting', description: 'Change a bot setting for the logged-in number.', parameters: { type: 'object', properties: { key: { type: 'string', enum: ['typing', 'delay', 'read', 'online', 'autoreact', 'statusreact', 'statusview', 'eventsWelcome', 'eventsGoodbye', 'mode', 'prefix'] }, value: { type: 'string', description: 'on, off, public, private, or the prefix characters' } }, required: ['key', 'value'] } } }
+]
+const SR_TOOLS_OWNER = SR_TOOLS_PUBLIC.concat([
+    { type: 'function', function: { name: 'block_number', description: 'Block a number from the bot.', parameters: { type: 'object', properties: { number: { type: 'string' } }, required: ['number'] } } },
+    { type: 'function', function: { name: 'unblock_number', description: 'Unblock a number.', parameters: { type: 'object', properties: { number: { type: 'string' } }, required: ['number'] } } },
+    { type: 'function', function: { name: 'kill_session', description: 'Kill and block a connected number.', parameters: { type: 'object', properties: { number: { type: 'string' } }, required: ['number'] } } },
+    { type: 'function', function: { name: 'set_maintenance', description: 'Turn maintenance mode on or off.', parameters: { type: 'object', properties: { value: { type: 'string', enum: ['on', 'off'] } }, required: ['value'] } } },
+    { type: 'function', function: { name: 'set_owner_only', description: 'Turn owner-only mode on or off.', parameters: { type: 'object', properties: { value: { type: 'string', enum: ['on', 'off'] } }, required: ['value'] } } },
+    { type: 'function', function: { name: 'free_memory', description: 'Free memory on the host.', parameters: { type: 'object', properties: {} } } }
+])
+const SR_DESTRUCTIVE = { disconnect_number: 1, block_number: 1, kill_session: 1 }
+
+async function srKillSession(n) {
+    const id = 'sess_' + n
+    const s = sessions[id]
+    if (s) { try { await s.sock.logout() } catch (e) {} stopSocket(id); delete sessions[id] }
+    try { fs.rmSync(path.join(SESSION_DIR, id), { recursive: true, force: true }) } catch (e) {}
+    await deleteSessionFromMongo(id)
+}
+function srBlock(n, via) { if (!DEV.blocked.includes(n)) DEV.blocked.push(n); DEV.blockedInfo[n] = { at: Date.now(), via: via || 'block' } }
+function srUnblock(n) { DEV.blocked = DEV.blocked.filter(x => x !== n); delete DEV.blockedInfo[n] }
+
+/* run one tool. C = { user, verified, owner }. returns { text, client? } */
+async function srRunTool(name, a, C) {
+    const dgt = x => String(x || '').replace(/[^0-9]/g, '')
+    const on = v => /^(on|true|yes|1)$/i.test(String(v))
+    if (name === 'set_theme') { const t = srPickName(SR_THEMES, a.name); return t ? { text: 'Theme set to ' + t + '.', client: { type: 'theme', name: t } } : { text: 'I do not know that theme.' } }
+    if (name === 'set_text_color') { const t = srPickName(SR_TCOLORS, a.name); return t ? { text: 'Text colour set to ' + t + '.', client: { type: 'tcolor', name: t } } : { text: 'I do not know that text colour.' } }
+    if (name === 'set_mode') { const m = /^l/i.test(a.mode) ? 'light' : 'dark'; return { text: (m === 'light' ? 'Light' : 'Dark') + ' mode is on.', client: { type: 'mode', mode: m } } }
+    if (name === 'open_page') { const p = SR_PAGES.includes(a.page) ? a.page : null; return p ? { text: 'Opening ' + p + '.', client: { type: 'page', page: p } } : { text: 'That page does not exist.' } }
+    if (name === 'connect_number') {
+        if (!C.verified) return { text: 'Verify first, then try again.' }
+        const n = dgt(a.number)
+        if (n.length < 8 || n.length > 15) return { text: 'That number does not look valid. Use digits with the country code.' }
+        if (DEV.blocked.includes(n)) return { text: 'This number cannot connect.' }
+        if (DEV.maxSlots && !sessions['sess_' + n] && Object.keys(sessions).length >= DEV.maxSlots) return { text: 'No free slots right now.' }
+        const id = 'sess_' + n, ex = sessions[id]
+        if (!ex) await startSession(id, n)
+        else if (ex.status === 'logged out') { stopSocket(id); await startSession(id, n, true) }
+        else return { text: 'That number is already ' + ex.status + '.' }
+        return { text: 'Connecting +' + n + '. The pairing code will show on the Connect page.', client: { type: 'connect', number: n } }
+    }
+    if (name === 'disconnect_number') {
+        if (!C.user) return { text: 'Log in first.' }
+        await srKillSession(C.user)
+        return { text: 'Disconnected +' + C.user + '.', client: { type: 'refresh' } }
+    }
+    if (name === 'set_setting') {
+        if (!C.user) return { text: 'Log in first.' }
+        const s = sessions['sess_' + C.user], ctx = s && s.ctx
+        if (!ctx) return { text: 'Your number is not connected.' }
+        const B = ['typing', 'delay', 'read', 'online', 'autoreact', 'statusreact', 'statusview', 'eventsWelcome', 'eventsGoodbye']
+        if (B.includes(a.key)) ctx.cfg[a.key] = on(a.value)
+        else if (a.key === 'mode' && ['public', 'private'].includes(String(a.value))) ctx.cfg.mode = String(a.value)
+        else if (a.key === 'prefix' && String(a.value).length >= 1 && String(a.value).length <= 3) ctx.cfg.prefix = String(a.value)
+        else return { text: 'That setting value is not valid.' }
+        saveCtx(ctx)
+        return { text: 'Setting ' + a.key + ' updated.', client: { type: 'refresh' } }
+    }
+    if (!C.owner) return { text: 'That needs owner mode.' }
+    if (name === 'block_number') { const n = dgt(a.number); if (n.length < 7) return { text: 'Invalid number.' }; srBlock(n, 'block'); saveDev(); return { text: 'Blocked +' + n + '.', client: { type: 'refresh' } } }
+    if (name === 'unblock_number') { const n = dgt(a.number); srUnblock(n); saveDev(); return { text: 'Unblocked +' + n + '.', client: { type: 'refresh' } } }
+    if (name === 'kill_session') { const n = dgt(a.number); if (n.length < 7) return { text: 'Invalid number.' }; srBlock(n, 'kill'); await srKillSession(n); saveDev(); return { text: 'Killed and blocked +' + n + '.', client: { type: 'refresh' } } }
+    if (name === 'set_maintenance') { DEV.maintenance = on(a.value); saveDev(); return { text: 'Maintenance mode ' + (DEV.maintenance ? 'on' : 'off') + '.' } }
+    if (name === 'set_owner_only') { DEV.ownerOnly = on(a.value); saveDev(); return { text: 'Owner-only mode ' + (DEV.ownerOnly ? 'on' : 'off') + '.' } }
+    if (name === 'free_memory') { const r = freeMemory(); return { text: 'Memory freed: bot ' + r.before + ' MB to ' + r.after + ' MB.' } }
+    return { text: 'Unknown action.' }
+}
+
+/* ---------- GitHub push (single commit, many files) ---------- */
+function srGh(method, apiPath, bodyObj) {
     return new Promise((resolve, reject) => {
-        const data = bodyObj ? Buffer.from(JSON.stringify(bodyObj)) : null
-        const rq = https.request({ hostname: 'api.github.com', path: apiPath, method, headers: Object.assign({ 'Authorization': 'Bearer ' + c.token, 'User-Agent': 'sukuna-realm-bot', 'Accept': raw ? 'application/vnd.github.raw' : 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }, data ? { 'Content-Type': 'application/json', 'Content-Length': data.length } : {}) }, r => {
-            const ch = []; r.on('data', x => ch.push(x))
+        const data = bodyObj ? JSON.stringify(bodyObj) : null
+        const rq = https.request({
+            hostname: 'api.github.com', path: apiPath, method,
+            headers: Object.assign({ 'User-Agent': 'sukuna-realm-bot', 'Accept': 'application/vnd.github+json', 'Authorization': 'Bearer ' + process.env.GITHUB_TOKEN }, data ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {})
+        }, r => {
+            const ch = []; r.on('data', c => ch.push(c))
             r.on('end', () => {
-                const t = Buffer.concat(ch).toString('utf8')
-                if (r.statusCode >= 400) return reject(new Error('GitHub ' + r.statusCode + ': ' + t.slice(0, 160).replace(c.token, '***')))
-                if (raw) return resolve(t)
-                try { resolve(JSON.parse(t || '{}')) } catch (e) { reject(new Error('Bad reply from GitHub')) }
+                const t = Buffer.concat(ch).toString('utf8'); let j = {}; try { j = JSON.parse(t) } catch (e) {}
+                if ((r.statusCode || 0) >= 300) return reject(new Error('GitHub HTTP ' + r.statusCode + ': ' + String(j.message || t).slice(0, 160)))
+                resolve(j)
             })
         })
-        rq.on('error', reject); rq.setTimeout(30000, () => rq.destroy(new Error('GitHub timeout')))
+        rq.on('error', reject); rq.setTimeout(20000, () => rq.destroy(new Error('GitHub timeout')))
         if (data) rq.write(data); rq.end()
     })
 }
-const OWN_FILES = ['bot.js', 'dashboard.html']
-async function ownBase(file) {
-    const hit = OWN.cache[file]
-    if (hit && Date.now() - hit.t < 30000) return hit.content
-    let content
-    if (ghOk()) { const c = ghCfg(); content = await ghReq('GET', '/repos/' + c.repo + '/contents/' + ghPath(file).split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(c.branch), null, true) }
-    else content = fs.readFileSync(path.join(__dirname, file), 'utf8')
-    OWN.cache[file] = { t: Date.now(), content }
-    return content
-}
-async function ownCurrent(file) { return OWN.staged[file] ? OWN.staged[file].content : await ownBase(file) }
-function ownCheck(file, base, content) {
-    const out = []; let ok = true
-    const note = (pass, text) => { out.push((pass ? 'OK: ' : 'FAILED: ') + text); if (!pass) ok = false }
-    note(content.length >= base.length * 0.7, 'size looks right (' + base.length + ' to ' + content.length + ' characters)')
-    if (file === 'bot.js') {
-        note(content.split('\n').slice(0, 45).join('\n') === base.split('\n').slice(0, 45).join('\n'), 'first 45 lines untouched')
-        const tmp = path.join(os.tmpdir(), 'own_check_' + Date.now() + '.js')
-        fs.writeFileSync(tmp, content)
-        const r = require('child_process').spawnSync(process.execPath, ['--check', tmp], { encoding: 'utf8' })
-        try { fs.unlinkSync(tmp) } catch (e) {}
-        note(r.status === 0, 'syntax check' + (r.status === 0 ? '' : ': ' + String(r.stderr).split('\n').slice(0, 4).join(' ')))
-        for (const k of ['startSession', 'handleCommand', 'http.createServer', 'restoreSessions()']) note(content.includes(k), 'still has ' + k)
-    } else {
-        const scripts = [...content.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1])
-        let bad = ''
-        for (let i = 0; i < scripts.length; i++) { try { new (require('vm').Script)(scripts[i]) } catch (e) { bad = 'script ' + (i + 1) + ': ' + e.message; break } }
-        note(!bad, 'page scripts parse' + (bad ? ' (' + bad + ')' : ''))
-        const ids = s => new Set([...s.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]))
-        const idsBase = ids(base), idsNew = ids(content)
-        const removed = [...idsBase].filter(x => !idsNew.has(x) && new RegExp('getElementById\\([\'"]' + x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[\'"]\\)').test(content))
-        note(!removed.length, 'no element the scripts need was removed' + (removed.length ? ' (' + removed.slice(0, 5).join(', ') + ')' : ''))
-        note(/<\/html>\s*$/.test(content), 'page ends properly')
-    }
-    return { ok, lines: out }
-}
-async function ownTool(name, a) {
-    try {
-        if (name === 'read_file' || name === 'search_file' || name === 'stage_edit') { if (!OWN_FILES.includes(a.file)) return 'Only bot.js and dashboard.html can be used.' }
-        if (name === 'read_file') {
-            const lines = (await ownCurrent(a.file)).split('\n')
-            const s = Math.max(1, parseInt(a.start) || 1), e = Math.min(lines.length, Math.min(s + 119, parseInt(a.end) || s + 59))
-            let out = 'Lines ' + s + '-' + e + ' of ' + lines.length + ':\n'
-            for (let i = s; i <= e; i++) out += i + ': ' + lines[i - 1].slice(0, 260) + '\n'
-            return out
-        }
-        if (name === 'search_file') {
-            const q = String(a.query || '').toLowerCase(); if (!q) return 'Give a search text.'
-            const lines = (await ownCurrent(a.file)).split('\n'), hits = []
-            for (let i = 0; i < lines.length && hits.length < 25; i++) if (lines[i].toLowerCase().includes(q)) hits.push((i + 1) + ': ' + lines[i].trim().slice(0, 200))
-            return hits.length ? hits.join('\n') : 'No matches.'
-        }
-        if (name === 'stage_edit') {
-            const oldS = String(a.old_str || ''), newS = String(a.new_str == null ? '' : a.new_str)
-            if (!oldS) return 'old_str is required (use an existing unique line as the anchor).'
-            if (newS.length > 20000) return 'new_str is too long. Split it into smaller edits.'
-            const cur = await ownCurrent(a.file), first = cur.indexOf(oldS)
-            if (first < 0) return 'old_str was not found. Read the file again and copy the text exactly.'
-            if (cur.indexOf(oldS, first + 1) >= 0) return 'old_str appears more than once. Add more surrounding text so it is unique.'
-            if (Object.values(OWN.staged).reduce((n, x) => n + x.edits, 0) >= 30) return 'Too many edits staged. Call finish.'
-            const next = cur.slice(0, first) + newS + cur.slice(first + oldS.length)
-            const base = await ownBase(a.file)
-            if (a.file === 'bot.js' && next.split('\n').slice(0, 45).join('\n') !== base.split('\n').slice(0, 45).join('\n')) return 'The first 45 lines of bot.js are protected and cannot be changed.'
-            OWN.staged[a.file] = { content: next, edits: (OWN.staged[a.file] ? OWN.staged[a.file].edits : 0) + 1 }
-            OWN.awaiting = null
-            return 'Edit staged in ' + a.file + ' (' + OWN.staged[a.file].edits + ' so far).'
-        }
-        if (name === 'show_staged') return Object.keys(OWN.staged).length ? Object.entries(OWN.staged).map(([f, v]) => f + ': ' + v.edits + ' edit(s)').join('\n') : 'Nothing staged.'
-        if (name === 'discard_staged') { OWN.staged = {}; OWN.awaiting = null; return 'Staged edits discarded.' }
-        if (name === 'finish') {
-            const files = Object.keys(OWN.staged)
-            if (!files.length) return 'Nothing is staged yet.'
-            const report = []; let ok = true
-            for (const f of files) { const r = ownCheck(f, await ownBase(f), OWN.staged[f].content); if (!r.ok) ok = false; report.push(f + ':\n  ' + r.lines.join('\n  ')) }
-            OWN.checkReport = report.join('\n')
-            if (!ok) return 'Checks failed:\n' + OWN.checkReport + '\nFix the problem with more stage_edit calls (or discard_staged), then call finish again.'
-            OWN.summary = String(a.summary || 'edit').slice(0, 300)
-            OWN.awaiting = 'push'
-            OWN.finished = true
-            return 'Checks passed.'
-        }
-        return 'Unknown tool.'
-    } catch (e) { return 'Tool error: ' + String(e.message || e).slice(0, 200) }
-}
-const OWN_TOOLS = [
-    aiFn('read_file', 'Read lines of bot.js or dashboard.html (max 120 lines per call).', { file: { type: 'string', enum: OWN_FILES }, start: { type: 'integer' }, end: { type: 'integer' } }, ['file', 'start']),
-    aiFn('search_file', 'Find lines containing some text in bot.js or dashboard.html.', { file: { type: 'string', enum: OWN_FILES }, query: { type: 'string' } }, ['file', 'query']),
-    aiFn('stage_edit', 'Stage one edit: replace old_str (must appear exactly once) with new_str. To insert code, use an existing unique line as old_str and put that line plus your new code in new_str.', { file: { type: 'string', enum: OWN_FILES }, old_str: { type: 'string' }, new_str: { type: 'string' } }, ['file', 'old_str', 'new_str']),
-    aiFn('show_staged', 'List what is currently staged.', {}),
-    aiFn('discard_staged', 'Throw away all staged edits.', {}),
-    aiFn('finish', 'Run the checks on everything staged and ask the owner for approval. Call this once when all edits for the request are staged.', { summary: { type: 'string' } }, ['summary'])
-]
-const OWN_SYS = 'You are the owner-mode engineer for the SUKUNA REALM WhatsApp bot (Node.js, Baileys). The person talking to you is the verified owner. '
-    + 'You can read and edit exactly two files: bot.js and dashboard.html, using the tools. You have no shell access and no other files. Never reveal secrets, tokens, hashes or environment values. Never touch the first 45 lines of bot.js. '
-    + 'Work in small insert or replace edits. ALWAYS read or search the real code before editing, and copy anchor text exactly. Match the existing code style. After all edits for a request are staged, call finish ONCE with a short summary. Never say anything was pushed: only the owner approving ("yes") pushes, and the system tells them. '
-    + 'Plain text replies, short. To CREATE A COMMAND: first ask for the command name, then (next message) ask what it should do, one question at a time. Then read the code and stage: (1) a handler `if (cmd === \'name\') { ... }` inside handleCommand, inserted before the line `    if (cmd === \'events\' || cmd === \'event\') {` (use reply(skInfo(emoji, TITLE, [[LABEL, value]])) or reply(skError(...)) like the neighbouring commands, args are in the args array, owner-only commands start with `if (!(await needOwner())) return`); (2) a menu line inside renderMenu, in the right section, formatted like the existing ones: `» ${p}${mono(\'name\')}  •  ${mono(\'Short description\')}\\n` +  (search for a neighbouring menu line to copy the exact spacing); (3) a usage example inside the USAGE_EXAMPLES object (name: [\'name example\']). The Commands page builds itself from the menu lines. '
-    + 'For dashboard changes, edit dashboard.html (HTML, CSS and JS are in the one file; do not remove element ids the scripts use). Batch everything for one request into one finish call, because each push restarts the bot. If a request is unsafe, unclear, or outside these two files, say so briefly.'
-async function ownCount(day) {
-    if (settingsCollection) { try { const d = await settingsCollection.findOne({ _id: 'owner_push_' + day }); return d ? d.count || 0 : 0 } catch (e) {} }
-    return OWN.counts[day] || 0
-}
-async function ownBump(day) {
-    OWN.counts[day] = (OWN.counts[day] || 0) + 1
-    if (settingsCollection) { try { await settingsCollection.updateOne({ _id: 'owner_push_' + day }, { $inc: { count: 1 } }, { upsert: true }) } catch (e) {} }
-}
-async function ownSaveLast() {
-    try { fs.writeFileSync(path.join(__dirname, 'owner_last.json'), JSON.stringify(OWN.lastPush)) } catch (e) {}
-    if (settingsCollection) { try { await settingsCollection.updateOne({ _id: 'owner_last' }, { $set: { value: OWN.lastPush } }, { upsert: true }) } catch (e) {} }
-}
-async function ownLoadLast() {
-    if (OWN.lastPush) return OWN.lastPush
-    if (settingsCollection) { try { const d = await settingsCollection.findOne({ _id: 'owner_last' }); if (d && d.value) return (OWN.lastPush = d.value) } catch (e) {} }
-    try { return (OWN.lastPush = JSON.parse(fs.readFileSync(path.join(__dirname, 'owner_last.json'), 'utf8'))) } catch (e) { return null }
-}
-async function ownPush() {
-    const c = ghCfg()
-    if (!ghOk()) return 'GITHUB_TOKEN or GITHUB_REPO is not set, so nothing was pushed. Your staged edits are kept.'
-    const files = Object.keys(OWN.staged)
-    if (!files.length) { OWN.awaiting = null; return 'Nothing is staged.' }
-    const day = new Date().toISOString().slice(0, 10)
-    const used = await ownCount(day)
-    if (used >= 18) return 'You have used ' + used + ' deploys today, close to the daily limit. Try again tomorrow. Your staged edits are kept.'
-    const ref = await ghReq('GET', '/repos/' + c.repo + '/git/ref/heads/' + c.branch)
+async function srGithubPush(files, message) {
+    const repo = process.env.GITHUB_REPO, branch = process.env.GITHUB_BRANCH || 'main'
+    if (!process.env.GITHUB_TOKEN || !repo) return { pushed: false, reason: 'GITHUB_TOKEN or GITHUB_REPO is not set' }
+    const dir = String(process.env.GITHUB_DIR || '').replace(/^\/+|\/+$/g, '')
+    const P = f => (dir ? dir + '/' : '') + f
+    const ref = await srGh('GET', '/repos/' + repo + '/git/ref/heads/' + branch)
     const head = ref.object.sha
-    const commit = await ghReq('GET', '/repos/' + c.repo + '/git/commits/' + head)
-    const tree = []
-    for (const f of files) {
-        const blob = await ghReq('POST', '/repos/' + c.repo + '/git/blobs', { content: Buffer.from(OWN.staged[f].content, 'utf8').toString('base64'), encoding: 'base64' })
-        tree.push({ path: ghPath(f), mode: '100644', type: 'blob', sha: blob.sha })
+    const commit = await srGh('GET', '/repos/' + repo + '/git/commits/' + head)
+    const tree = await srGh('POST', '/repos/' + repo + '/git/trees', { base_tree: commit.tree.sha, tree: files.map(f => ({ path: P(f.path), mode: '100644', type: 'blob', content: f.content })) })
+    const nc = await srGh('POST', '/repos/' + repo + '/git/commits', { message, tree: tree.sha, parents: [head] })
+    await srGh('PATCH', '/repos/' + repo + '/git/refs/heads/' + branch, { sha: nc.sha })
+    return { pushed: true, sha: nc.sha.slice(0, 7), prev: head }
+}
+async function srGithubFileAt(file, sha) {
+    const repo = process.env.GITHUB_REPO, dir = String(process.env.GITHUB_DIR || '').replace(/^\/+|\/+$/g, '')
+    const p = ((dir ? dir + '/' : '') + file).split('/').map(encodeURIComponent).join('/')
+    const c = await srGh('GET', '/repos/' + repo + '/contents/' + p + '?ref=' + sha)
+    return Buffer.from(c.content || '', 'base64').toString('utf8')
+}
+
+/* small store that survives redeploys: database first, temp file as fallback */
+async function srStoreGet(id) {
+    try { if (settingsCollection) { const d = await settingsCollection.findOne({ _id: id }); if (d && d.value) return d.value } } catch (e) {}
+    try { return JSON.parse(fs.readFileSync(path.join(os.tmpdir(), 'sr_' + id + '.json'), 'utf8')) } catch (e) { return null }
+}
+async function srStoreSet(id, v) {
+    try { if (settingsCollection) await settingsCollection.updateOne({ _id: id }, { $set: { value: v } }, { upsert: true }) } catch (e) {}
+    try { fs.writeFileSync(path.join(os.tmpdir(), 'sr_' + id + '.json'), JSON.stringify(v)) } catch (e) {}
+}
+const SR_DEPLOY_LIMIT = 18
+async function srDeploysToday() { const day = new Date().toISOString().slice(0, 10), v = await srStoreGet('ai_deploys'); return v && v.day === day ? v.n : 0 }
+async function srDeployBump() { const day = new Date().toISOString().slice(0, 10), v = await srStoreGet('ai_deploys'); await srStoreSet('ai_deploys', { day, n: (v && v.day === day ? v.n : 0) + 1 }) }
+
+/* ---------- AI code pipeline: stage -> check -> approve -> apply (+ backup, + push) ---------- */
+const SR_FILES = { 'bot.js': () => __filename, 'dashboard.html': () => path.resolve('dashboard.html') }
+const SR_CHANGELOG = () => path.join(os.tmpdir(), 'sr_ai_changes.json')
+function srProtectedEnd(src) {
+    const m = /dns\.setDefaultResultOrder\('ipv4first'\)[^\n]*\n/.exec(src)
+    return m ? m.index + m[0].length : 0
+}
+function srApplyOps(files, ops) {
+    const out = Object.assign({}, files), ranges = {}
+    for (const op of ops) {
+        const f = String(op.file || '')
+        if (!SR_FILES[f] || out[f] === undefined) throw new Error('Unknown file: ' + f)
+        let src = out[f]
+        const anchor = op.find !== undefined ? op.find : (op.after !== undefined ? op.after : op.before)
+        if (typeof anchor !== 'string' || !anchor) throw new Error('An edit has no anchor text.')
+        const first = src.indexOf(anchor)
+        if (first < 0) throw new Error('Anchor text not found in ' + f + ': ' + anchor.slice(0, 60))
+        if (src.indexOf(anchor, first + 1) >= 0) throw new Error('Anchor text is not unique in ' + f + ': ' + anchor.slice(0, 60))
+        const text = String(op.replace !== undefined ? op.replace : op.text || '')
+        if (f === 'bot.js' && first < srProtectedEnd(src)) throw new Error('That edit touches the protected start of bot.js.')
+        let at, len
+        if (op.find !== undefined) { src = src.slice(0, first) + text + src.slice(first + anchor.length); at = first; len = text.length }
+        else if (op.after !== undefined) { const p = first + anchor.length; src = src.slice(0, p) + text + src.slice(p); at = p; len = text.length }
+        else { src = src.slice(0, first) + text + src.slice(first); at = first; len = text.length }
+        out[f] = src
+        ;(ranges[f] = ranges[f] || []).push([at, at + len])
     }
-    const nt = await ghReq('POST', '/repos/' + c.repo + '/git/trees', { base_tree: commit.tree.sha, tree })
-    const nc = await ghReq('POST', '/repos/' + c.repo + '/git/commits', { message: 'Owner AI: ' + String(OWN.summary || 'edit').slice(0, 70), tree: nt.sha, parents: [head] })
-    await ghReq('PATCH', '/repos/' + c.repo + '/git/refs/heads/' + c.branch, { sha: nc.sha })
-    OWN.lastPush = { prev: head, now: nc.sha, files, at: Date.now() }
-    await ownSaveLast(); await ownBump(day)
-    OWN.staged = {}; OWN.cache = {}; OWN.awaiting = null; OWN.summary = ''
-    return 'Pushed ' + files.length + ' file(s) in one commit (deploy ' + (used + 1) + ' today). Your host redeploys now, so the bot restarts in a moment. Say "undo last change" if something is wrong.'
+    return { files: out, ranges }
 }
-async function ownUndo() {
-    const c = ghCfg()
-    if (!ghOk()) return 'GITHUB_TOKEN or GITHUB_REPO is not set.'
-    const last = await ownLoadLast()
-    if (!last) return 'There is no pushed change to undo.'
-    const ref = await ghReq('GET', '/repos/' + c.repo + '/git/ref/heads/' + c.branch)
-    if (ref.object.sha !== last.now) return 'There are newer commits after that push, so I will not overwrite them. Undo it in GitHub by hand.'
-    const prev = await ghReq('GET', '/repos/' + c.repo + '/git/commits/' + last.prev)
-    const nc = await ghReq('POST', '/repos/' + c.repo + '/git/commits', { message: 'Undo owner AI change', tree: prev.tree.sha, parents: [last.now] })
-    await ghReq('PATCH', '/repos/' + c.repo + '/git/refs/heads/' + c.branch, { sha: nc.sha })
-    OWN.lastPush = null; OWN.cache = {}
-    try { fs.unlinkSync(path.join(__dirname, 'owner_last.json')) } catch (e) {}
-    if (settingsCollection) { try { await settingsCollection.deleteOne({ _id: 'owner_last' }) } catch (e) {} }
-    return 'Undone. The last push was reverted in one new commit, and your host redeploys now.'
+function srRunNodeCheck(code, tag) {
+    return new Promise(resolve => {
+        const f = path.join(os.tmpdir(), 'sr_check_' + tag + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6) + '.js')
+        try { fs.writeFileSync(f, code) } catch (e) { return resolve('Could not write temp file') }
+        execFile(process.execPath, ['--check', f], { timeout: 20000 }, (err, so, se) => {
+            try { fs.unlinkSync(f) } catch (e) {}
+            resolve(err ? String(se || err.message).split('\n').filter(Boolean).slice(0, 4).join(' | ').replace(new RegExp(f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), 'file') : null)
+        })
+    })
 }
-function ownChips() {
-    if (OWN.awaiting === 'push') return [{ label: 'Yes, push', send: 'yes' }, { label: 'No, discard', send: 'no' }]
-    if (OWN.awaiting === 'undo') return [{ label: 'Yes, undo', send: 'yes' }, { label: 'No', send: 'no' }]
-    return []
-}
-async function ownerChat(question, history) {
-    const norm = ownNorm(question)
-    const yes = /^(yes|y|yeah|yep|push|confirm|approve|go ahead|ok|okay|do it)$/.test(norm)
-    const no = /^(no|n|nope|cancel|discard|stop)$/.test(norm)
-    if (OWN.awaiting === 'push' && yes) { try { return { answer: await ownPush() } } catch (e) { return { answer: 'Push failed: ' + String(e.message || e).slice(0, 200) + '. Your staged edits are kept.' } } }
-    if (OWN.awaiting === 'undo' && yes) { OWN.awaiting = null; try { return { answer: await ownUndo() } } catch (e) { return { answer: 'Undo failed: ' + String(e.message || e).slice(0, 200) } } }
-    if (OWN.awaiting && no) { const was = OWN.awaiting; OWN.awaiting = null; if (was === 'push') OWN.staged = {}; return { answer: was === 'push' ? 'Discarded. Nothing was pushed.' : 'Okay, nothing was undone.' } }
-    if (/^undo( the)?( last)?( change)?$/.test(norm)) {
-        const last = await ownLoadLast()
-        if (!last) return { answer: 'There is no pushed change to undo.' }
-        OWN.awaiting = 'undo'
-        return { answer: 'This restores ' + last.files.join(' and ') + ' to how they were before the last push (one new commit, then a redeploy). Reply yes to confirm.' }
-    }
-    if (OWN.awaiting === 'push' && !yes && !no) OWN.awaiting = null
-    const url = 'https://api.groq.com/openai/v1/chat/completions'
-    const hdr = { 'Authorization': 'Bearer ' + global.__GROQ__ }
-    const messages = [{ role: 'system', content: OWN_SYS + (Object.keys(OWN.staged).length ? ' Currently staged: ' + Object.entries(OWN.staged).map(([f, v]) => f + ' (' + v.edits + ' edits)').join(', ') + '.' : '') }, ...history, { role: 'user', content: question }]
-    OWN.finished = false
-    for (let round = 0; round < 10; round++) {
-        let data
-        try { data = await groqPost(url, { model: 'auto', messages, tools: OWN_TOOLS, tool_choice: 'auto', temperature: 0.2, max_tokens: 3000 }, hdr, 60000) }
-        catch (e) { return { answer: 'The assistant could not respond. Try again.' } }
-        const msg = (data && data.choices && data.choices[0] && data.choices[0].message) || {}
-        if (msg.tool_calls && msg.tool_calls.length) {
-            messages.push({ role: 'assistant', content: msg.content || '', tool_calls: msg.tool_calls })
-            for (const tc of msg.tool_calls) {
-                let a = {}; try { a = JSON.parse(tc.function.arguments || '{}') } catch (e) {}
-                const out = await ownTool(tc.function.name, a)
-                messages.push({ role: 'tool', tool_call_id: tc.id, content: String(out).slice(0, 7000) })
+const SR_GLOBALS = new Set(['require', 'module', 'exports', '__dirname', '__filename', 'process', 'console', 'Buffer', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'setImmediate', 'global', 'globalThis', 'undefined', 'NaN', 'Infinity', 'Object', 'Array', 'String', 'Number', 'Boolean', 'Symbol', 'BigInt', 'Math', 'JSON', 'Date', 'RegExp', 'Error', 'TypeError', 'RangeError', 'Promise', 'Map', 'Set', 'WeakMap', 'WeakSet', 'Proxy', 'Reflect', 'parseInt', 'parseFloat', 'isNaN', 'isFinite', 'encodeURIComponent', 'decodeURIComponent', 'encodeURI', 'decodeURI', 'URL', 'URLSearchParams', 'TextEncoder', 'TextDecoder', 'AbortController', 'fetch', 'arguments', 'Intl', 'Uint8Array', 'ArrayBuffer', 'structuredClone', 'queueMicrotask', 'escape', 'unescape'])
+function srUndefinedNames(code, ranges) {
+    let acorn; try { acorn = require('acorn') } catch (e) { return null }
+    let ast; try { ast = acorn.parse(code, { ecmaVersion: 'latest', allowReturnOutsideFunction: true, allowAwaitOutsideFunction: true }) } catch (e) { return null }
+    const declared = new Set(), refs = []
+    const walk = (n, parent, key) => {
+        if (!n || typeof n.type !== 'string') return
+        const t = n.type
+        if (t === 'VariableDeclarator' || t === 'FunctionDeclaration' || t === 'FunctionExpression' || t === 'ArrowFunctionExpression' || t === 'ClassDeclaration' || t === 'ClassExpression' || t === 'CatchClause') {
+            const pats = []
+            if (t === 'VariableDeclarator') pats.push(n.id)
+            else if (t === 'CatchClause') { if (n.param) pats.push(n.param) }
+            else { if (n.id) pats.push(n.id); (n.params || []).forEach(p => pats.push(p)) }
+            const take = p => {
+                if (!p) return
+                if (p.type === 'Identifier') declared.add(p.name)
+                else if (p.type === 'ObjectPattern') p.properties.forEach(x => take(x.value || x.argument))
+                else if (p.type === 'ArrayPattern') p.elements.forEach(take)
+                else if (p.type === 'AssignmentPattern') take(p.left)
+                else if (p.type === 'RestElement') take(p.argument)
             }
-            if (OWN.finished) {
-                const files = Object.keys(OWN.staged)
-                return { answer: 'Ready to push: ' + OWN.summary + '\nFiles: ' + files.join(', ') + '\n' + OWN.checkReport + '\nReply yes to push (one commit, one redeploy) or no to discard.' }
-            }
-            continue
+            pats.forEach(take)
         }
-        return { answer: (__plainText(msg.content || '').trim() || 'No response.').slice(0, 3000) }
+        if (t === 'Identifier') {
+            const isProp = parent && ((parent.type === 'MemberExpression' && key === 'property' && !parent.computed) || (parent.type === 'Property' && key === 'key' && !parent.computed) || (parent.type === 'MethodDefinition' && key === 'key') || (parent.type === 'LabeledStatement') || (parent.type === 'PropertyDefinition' && key === 'key'))
+            if (!isProp) refs.push(n)
+        }
+        for (const k of Object.keys(n)) {
+            if (k === 'type' || k === 'start' || k === 'end') continue
+            const v = n[k]
+            if (Array.isArray(v)) v.forEach(c => c && typeof c.type === 'string' && walk(c, n, k))
+            else if (v && typeof v.type === 'string') walk(v, n, k)
+        }
     }
-    return { answer: 'That took too many steps. Try a smaller request.' }
+    walk(ast, null, null)
+    const bad = new Set()
+    for (const r of refs) {
+        if (declared.has(r.name) || SR_GLOBALS.has(r.name)) continue
+        if (ranges && !ranges.some(([a, b]) => r.start >= a && r.end <= b)) continue
+        bad.add(r.name)
+    }
+    return [...bad].slice(0, 8)
 }
-async function aiRoute(ctx) {
-    const { req, J, body } = ctx
+function srCheckDashboard(html) {
+    const problems = []
+    const scripts = []
+    const re = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi
+    let m; while ((m = re.exec(html))) scripts.push(m[1])
+    const ids = new Set(); const ire = /\bid="([^"]+)"/g; while ((m = ire.exec(html))) ids.add(m[1])
+    const missing = new Set(); const gre = /getElementById\('([^']+)'\)/g
+    for (const s of scripts) while ((m = gre.exec(s))) if (!ids.has(m[1])) missing.add(m[1])
+    return { scripts, missing: [...missing] }
+}
+async function srValidate(files, ranges, original) {
+    const issues = [], notes = []
+    if (files['bot.js'] !== original['bot.js']) {
+        const err = await srRunNodeCheck(files['bot.js'], 'bot')
+        if (err) issues.push('bot.js syntax: ' + err)
+        else {
+            notes.push('bot.js syntax OK')
+            const un = srUndefinedNames(files['bot.js'], ranges['bot.js'])
+            if (un === null) notes.push('undefined-name check skipped (run: npm i acorn)')
+            else if (un.length) issues.push('bot.js uses names that do not exist: ' + un.join(', '))
+            else notes.push('no unknown names in the new code')
+        }
+    }
+    if (files['dashboard.html'] !== original['dashboard.html']) {
+        const d = srCheckDashboard(files['dashboard.html']), o = srCheckDashboard(original['dashboard.html'])
+        for (let i = 0; i < d.scripts.length; i++) { const err = await srRunNodeCheck(d.scripts[i], 'dash' + i); if (err) issues.push('dashboard script ' + (i + 1) + ': ' + err) }
+        const newMissing = d.missing.filter(x => !o.missing.includes(x))
+        if (newMissing.length) issues.push('dashboard script asks for elements that do not exist: ' + newMissing.join(', '))
+        if (!issues.length) notes.push('dashboard scripts OK')
+    }
+    return { issues, notes }
+}
+function srReadFiles() { const out = {}; for (const k of Object.keys(SR_FILES)) { try { out[k] = fs.readFileSync(SR_FILES[k](), 'utf8') } catch (e) { out[k] = undefined } } return out }
+function srLog() { try { return JSON.parse(fs.readFileSync(SR_CHANGELOG(), 'utf8')) } catch (e) { return [] } }
+async function srCommit(stage, withPush) {
+    const orig = stage.original, ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)
+    const dir = path.join(os.tmpdir(), 'sr_backups', 'ai-' + ts)
+    fs.mkdirSync(dir, { recursive: true })
+    const changed = Object.keys(stage.files).filter(k => stage.files[k] !== orig[k])
+    for (const k of changed) { fs.writeFileSync(path.join(dir, k), orig[k]); fs.writeFileSync(SR_FILES[k](), stage.files[k]) }
+    let push = { pushed: false, reason: 'not requested' }
+    if (withPush) { try { push = await srGithubPush(changed.map(k => ({ path: k, content: stage.files[k] })), 'AI: ' + stage.title) } catch (e) { push = { pushed: false, reason: e.message } } }
+    const log = srLog(); log.push({ at: Date.now(), title: stage.title, files: changed, backup: dir, pushed: push.pushed }); fs.writeFileSync(SR_CHANGELOG(), JSON.stringify(log.slice(-30), null, 1))
+    if (push.pushed) { await srStoreSet('ai_last', { title: stage.title, prev: push.prev, files: changed, at: Date.now() }); await srDeployBump() }
+    return { changed, push, dir }
+}
+async function srUndo(withPush) {
+    const gl = await srStoreGet('ai_last')
+    if (gl && gl.prev && !gl.undone && process.env.GITHUB_TOKEN && process.env.GITHUB_REPO) {
+        try {
+            const files = []
+            for (const f of gl.files) files.push({ path: f, content: await srGithubFileAt(f, gl.prev) })
+            const push = await srGithubPush(files, 'AI: undo ' + gl.title)
+            for (const f of files) { try { fs.writeFileSync(SR_FILES[f.path](), f.content) } catch (e) {} }
+            gl.undone = true; await srStoreSet('ai_last', gl); await srDeployBump()
+            try { const all = srLog(); if (all.length) { all[all.length - 1].undone = true; fs.writeFileSync(SR_CHANGELOG(), JSON.stringify(all)) } } catch (e) {}
+            return { ok: true, text: 'Undone: ' + gl.title + '. Pushed to GitHub (' + push.sha + '); Skyhost will redeploy.', files: files.map(f => f.path) }
+        } catch (e) { return { ok: false, text: 'Could not undo through GitHub: ' + e.message } }
+    }
+    const log = srLog().filter(x => !x.undone)
+    const last = log[log.length - 1]
+    if (!last) return { ok: false, text: 'There is nothing to undo.' }
+    const restored = []
+    for (const f of last.files) { try { const b = fs.readFileSync(path.join(last.backup, f), 'utf8'); fs.writeFileSync(SR_FILES[f](), b); restored.push({ path: f, content: b }) } catch (e) {} }
+    let push = { pushed: false }
+    if (withPush && restored.length) { try { push = await srGithubPush(restored, 'AI: undo ' + last.title) } catch (e) { push = { pushed: false, reason: e.message } } }
+    const all = srLog(); const i = all.findIndex(x => x.at === last.at); if (i >= 0) all[i].undone = true; fs.writeFileSync(SR_CHANGELOG(), JSON.stringify(all, null, 1))
+    return { ok: true, text: 'Undone: ' + last.title + '. ' + (push.pushed ? 'Pushed to GitHub (' + push.sha + ').' : 'Restored on this server only' + (push.reason ? ' (' + push.reason + ')' : '') + '.'), files: restored.map(r => r.path) }
+}
+function srExtractCmd(src, name) {
+    const start = src.indexOf("    if (cmd === '" + name + "'")
+    if (start < 0) return ''
+    let depth = 0, i = src.indexOf('{', start), j = i
+    for (; j < src.length; j++) { const c = src[j]; if (c === '{') depth++; else if (c === '}') { depth--; if (depth === 0) break } }
+    return src.slice(start, Math.min(j + 1, start + 1500))
+}
+function srJsonFrom(text) {
+    const t = String(text || '').replace(/```json|```/g, '').trim()
+    const a = t.indexOf('{'), b = t.lastIndexOf('}')
+    if (a < 0 || b < a) throw new Error('The model did not return JSON.')
+    return JSON.parse(t.slice(a, b + 1))
+}
+async function srModel(messages, maxTokens) {
+    const data = await groqPost('https://api.groq.com/openai/v1/chat/completions', { model: 'auto', temperature: 0.2, max_tokens: maxTokens || 3000, messages }, { 'Authorization': 'Bearer ' + global.__GROQ__ }, 60000)
+    return String(data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content || '')
+}
+const SR_CODE_RULES = 'Rules for code in this bot: it is Node.js CommonJS (no import). Inside handleCommand these variables exist: sock, ctx, msg, content, from, isGroup, sender, senderNumber, owner, cmd, args (array of words), prefix, reply(text, mentions), needOwner(), needManage(), needGroup(). Helpers: mono(text), italic(text), titleCase(text), getRandom(array), sleep(ms), skInfo(emoji, TITLE, [[LABEL, value],...]), skLine(emoji, TITLE, text), skError(text), withFooter(text), SK_HEADER, SK_FOOTER, httpGetJson(url) if you need web data (check it exists before using), normalizeJid(number). Reply with reply(...). Keep code short, safe and defensive: wrap network calls in try/catch and reply with skError(...) on failure. Never use eval, child_process, fs writes, or process.exit.'
+async function srPlanCommand(name, desc, src) {
+    const ex = srExtractCmd(src, 'fact') + '\n' + srExtractCmd(src, 'calc')
+    const sys = 'You write one new WhatsApp bot command for an existing Node.js bot. ' + SR_CODE_RULES + ' Return ONLY a JSON object: {"code": "<the full if-block>", "menu": "<3 to 5 word description>", "usage": "<example like .name something>"}. The code must start exactly with: if (cmd === \'' + name + '\') {  and end with the matching }. Indent with 4 spaces. Existing examples of the style:\n' + ex
+    const out = await srModel([{ role: 'system', content: sys }, { role: 'user', content: 'Command name: ' + name + '\nWhat it should do: ' + desc }], 2500)
+    const j = srJsonFrom(out)
+    if (typeof j.code !== 'string' || !j.code.includes("cmd === '" + name + "'")) throw new Error('The model returned code in the wrong shape.')
+    if (/\b(eval|child_process|execSync|spawn|process\.exit|writeFileSync|unlinkSync|rmSync)\b/.test(j.code)) throw new Error('The generated code used something not allowed.')
+    return j
+}
+function srCommandOps(name, j) {
+    const code = String(j.code).replace(/\s+$/, '')
+    const menu = String(j.menu || name).replace(/['`$\\{}\n]/g, '').slice(0, 40)
+    const usage = String(j.usage || ('.' + name)).replace(/['`$\\\n]/g, '').slice(0, 80)
+    return [
+        { file: 'bot.js', before: '    // ── CURSED' + ' ARTS ──', text: '    /* AI-CMD:' + name + ' */\n' + code + '\n    /* AI-CMD-END:' + name + ' */\n\n' },
+        { file: 'bot.js', after: "        `» ${p}${mono('hb" + "d')}  •  ${mono('Birthday mess" + "age')}\\n` +\n", text: "        `» ${p}${mono('" + name + "')}  •  ${mono('" + menu + "')}\\n` +\n" },
+        { file: 'bot.js', after: 'const USAGE_EXAMPLES' + ' = {\n', text: "    " + name + ": '" + usage + "',\n" }
+    ]
+}
+async function srPlanEdit(request, files) {
+    const outline = {
+        'bot.js': (files['bot.js'].match(/^(?:async )?function [A-Za-z0-9_]+|^const [A-Z_]{3,}\b|^        if \(url === '[^']+'/gm) || []).slice(0, 220).join('\n'),
+        'dashboard.html': (files['dashboard.html'].match(/id="page-[a-z]+"|^function [A-Za-z0-9_]+|^async function [A-Za-z0-9_]+/gm) || []).slice(0, 220).join('\n')
+    }
+    const a = await srModel([{ role: 'system', content: 'You help edit a Node.js WhatsApp bot (bot.js) and its dashboard (dashboard.html). Given an edit request and an outline of both files, return ONLY JSON: {"search":[{"file":"bot.js","text":"exact text to look for"}]} with up to 4 short exact strings (function names, ids, route names) whose surrounding code you need to see.' }, { role: 'user', content: 'Request: ' + request + '\n\nOUTLINE bot.js:\n' + outline['bot.js'] + '\n\nOUTLINE dashboard.html:\n' + outline['dashboard.html'] }], 700)
+    const wants = (srJsonFrom(a).search || []).slice(0, 4), ctxText = []
+    for (const w of wants) {
+        const f = files[w.file]; if (!f || !w.text) continue
+        const i = f.indexOf(String(w.text)); if (i < 0) continue
+        const s = f.lastIndexOf('\n', Math.max(0, i - 1200)), e = f.indexOf('\n', Math.min(f.length - 1, i + 2200))
+        ctxText.push('--- ' + w.file + ' (around "' + w.text + '") ---\n' + f.slice(s < 0 ? 0 : s, e < 0 ? f.length : e))
+    }
+    const sys = 'You edit a Node.js WhatsApp bot (bot.js) and its dashboard (dashboard.html). ' + SR_CODE_RULES + ' Return ONLY JSON: {"title":"short title","ops":[{"file":"bot.js","find":"EXACT existing text, unique in the file","replace":"new text"}, {"file":"dashboard.html","after":"EXACT anchor text","text":"text to insert"}]}. Use "find"+"replace" to change text, "after"+"text" or "before"+"text" to insert. Anchors must be copied exactly from the provided code and occur once. Never touch the first lines of bot.js (DNS block). Keep edits small.'
+    const out = await srModel([{ role: 'system', content: sys }, { role: 'user', content: 'Request: ' + request + '\n\nCODE:\n' + ctxText.join('\n\n') }], 3500)
+    const j = srJsonFrom(out)
+    if (!Array.isArray(j.ops) || !j.ops.length) throw new Error('The model returned no edits.')
+    return j
+}
+async function srStageAndCheck(title, ops) {
+    const original = srReadFiles()
+    if (!original['bot.js']) throw new Error('Could not read bot.js on this server.')
+    const r = srApplyOps(original, ops)
+    const v = await srValidate(r.files, r.ranges, original)
+    return { title, original, files: r.files, ops, issues: v.issues, notes: v.notes }
+}
+function srSummary(stage) {
+    const changed = Object.keys(stage.files).filter(k => stage.files[k] !== stage.original[k])
+    const lines = ['Prepared: ' + stage.title, 'Files: ' + (changed.join(', ') || 'none')]
+    for (const op of stage.ops.slice(0, 4)) lines.push('- ' + (op.find !== undefined ? 'replace' : op.after !== undefined ? 'insert after' : 'insert before') + ' in ' + op.file + ': ' + String(op.find !== undefined ? op.find : op.after !== undefined ? op.after : op.before).trim().slice(0, 50))
+    lines.push('Checks: ' + (stage.notes.concat(stage.issues.map(x => 'FAILED ' + x)).join('; ') || 'none'))
+    return lines.join('\n')
+}
+
+/* owner: wizard + edits + undo. returns { answer } or null (not handled) */
+async function srOwnerFlow(C, text, devId) {
+    const W = (global.__ownWiz = global.__ownWiz || {})
+    const st = W[devId]
+    const t = String(text || '').trim()
+    if (/^(cancel|never ?mind|stop)$/i.test(t) && st) { delete W[devId]; return { answer: 'Cancelled.' } }
+    if (/^undo( last change)?$/i.test(t)) { const r = await srUndo(true); return { answer: r.text + (r.ok ? '\nRestart or wait for the redeploy for bot.js changes to apply.' : ''), client: r.ok && r.files && r.files.includes('dashboard.html') ? { type: 'reload' } : undefined } }
+    if (st && st.step === 'name') {
+        const name = t.toLowerCase().replace(/^[.!\/]/, '')
+        if (!/^[a-z0-9]{2,20}$/.test(name)) return { answer: 'Use 2 to 20 letters or numbers only, no spaces. What should the command be called?' }
+        const src = srReadFiles()['bot.js'] || ''
+        if (src.includes("cmd === '" + name + "'")) return { answer: 'A command called ' + name + ' already exists. Pick another name.' }
+        W[devId] = { step: 'desc', name }
+        return { answer: 'Got it: ' + name + '. What should it do? Describe it or give me a prompt.' }
+    }
+    if (st && st.step === 'desc') {
+        try {
+            const j = await srPlanCommand(st.name, t, srReadFiles()['bot.js'] || '')
+            const stage = await srStageAndCheck('add command ' + st.name, srCommandOps(st.name, j))
+            if (stage.issues.length) { delete W[devId]; return { answer: 'I wrote it, but the checks failed, so nothing was changed:\n' + stage.issues.join('\n') + '\nSay "create a command" to try again with a clearer description.' } }
+            W[devId] = { step: 'approve', stage }
+            return { answer: srSummary(stage) + '\nReply yes to apply and push, or no to discard.' }
+        } catch (e) { delete W[devId]; console.log('[AI create error]:', e.message); return { answer: 'Could not build it: ' + e.message } }
+    }
+    if (st && st.step === 'approve') {
+        if (/^(yes|y|apply|confirm|do it)$/i.test(t)) {
+            const used = await srDeploysToday()
+            if (process.env.GITHUB_TOKEN && used >= SR_DEPLOY_LIMIT) return { answer: 'The assistant has already pushed ' + used + ' times today, close to your daily deploy limit. Try again tomorrow. The change is still ready; say no to discard it.' }
+            delete W[devId]
+            try {
+                const r = await srCommit(st.stage, true)
+                return { answer: 'Applied: ' + r.changed.join(', ') + '. ' + (r.push.pushed ? 'Pushed to GitHub (' + r.push.sha + '); Skyhost will redeploy.' : 'Saved on this server only (' + (r.push.reason || 'no push') + '). Restart the bot for bot.js changes.') + '\nSay "undo" to revert.', client: r.changed.includes('dashboard.html') ? { type: 'reload' } : undefined }
+            } catch (e) { return { answer: 'Applying failed: ' + e.message } }
+        }
+        if (/^(no|n|discard)$/i.test(t)) { delete W[devId]; return { answer: 'Discarded. Nothing was changed.' } }
+        return { answer: 'Reply yes to apply, or no to discard.' }
+    }
+    if (/^create (a )?(new )?command\b/i.test(t)) { W[devId] = { step: 'name' }; return { answer: 'What should the command be called?' } }
+    if (/^edit\b/i.test(t)) {
+        const request = t.replace(/^edit\s*/i, '').slice(0, 1200)
+        if (request.length < 8) return { answer: 'Tell me what to change, for example: edit the home page greeting to say Welcome back.' }
+        try {
+            const files = srReadFiles()
+            const j = await srPlanEdit(request, files)
+            const stage = await srStageAndCheck(String(j.title || 'edit').slice(0, 60), j.ops)
+            if (stage.issues.length) return { answer: 'The checks failed, so nothing was changed:\n' + stage.issues.join('\n') }
+            W[devId] = { step: 'approve', stage }
+            return { answer: srSummary(stage) + '\nReply yes to apply and push, or no to discard.' }
+        } catch (e) { console.log('[AI edit error]:', e.message); return { answer: 'Could not prepare that edit: ' + e.message } }
+    }
+    return null
+}
+
+/* ---------- the /api/ai route ---------- */
+async function srAiRoute(C) {
+    const { J, req, body, user, ck, q } = C
     global.__aiAtt = global.__aiAtt || {}
-    const aip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '')
-    const hits = global.__aiAtt[aip] = (global.__aiAtt[aip] || []).filter(x => Date.now() - x < 60000)
+    const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim()
+    C.ip = ip
+    const hits = global.__aiAtt[ip] = (global.__aiAtt[ip] || []).filter(x => Date.now() - x < 60000)
     if (hits.length >= 12) return J(429, { error: 'Too many questions at once. Wait a moment.' })
     hits.push(Date.now())
-    if (!/json/i.test(String(req.headers['content-type'] || ''))) return J(415, { error: 'Bad request.' })
+    let p = {}; try { p = JSON.parse(await body(4000)) } catch (e) {}
+    const question = String(p.question || '').slice(0, 1200)
+    if (!question.trim()) return J(400, { error: 'Ask something first.' })
+    const history = (Array.isArray(p.history) ? p.history.slice(-8) : []).filter(h => h && (h.role === 'user' || h.role === 'assistant') && h.content).map(h => ({ role: h.role, content: String(h.content).slice(0, 1500) }))
+    const kw = srOwnerKeywords(C, question)
+    if (kw) return J(200, { answer: kw.answer, mode: kw.mode, owner: !!kw.owner, secret: true }, { 'Set-Cookie': kw.cookies })
+    const st = SR_OWN.configured() ? SR_OWN.state(ck) : { on: false }
+    const owner = !!st.on
+    const refresh = owner ? { 'Set-Cookie': [SR_OWN.cookie('sr_om', SR_OWN.mk('o:' + st.id, 1), 1)] } : undefined
+    const tctx = { user, verified: C.verified, owner }
+    const key = owner ? 'o' + st.id : (user || ip)
+    const P = (global.__aiPend = global.__aiPend || {})
+    const pend = P[key]
+    if (pend && pend.exp > Date.now()) {
+        if (/^(yes|y|confirm|do it|go ahead)$/i.test(question.trim())) { delete P[key]; const r = await srRunTool(pend.tool, pend.args, tctx); return J(200, { answer: r.text, actions: r.client ? [r.client] : [], owner }, refresh) }
+        if (/^(no|n|cancel|stop)$/i.test(question.trim())) { delete P[key]; return J(200, { answer: 'Cancelled.', owner }, refresh) }
+    }
     if (!global.__GROQ__) return J(503, { error: 'The assistant is not set up yet (no Groq key).' })
-    let p = {}; try { p = JSON.parse(await body(8000)) } catch (e) {}
-    const history = (Array.isArray(p.history) ? p.history.slice(-10) : []).filter(h => h && (h.role === 'user' || h.role === 'assistant') && h.content).map(h => ({ role: h.role, content: String(h.content).slice(0, 2000) }))
-    const question = String(p.question || '').slice(0, 1500).trim()
-    if (!question) return J(400, { error: 'Ask something first.' })
-    if (ownEnabled()) { for (let i = history.length - 1; i >= 0; i--) { if (ownPhraseOk(ownNorm(history[i].content))) history.splice(i, 1) } }
+    if (owner) {
+        try { const f = await srOwnerFlow(C, question, st.id); if (f) return J(200, { answer: f.answer, actions: f.client ? [f.client] : [], owner: true }, refresh) }
+        catch (e) { console.log('[REAL AI ERROR]:', e.message); return J(502, { error: 'Owner action failed: ' + e.message }, refresh) }
+    }
     try {
-        if (ownEnabled()) {
-            const ck = ownCookies(req), norm = ownNorm(question), now = Date.now()
-            const own = ownVerify(ck.sr_o, 'o'), pend = ownVerify(ck.sr_op, 'p'), dev = ownVerify(ck.sr_od, 'd')
-            if (pend) {
-                if (OWN.lockedUntil > now) return J(200, { answer: 'Locked. Try again in ' + Math.ceil((OWN.lockedUntil - now) / 60000) + ' minute(s).', owner: 'off' }, { 'Set-Cookie': ownCookie(req, 'sr_op', '', 0) })
-                if (ownPassOk(question)) {
-                    OWN.fails = 0
-                    return J(200, { answer: 'Owner mode is on. It locks after one hour idle, or say "exit owner mode". What do you want to change?', owner: 'on' }, { 'Set-Cookie': [ownCookie(req, 'sr_op', '', 0), ownCookie(req, 'sr_o', ownSign({ t: 'o', exp: now + OWN_IDLE }), OWN_IDLE / 1000), ownCookie(req, 'sr_od', ownSign({ t: 'd', exp: now + OWN_DEVICE }), OWN_DEVICE / 1000)] })
+        const data = await groqPost('https://api.groq.com/openai/v1/chat/completions', {
+            model: 'auto', temperature: 0.3, max_tokens: owner ? 1800 : 600,
+            messages: [{ role: 'system', content: owner ? SR_OWNER_PROMPT() : SR_PUBLIC_PROMPT() }, ...history, { role: 'user', content: question }],
+            tools: owner ? SR_TOOLS_OWNER : SR_TOOLS_PUBLIC, tool_choice: 'auto'
+        }, { 'Authorization': 'Bearer ' + global.__GROQ__ }, 30000)
+        const msg = data && data.choices && data.choices[0] && data.choices[0].message || {}
+        const calls = (msg.tool_calls || []).slice(0, 3)
+        if (calls.length) {
+            const texts = [], actions = []
+            for (const c of calls) {
+                const nm = c.function && c.function.name; let args = {}
+                try { args = JSON.parse(c.function.arguments || '{}') } catch (e) {}
+                if (SR_DESTRUCTIVE[nm]) {
+                    const who = args.number ? '+' + String(args.number).replace(/[^0-9]/g, '') : 'your number'
+                    P[key] = { tool: nm, args, exp: Date.now() + 120000 }
+                    texts.push('Confirm: ' + nm.replace(/_/g, ' ') + ' for ' + who + '? Reply yes to confirm or no to cancel.')
+                    continue
                 }
-                OWN.fails++
-                if (OWN.fails >= 5) { OWN.fails = 0; OWN.lockedUntil = now + 15 * 60000; return J(200, { answer: 'Too many wrong passwords. Locked for 15 minutes.', owner: 'off' }, { 'Set-Cookie': ownCookie(req, 'sr_op', '', 0) }) }
-                return J(200, { answer: 'Wrong password.', owner: 'off' }, { 'Set-Cookie': ownCookie(req, 'sr_op', '', 0) })
+                const r = await srRunTool(nm, args, tctx)
+                texts.push(r.text); if (r.client) actions.push(r.client)
             }
-            if (ownPhraseOk(norm)) {
-                if (OWN.lockedUntil > now) return J(200, { answer: 'Locked. Try again in ' + Math.ceil((OWN.lockedUntil - now) / 60000) + ' minute(s).' })
-                return J(200, { answer: 'Enter the password.', owner: 'pending' }, { 'Set-Cookie': ownCookie(req, 'sr_op', ownSign({ t: 'p', exp: now + 120000 }), 120) })
-            }
-            if (norm === 'owner mode' && dev && !own) {
-                return J(200, { answer: 'Owner mode is on. What do you want to change?', owner: 'on' }, { 'Set-Cookie': ownCookie(req, 'sr_o', ownSign({ t: 'o', exp: now + OWN_IDLE }), OWN_IDLE / 1000) })
-            }
-            if (norm === 'forget this device' && (own || dev)) {
-                return J(200, { answer: 'This device is forgotten. You will need the phrase and password again.', owner: 'off' }, { 'Set-Cookie': [ownCookie(req, 'sr_o', '', 0), ownCookie(req, 'sr_od', '', 0)] })
-            }
-            if (own) {
-                if (norm === 'exit owner mode') return J(200, { answer: 'Owner mode is off. Staged edits are kept until you discard them.', owner: 'off' }, { 'Set-Cookie': ownCookie(req, 'sr_o', '', 0) })
-                const r = await ownerChat(question, history)
-                return J(200, { answer: r.answer, owner: 'on', chips: ownChips() }, { 'Set-Cookie': ownCookie(req, 'sr_o', ownSign({ t: 'o', exp: now + OWN_IDLE }), OWN_IDLE / 1000) })
-            }
+            return J(200, { answer: texts.join(' '), actions, owner }, refresh)
         }
-        const r = await aiNormal(question, history)
-        return J(200, r)
-    } catch (e) { console.log('[AI ERROR]:', String(e.message || e).slice(0, 200)); return J(502, { error: 'The assistant could not respond. Try again.' }) }
+        const answer = __plainText(msg.content || 'No response.').slice(0, 2500)
+        return J(200, { answer, owner }, refresh)
+    } catch (e) { console.log('[REAL AI ERROR]:', e.message); return J(502, { error: 'The assistant could not respond. Try again.' }, refresh) }
+}
+
+/* ---------- wishes + send (dashboard) ---------- */
+async function srWish(C, p) {
+    const { J, user } = C
+    if (!user) return J(401, { error: 'Log in first.' })
+    const s = sessions['sess_' + user], ctx = s && s.ctx
+    if (!ctx || !s.sock) return J(409, { error: 'Your number is not connected.' })
+    if (DEV.blocked.includes(user)) return J(403, { error: skBlocked() })
+    if (!isExemptNumber(user)) {
+        if (DEV.ownerOnly) return J(403, { error: 'Restricted right now.' })
+        if (DEV.maintenance) return J(403, { error: skMaintenance() })
+    }
+    global.__wishLast = global.__wishLast || {}
+    if (Date.now() - (global.__wishLast[user] || 0) < 8000) return J(429, { error: 'Wait a few seconds before the next wish.' })
+    const sock = s.sock
+    const senderName = String(p.from || '').trim().slice(0, 40) || null
+    const celebrant = String(p.celebrant || '').trim().slice(0, 40)
+    if (!celebrant) return J(400, { error: 'Enter the name of the person you are wishing.' })
+    const celebrantDisplay = titleCase(celebrant)
+    const custom = String(p.quote || '').trim().slice(0, 300)
+    const quote = custom || ((ctx.cfg.birthdayMsg && ctx.cfg.birthdayMsg.trim()) ? ctx.cfg.birthdayMsg.trim() : getRandom(BIRTHDAY_QUOTES))
+    const namedQuote = quote.replace('{name}', ', ' + celebrantDisplay)
+    const fromLine = senderName ? '» ' + mono('FROM') + '  •  ' + mono(titleCase(senderName)) + '\n\n' : ''
+    const stages = [
+        `${SK_HEADER}\n\n${italic(titleCase(senderName || 'The realm'))} says...`,
+        `${SK_HEADER}\n\n${italic('Happy birthday to you')} 🎈`,
+        `${SK_HEADER}\n\n${italic('Happy birthday to you')} 🎉`,
+        `${SK_HEADER}\n\n${italic('Happy birthday!')} 🎂`,
+        `${SK_HEADER}\n\n${italic('Happy birthday!!')} 🎂🎂`,
+        `${SK_HEADER}\n\n${italic('Happy birthday to you!!!')} 🎂🎂🎂`,
+        withFooter(`${SK_HEADER}\n\n🎉🎂🎈\n\n${fromLine}${italic(namedQuote)}`)
+    ]
+    const delays = [3500, 1500, 1500, 1500, 1500, 3500]
+    if (p.type === 'group') {
+        const gid = String(p.group || '')
+        if (!/@g\.us$/.test(gid)) return J(400, { error: 'Pick a group first.' })
+        let meta; try { meta = await getGroupMeta(ctx, sock, gid, true) } catch (e) { return J(404, { error: 'That group is not available to this number.' }) }
+        const part = meta.participants.find(x => x.id === String(p.member || ''))
+        const mention = part ? [part.id] : []
+        const tag = part ? '@' + (String(bestNumber(part)).replace(/[^0-9]/g, '') || String(part.id).split('@')[0]) : ''
+        global.__wishLast[user] = Date.now()
+        J(200, { ok: true, message: 'Sending to the group now.' })
+        ;(async () => {
+            try {
+                const _bd = getImg(ctx, 'birthday')
+                if (_bd) { try { await sock.sendMessage(gid, { image: _bd }) } catch (e) {} }
+                const first = await sock.sendMessage(gid, { text: stages[0] })
+                const k = first && first.key
+                if (!k) return
+                for (let i = 1; i < stages.length; i++) {
+                    await sleep(delays[i - 1])
+                    const last = i === stages.length - 1
+                    const txt = last && tag ? stages[i] + '\n\n🎂 ' + tag : stages[i]
+                    try { await sock.sendMessage(gid, last && mention.length ? { text: txt, edit: k, mentions: mention } : { text: txt, edit: k }) } catch (e) {}
+                }
+            } catch (e) { console.log('[wish group error]:', e.message) }
+        })()
+        return
+    }
+    const targetNum = String(p.number || '').replace(/[^0-9]/g, '')
+    if (targetNum.length < 7 || targetNum.length > 15) return J(400, { error: 'Enter a valid number with country code.' })
+    const toJid = normalizeJid(targetNum)
+    const probeFrom = senderName ? sansBold(senderName.toUpperCase()) : sansBold('THE REALM')
+    const probeText = withFooter(`${SK_HEADER}\n\n✧ ${sansBold('A MESSAGE FROM')} ${probeFrom}...\n\n⛩️ ${mono('ARE YOU THERE?')}`)
+    try { await sock.sendMessage(toJid, { text: probeText }) } catch (e) { return J(400, { error: 'Could not reach +' + targetNum + '. Is the number on WhatsApp?' }) }
+    global.__wishLast[user] = Date.now()
+    ctx.hbdPending[toJid] = { sender: senderName, celebrant, block: !!p.block, ts: Date.now(), session: ctx.sessionId, stages, delays }
+    setTimeout(() => { if (ctx.hbdPending[toJid]) delete ctx.hbdPending[toJid] }, 24 * 60 * 60 * 1000)
+    return J(200, { ok: true, message: 'Asked +' + targetNum + ' if they are there. The wish goes out when they reply.' })
+}
+async function srSend(C, p) {
+    const { J, user } = C
+    if (!user) return J(401, { error: 'Log in first.' })
+    const s = sessions['sess_' + user], ctx = s && s.ctx
+    if (!ctx || !s.sock) return J(409, { error: 'Your number is not connected.' })
+    if (DEV.blocked.includes(user)) return J(403, { error: skBlocked() })
+    if (!isExemptNumber(user)) {
+        if (DEV.ownerOnly) return J(403, { error: 'Restricted right now.' })
+        if (DEV.maintenance) return J(403, { error: skMaintenance() })
+    }
+    const text = String(p.text || '').trim().slice(0, 800)
+    if (!text) return J(400, { error: 'Write the message first.' })
+    global.__sendHits = global.__sendHits || {}
+    const hits = global.__sendHits[user] = (global.__sendHits[user] || []).filter(t => Date.now() - t < 3600000)
+    if (hits.length >= 10) return J(429, { error: 'Hourly limit reached (10). Try later.' })
+    if (hits.length && Date.now() - hits[hits.length - 1] < 8000) return J(429, { error: 'Wait a few seconds between messages.' })
+    let jid
+    if (p.type === 'group') { jid = String(p.group || ''); if (!/@g\.us$/.test(jid)) return J(400, { error: 'Pick a group first.' }); try { await getGroupMeta(ctx, s.sock, jid, false) } catch (e) { return J(404, { error: 'That group is not available to this number.' }) } }
+    else { const d = String(p.number || '').replace(/[^0-9]/g, ''); if (d.length < 7 || d.length > 15) return J(400, { error: 'Enter a valid number with country code.' }); jid = normalizeJid(d) }
+    try { await s.sock.sendMessage(jid, { text: withFooter(`${SK_HEADER}\n\n📢 ${mono('ANNOUNCEMENT')}\n\n${mono(text)}`) }) } catch (e) { return J(400, { error: 'Could not send. Check the number or group.' }) }
+    hits.push(Date.now())
+    return J(200, { ok: true, message: 'Sent.' })
+}
+
+/* ---------- dev session cookie (shared by every dev route) ---------- */
+function srCk(req) { const o = {}; String(req.headers.cookie || '').split(';').forEach(x => { const i = x.indexOf('='); if (i > 0) o[x.slice(0, i).trim()] = x.slice(i + 1).trim() }); return o }
+function srGenSign(v) { return crypto.createHmac('sha256', process.env.COOKIE_SECRET || process.env.DASHBOARD_PASSWORD || 'sukuna-realm').update(v).digest('hex').slice(0, 32) }
+function srGenMk(v, hrs) { const e = Date.now() + hrs * 3600000; return v + '.' + e + '.' + srGenSign(v + '.' + e) }
+function srGenRd(c) { if (!c) return null; const p = String(c).split('.'); if (p.length < 3) return null; const sg = p.pop(), e = p.pop(), v = p.join('.'); return (sg === srGenSign(v + '.' + e) && +e > Date.now()) ? v : null }
+function srSafeEq(a, b) { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y) }
+function srDevOk(req) {
+    const ck = srCk(req)
+    if (srGenRd(ck.sr_d) === 'dev') return true
+    if (SR_OWN.configured() && SR_OWN.state(ck).on) return true
+    return !!process.env.DEV_KEY && srSafeEq(req.headers['x-dev-key'] || '', process.env.DEV_KEY)
+}
+function srDevRenew(req, res) {
+    const ck = srCk(req), list = []
+    if (srGenRd(ck.sr_d) === 'dev' || (SR_OWN.configured() && SR_OWN.state(ck).on)) list.push('sr_d=' + srGenMk('dev', 1) + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=3600')
+    if (list.length) res.setHeader('Set-Cookie', list)
 }
 
 const __isLocalReq = req => /localhost|127\.0\.0\.1/.test(String(req.headers.host || '')) && !req.headers['x-forwarded-for'] && /^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(String(req.socket.remoteAddress || ''))
@@ -2905,6 +3194,23 @@ const server = http.createServer(async (req, res) => {
         const IMG = { menu: LOGO_PATH, menu2: MENU2_LOGO_PATH, ping: PING_PATH, alive: ALIVE_PATH, birthday: BIRTHDAY_PATH }
         if ((url === '/api/dev' || url === '/api/sessions') && user) req.__ok = true
         if (url === '/api/sessions' && user) req.__ok = true
+        if (url === '/api/dev-status') {
+            srDevRenew(req, res)
+            const __st = SR_OWN.configured() ? SR_OWN.state(ck) : { on: false }
+            return J(200, { unsealed: srDevOk(req), owner: !!__st.on, ownerReady: SR_OWN.configured() })
+        }
+        if (url === '/api/dev-unlock' && req.method === 'POST') {
+            const __ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim()
+            global.__devFail = global.__devFail || {}
+            const __f = global.__devFail[__ip] = (global.__devFail[__ip] || []).filter(t => Date.now() - t < 600000)
+            if (__f.length >= 8) return J(429, { error: 'Too many tries. Wait 10 minutes.' })
+            let __k = ''; try { __k = String(JSON.parse(await body(1000)).key || '') } catch (e) {}
+            const __real = process.env.DEV_KEY || ''
+            if (__isLocalReq(req) || (__real && srSafeEq(__k, __real))) return J(200, { ok: true }, { 'Set-Cookie': setc('sr_d', mk('dev', 1), 1) })
+            __f.push(Date.now())
+            return J(403, { error: __real ? 'Wrong code.' : 'Set DEV_KEY on the server to use developer tools.' })
+        }
+        if (url === '/api/dev-lock') return J(200, { ok: true }, { 'Set-Cookie': setc('sr_d', '', 0) })
         if ((url === '/' || url === '/dashboard') && req.method === 'GET' && fs.existsSync('dashboard.html')) {
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(fs.readFileSync('dashboard.html')); return
         }
@@ -3118,16 +3424,6 @@ const server = http.createServer(async (req, res) => {
                     await sock.sendMessage(gid, { text: out, mentions })
                     return J(200, { ok: true, message: 'Sent to the group.' })
                 }
-                if (act === 'send') {
-                    const text = String(p.text || '').trim().slice(0, 900)
-                    if (!text) return J(400, { error: 'Type a message first.' })
-                    global.__gaLast = global.__gaLast || {}
-                    const k2 = user + gid + 'send'
-                    if (Date.now() - (global.__gaLast[k2] || 0) < 3000) return J(429, { error: 'Wait a few seconds.' })
-                    global.__gaLast[k2] = Date.now()
-                    await sock.sendMessage(gid, { text })
-                    return J(200, { ok: true, message: 'Message sent.' })
-                }
                 if (act === 'promote' || act === 'demote' || act === 'kick') {
                     const wanted = (Array.isArray(p.targets) ? p.targets : []).map(String).slice(0, 5)
                     const ids = []
@@ -3199,131 +3495,10 @@ const server = http.createServer(async (req, res) => {
             await settingsCollection.updateOne({ _id: 'templates' }, { $set: { list } }, { upsert: true })
             return J(200, { templates: list })
         }
-        if (url === '/api/dev-unlock' && req.method === 'POST') {
-            if (!user) return J(401, { error: 'Log in first.' })
-            global.__devAtt = global.__devAtt || {}
-            const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '')
-            const hits = global.__devAtt[ip] = (global.__devAtt[ip] || []).filter(x => Date.now() - x < 600000)
-            if (hits.length >= 5) return J(429, { error: 'Too many wrong keys. Try again in 10 minutes.' })
-            let p = {}; try { p = JSON.parse(await body(1000)) } catch (e) {}
-            const real = process.env.DEV_KEY || ''
-            const local = __isLocalReq(req)
-            if (!local && !real) return J(403, { error: 'Set DEV_KEY in your environment to use developer tools.' })
-            if (!local) {
-                const h = x => crypto.createHash('sha256').update(String(x || '')).digest()
-                if (!crypto.timingSafeEqual(h(p.key), h(real))) { hits.push(Date.now()); return J(403, { error: 'Wrong developer key.' }) }
-            }
-            const token = crypto.randomBytes(24).toString('hex')
-            DEV_TOK.set(token, Date.now() + 3600000)
-            return J(200, { token, ttl: 3600000 })
-        }
-        if (url === '/api/dev-lock' && req.method === 'POST') {
-            DEV_TOK.delete(String(req.headers['x-dev-token'] || ''))
-            return J(200, { ok: true })
-        }
-        if (url === '/api/dev-status') {
-            return J(200, { unlocked: devTokOk(req) })
-        }
-        if (url === '/api/wish' && req.method === 'POST') {
-            if (!user) return J(401, { error: 'Log in first.' })
-            const s = sessions['sess_' + user], ctx = s && s.ctx
-            if (!ctx || !s.sock) return J(409, { error: 'Your number is not connected.' })
-            if (DEV.blocked.includes(user)) return J(403, { error: skBlocked() })
-            if (!isExemptNumber(user)) {
-                if (DEV.ownerOnly) return J(403, { error: 'Restricted right now.' })
-                if (DEV.maintenance) return J(403, { error: skMaintenance() })
-            }
-            global.__wishLast = global.__wishLast || {}
-            if (Date.now() - (global.__wishLast[user] || 0) < 8000) return J(429, { error: 'Wait a few seconds between wishes.' })
-            let p = {}; try { p = JSON.parse(await body(6000)) } catch (e) {}
-            const sock = s.sock
-            const senderName = String(p.from || '').trim().slice(0, 40) || null
-            const celebrant = String(p.name || '').trim().slice(0, 40) || null
-            const celebrantDisplay = celebrant ? titleCase(celebrant) : ''
-            const quote = String(p.quote || '').trim().slice(0, 400) || ((ctx.cfg.birthdayMsg && ctx.cfg.birthdayMsg.trim()) ? ctx.cfg.birthdayMsg.trim() : getRandom(BIRTHDAY_QUOTES))
-            const namedQuote = celebrantDisplay ? quote.replace('{name}', ', ' + celebrantDisplay) : quote.replace('{name}', '')
-            const fromLine = senderName ? '» ' + mono('FROM') + '  •  ' + mono(titleCase(senderName)) + '\n\n' : ''
-            const mkStages = toLine => [
-                `${SK_HEADER}\n\n${italic(titleCase(senderName || 'The realm'))} says...`,
-                `${SK_HEADER}\n\n${italic('Happy birthday to you')} 🎈`,
-                `${SK_HEADER}\n\n${italic('Happy birthday to you')} 🎉`,
-                `${SK_HEADER}\n\n${italic('Happy birthday!')} 🎂`,
-                `${SK_HEADER}\n\n${italic('Happy birthday!!')} 🎂🎂`,
-                `${SK_HEADER}\n\n${italic('Happy birthday to you!!!')} 🎂🎂🎂`,
-                withFooter(`${SK_HEADER}\n\n🎉🎂🎈\n\n${fromLine}${toLine}${italic(namedQuote)}`)
-            ]
-            const delays = [3500, 1500, 1500, 1500, 1500, 3500]
-            if (p.type === 'group') {
-                const gid = String(p.group || '')
-                if (!/@g\.us$/.test(gid)) return J(400, { error: 'Pick a group first.' })
-                try { await getGroupMeta(ctx, sock, gid, true) } catch (e) { return J(404, { error: 'That group is not available to this number.' }) }
-                const memberJid = /@(s\.whatsapp\.net|lid)$/.test(String(p.member || '')) ? String(p.member) : ''
-                const mnum = String(p.memberNumber || '').replace(/[^0-9]/g, '') || memberJid.split('@')[0]
-                const stages = mkStages(memberJid ? '» ' + mono('TO') + '  •  @' + mnum + '\n\n' : '')
-                const mentions = memberJid ? mentionJids(sock, [memberJid], [mnum]) : []
-                global.__wishLast[user] = Date.now()
-                J(200, { ok: true, message: 'The wish is playing in the group.' })
-                ;(async () => {
-                    try {
-                        const img = getImg(ctx, 'birthday')
-                        if (img) { try { await sock.sendMessage(gid, { image: img }) } catch (e) {} }
-                        const sent = await sock.sendMessage(gid, { text: stages[0] })
-                        const k = sent && sent.key
-                        if (!k) return
-                        for (let i = 1; i < stages.length; i++) {
-                            await sleep(delays[i - 1])
-                            const last = i === stages.length - 1 && mentions.length
-                            try { await sock.sendMessage(gid, last ? { text: stages[i], edit: k, mentions } : { text: stages[i], edit: k }) } catch (e) {}
-                        }
-                    } catch (e) { console.log('[WISH] group failed:', e && e.message) }
-                })()
-                return
-            }
-            if (p.type === 'private') {
-                const num = String(p.number || '').replace(/[^0-9]/g, '')
-                if (num.length < 7 || num.length > 15) return J(400, { error: 'Enter a valid number with country code.' })
-                const toJid = normalizeJid(num)
-                const probeFrom = senderName ? sansBold(senderName.toUpperCase()) : sansBold('THE REALM')
-                const probeText = withFooter(`${SK_HEADER}\n\n✧ ${sansBold('A MESSAGE FROM')} ${probeFrom}...\n\n⛩️ ${mono('ARE YOU THERE?')}`)
-                try { await sock.sendMessage(toJid, { text: probeText }) } catch (e) { return J(400, { error: 'That number is not on WhatsApp.' }) }
-                ctx.hbdPending[toJid] = { sender: senderName, celebrant, block: !!p.block, ts: Date.now(), session: ctx.sessionId, stages: mkStages(''), delays }
-                global.__wishLast[user] = Date.now()
-                setTimeout(async () => {
-                    if (!ctx.hbdPending[toJid]) return
-                    delete ctx.hbdPending[toJid]
-                    const selfJid = getBotJid(sock)
-                    if (selfJid) { try { await sock.sendMessage(selfJid, { text: skInfo('⏳', 'NO REPLY', [['TO', '+' + num], ['TIME', '24h elapsed']]) }) } catch (e) {} }
-                }, 24 * 60 * 60 * 1000)
-                return J(200, { ok: true, message: 'Sent. The wish plays when they reply.' })
-            }
-            return J(400, { error: 'Pick group or private.' })
-        }
-        if (url === '/api/broadcast' && req.method === 'POST') {
-            if (!user) return J(401, { error: 'Log in first.' })
-            const s = sessions['sess_' + user], ctx = s && s.ctx
-            if (!ctx || !s.sock) return J(409, { error: 'Your number is not connected.' })
-            if (DEV.blocked.includes(user)) return J(403, { error: skBlocked() })
-            if (!isExemptNumber(user)) {
-                if (DEV.ownerOnly) return J(403, { error: 'Restricted right now.' })
-                if (DEV.maintenance) return J(403, { error: skMaintenance() })
-            }
-            let p = {}; try { p = JSON.parse(await body(4000)) } catch (e) {}
-            if (!p.confirm) return J(400, { error: 'Confirm first.' })
-            const text = String(p.text || '').trim().slice(0, 800)
-            if (!text) return J(400, { error: 'Type a message first.' })
-            global.__bcLast = global.__bcLast || {}
-            if (Date.now() - (global.__bcLast[user] || 0) < 5 * 60 * 1000) return J(429, { error: 'Wait a few minutes between broadcasts.' })
-            let groups = []
-            try { groups = Object.keys(await s.sock.groupFetchAllParticipating()).slice(0, 40) } catch (e) { return J(502, { error: 'Could not load your groups.' }) }
-            if (!groups.length) return J(400, { error: 'This number is not in any group.' })
-            global.__bcLast[user] = Date.now()
-            J(200, { ok: true, message: 'Broadcast started for ' + groups.length + ' group(s).' })
-            ;(async () => { for (const g of groups) { try { await s.sock.sendMessage(g, { text }) } catch (e) {} await sleep(3000 + Math.floor(Math.random() * 3000)) } })()
-            return
-        }
         if (url === '/api/dev-keys') {
             if (!user) return J(401, { error: 'Log in first.' })
-            if (!__isLocalReq(req) && !devTokOk(req) && String(req.headers['x-dev-key'] || '') !== (process.env.DEV_KEY || '')) return J(403, { error: 'Wrong developer key.' })
+            if (!srDevOk(req)) return J(403, { error: 'Sealed. Tap live and enter the code.' })
+            srDevRenew(req, res)
             const NAMES = ['GROQ_API_KEY', 'TMDB_API_KEY', 'YOUTUBE_API_KEY', 'PEXELS_API_KEY']
             if (req.method === 'GET') return J(200, { keys: NAMES.map(n => ({ name: n, set: !!getKey(n), source: KEY_OVERRIDES[n] ? 'dashboard' : (process.env[n] ? 'env' : 'none') })) })
             let p = {}; try { p = JSON.parse(await body(2000)) } catch (e) {}
@@ -3341,9 +3516,9 @@ const server = http.createServer(async (req, res) => {
             const docs = await settingsCollection.find({ _id: { $regex: '^analytics:' } }).sort({ date: 1 }).limit(60).toArray().catch(() => [])
             return J(200, { history: docs.map(d => ({ date: d.date, total: d.total, active: d.active })) })
         }
-        if (url === '/api/ai' && req.method === 'POST') {
-            return aiRoute({ req, J, body, user })
-        }
+        if (url === '/api/ai' && req.method === 'POST') return srAiRoute({ req, res, J, body, user, ck, q, verified })
+        if (url === '/api/wish' && req.method === 'POST') { let p = {}; try { p = JSON.parse(await body(3000)) } catch (e) {} return srWish({ J, user }, p) }
+        if (url === '/api/send' && req.method === 'POST') { let p = {}; try { p = JSON.parse(await body(3000)) } catch (e) {} return srSend({ J, user }, p) }
         if (url === '/api/commands') {
             if (!user) return J(401, { error: 'Log in first.' })
             const s = sessions['sess_' + user]
@@ -3364,17 +3539,15 @@ const server = http.createServer(async (req, res) => {
 
         if (url === '/api/dev') {
             const J = (c, o) => { res.writeHead(c, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)) }
-            const key = process.env.DEV_KEY || ''
-            if (!key && !__isLocalReq(req)) return J(403, { error: 'Set DEV_KEY in your .env to use developer tools.' })
-            if (!__isLocalReq(req) && !devTokOk(req) && req.headers['x-dev-key'] !== key) return J(403, { error: 'Wrong developer key.' })
+            if (!srDevOk(req)) return J(403, { error: 'Sealed. Tap live and enter the code.' })
+            srDevRenew(req, res)
             if (req.method === 'GET') {
                 const dg = x => String(x || '').replace(/[^0-9]/g, '')
                 const users = Object.values(sessions).map(s => ({ number: s.number, status: s.status, connectedAt: s.connectedAt, blocked: DEV.blocked.includes(dg(s.number)) }))
                 for (const b of DEV.blocked) if (!users.find(u => dg(u.number) === b)) users.push({ number: b, status: 'none', blocked: true })
                 return J(200, { images: devImages(), users, disabled: DEV.disabled, maintenance: DEV.maintenance, ownerOnly: DEV.ownerOnly, maxSlots: DEV.maxSlots, logs: LOG_BUF.slice(-120),
                     usage: CMD_USAGE.counts, recentCommands: CMD_USAGE.recent.slice(0, 40), media: MEDIA_LOG.slice(0, 40),
-                    node: process.version, platform: process.platform + '/' + process.arch, pid: process.pid, mem: Math.round(process.memoryUsage().rss / 1048576), uptime: formatUptime(process.uptime()),
-                    host: hostMemory(), blockedList: devBlockedList(), blockHistory: DEV.blockLog.filter(e => e.unblockedAt).slice(-50).reverse() })
+                    node: process.version, platform: process.platform + '/' + process.arch, pid: process.pid, mem: Math.round(process.memoryUsage().rss / 1048576), host: srHostMem(), blocked: srBlockedList(), uptime: formatUptime(process.uptime()) })
             }
             let body = ''
             req.on('data', c => body += c)
@@ -3387,9 +3560,9 @@ const server = http.createServer(async (req, res) => {
                         try { fs.rmSync(path.join(SESSION_DIR, id), { recursive: true, force: true }) } catch (e) {}
                         await deleteSessionFromMongo(id)
                     }
-                    if (p.action === 'block' && n) { if (!DEV.blocked.includes(n)) DEV.blocked.push(n); devLogBlock(n, 'blocked') }
-                    else if (p.action === 'unblock' && n) { DEV.blocked = DEV.blocked.filter(x => x !== n); devLogUnblock(n) }
-                    else if (p.action === 'kill' && n) { if (!DEV.blocked.includes(n)) DEV.blocked.push(n); devLogBlock(n, 'killed'); saveDev(); await kill() }
+                    if (p.action === 'block' && n) { srBlock(n, 'block') }
+                    else if (p.action === 'unblock' && n) srUnblock(n)
+                    else if (p.action === 'kill' && n) { srBlock(n, 'kill'); await kill() }
                     else if (p.action === 'disconnect' && n) await kill()
                     else if (p.action === 'maintenance') DEV.maintenance = !!p.value
                     else if (p.action === 'ownerOnly') DEV.ownerOnly = !!p.value
@@ -3415,9 +3588,9 @@ const server = http.createServer(async (req, res) => {
                     }
                     else if (p.action === 'imgdel' && IMG_KINDS.includes(p.kind)) { await delImg(n || 'default', p.kind); return J(200, { ok: true }) }
                     else if (p.action === 'resetusage') { CMD_USAGE.counts = {}; CMD_USAGE.recent = []; return J(200, { ok: true }) }
-                    else if (p.action === 'freemem') { return J(200, Object.assign({ ok: true }, freeMemory(), { host: hostMemory() })) }
+                    else if (p.action === 'freemem') { return J(200, Object.assign({ ok: true }, freeMemory())) }
                     else if (p.action === 'restart') { J(200, { ok: true }); setTimeout(() => process.exit(0), 600); return }
-                    saveDev(); J(200, { ok: true })
+                    saveDev(); J(200, { ok: true, blocked: srBlockedList() })
                 } catch (e) { J(500, { error: String(e.message || e) }) }
             })
             return
@@ -4607,7 +4780,6 @@ async function restoreSessions() {
     await loadMenu2LogoFromMongo()
     await restoreImgs()
     await loadKeyOverrides()
-    await loadDevFromMongo()
 
     let ids = []
     if (connected) {
@@ -7842,24 +8014,22 @@ const USAGE_EXAMPLES = {
 
 function freeMemory() {
     const before = Math.round(process.memoryUsage().rss / 1048576)
+    const hostBefore = srHostMem()
     let gcRan = false
-    try { if (!global.gc) { require('v8').setFlagsFromString('--expose-gc'); global.gc = require('vm').runInNewContext('gc') } } catch (e) {}
-    try { for (const s of Object.values(sessions)) { if (s && s.ctx && s.ctx.metaCache) s.ctx.metaCache = {} } } catch (e) {}
-    try { dohCache.clear() } catch (e) {}
+    try {
+        if (!global.gc) { try { require('v8').setFlagsFromString('--expose-gc'); global.gc = require('vm').runInNewContext('gc') } catch (e) {} }
+        if (global.gc) { global.gc(); global.gc(); gcRan = true }
+    } catch (e) {}
     let filesRemoved = 0
-    for (const dir of [...new Set(['/tmp', os.tmpdir()])]) {
-        try {
-            for (const f of fs.readdirSync(dir)) {
-                if (/^(song|video|tt|yt|sticker|toimg)_.*\.(mp3|mp4|webm|m4a|opus|ogg|webp|png|jpg)$/i.test(f)) {
-                    try { fs.unlinkSync(path.join(dir, f)); filesRemoved++ } catch (e) {}
-                }
-            }
-        } catch (e) {}
+    for (const dir of new Set(['/tmp', os.tmpdir()])) {
+        try { for (const f of fs.readdirSync(dir)) { if (/^(song|video|tt|yt)_.*\.(mp3|mp4|webm|m4a|opus|ogg)$/i.test(f)) { try { fs.unlinkSync(path.join(dir, f)); filesRemoved++ } catch (e) {} } } } catch (e) {}
     }
-    CMD_USAGE.recent = CMD_USAGE.recent.slice(0, 40)
-    try { if (global.gc) { global.gc(); gcRan = true } } catch (e) {}
+    try { CMD_USAGE.recent = CMD_USAGE.recent.slice(0, 40) } catch (e) {}
+    try { if (LOG_BUF.length > 60) LOG_BUF.splice(0, LOG_BUF.length - 60) } catch (e) {}
+    try { global.__aiAtt = {}; global.__gaLast = {} } catch (e) {}
+    try { for (const k of Object.keys(sessions)) { const c = sessions[k] && sessions[k].ctx; if (c && c.metaCache) { const ks = Object.keys(c.metaCache); if (ks.length > 40) ks.slice(0, ks.length - 40).forEach(x => delete c.metaCache[x]) } } } catch (e) {}
     const after = Math.round(process.memoryUsage().rss / 1048576)
-    return { before, after, freed: Math.max(0, before - after), gcRan, filesRemoved }
+    return { before, after, freed: Math.max(0, before - after), gcRan, filesRemoved, host: srHostMem(), hostBeforeMB: hostBefore.usedMB }
 }
 
 function renderMenu(ctx, sock) {

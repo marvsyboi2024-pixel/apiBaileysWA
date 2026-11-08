@@ -196,3 +196,6 @@ bot.old.js
 bot.before-*.js
 patch*.py
 *.log
+genowner.js
+bot.other.js
+dashboard.other.html
