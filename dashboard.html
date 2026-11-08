@@ -2194,7 +2194,7 @@ $('acRun').addEventListener('click',async function(){
 
 /* ===== AI assistant ===== */
 var hist=[],busy=false,greeted=false,pwMode=false;
-var GREET="Hi, welcome to Realm Assistant. How can I help you today?";
+var GREET="Welcome! Ask me anything.";
 function clean(s){return String(s||'').replace(/```[a-zA-Z]*\n?([\s\S]*?)```/g,'$1').replace(/`([^`\n]+)`/g,'$1').replace(/\*\*([^*\n]+)\*\*/g,'$1').replace(/__([^_\n]+)__/g,'$1').replace(/(^|[\s(])\*(?=\S)([^*\n]*\S)\*(?=[\s).,!?:;]|$)/g,'$1$2').replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm,'').replace(/^[ \t]*[-*][ \t]+/gm,'\u2022 ').replace(/\n{3,}/g,'\n\n').trim()}
 function fit(){
     var p=document.querySelector('#aiSheet .ai-panel'),v=window.visualViewport;if(!p)return;
