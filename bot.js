@@ -2571,8 +2571,8 @@ function srOwnerKeywords(C, text) {
 }
 
 /* ---------- AI knowledge helpers ---------- */
-const SR_THEMES = ['Obsidian Gold', 'Midnight Sapphire', 'Royal Amethyst', 'Emerald Noir', 'Burgundy & Gold', 'Rose Gold Dusk', 'Arctic Aurora', 'Carbon Copper', 'Onyx Platinum', 'Deep Ocean Teal', 'Nebula Violet', 'Mocha Bronze', 'Sunset Amber', 'Forest Moss', 'Sakura Twilight', 'Graphite Silver', 'Champagne Ivory', 'Pearl Blush']
-const SR_TCOLORS = ['Theme default', 'Ivory Cream', 'Pure White', 'Champagne Gold', 'Rose Gold', 'Mint', 'Sky Ice', 'Lavender', 'Peach', 'Silver', 'Amber']
+const SR_THEMES = ["Royal Obsidian", "Midnight Emperor", "Sukuna Bloodline", "Shadow Monarch", "Cyber Dominion", "Emerald Executive", "Aurora Luxe", "Sapphire Elite", "Neon Overdrive", "Omega Dominion", "Crimson Eclipse", "Frosted Majesty", "Inferno King", "Mystic Void", "Dreamer's Realm", "Toxic Aura", "Galaxy King", "Royal Nebula", "Abyss Walker", "Divine Chaos", "Dragon's Breath", "Phantom Frost", "Blood Moon", "Celestial Sage", "Thunder Lord", "Urban Mystic", "Infinity Edge", "Void Emperor", "Flame Sovereign", "Zenith Force"]
+const SR_TCOLORS = ["Theme default", "Ivory Cream", "Pure White", "Champagne Gold", "Rose Gold", "Mint", "Sky Ice", "Lavender", "Peach", "Silver", "Amber", "Royal Gold", "Ocean Blue", "Crimson Flame", "Purple Aura", "Sunset Glow", "Emerald Shine", "Ice Crystal", "Rose Magic", "Galaxy", "Cyber Neon", "Silver Frost", "Toxic Glow", "Royal Sunset", "Blood Moon", "Divine Light"]
 const SR_PAGES = ['home', 'connect', 'sessions', 'commands', 'settings', 'protection', 'logs', 'media', 'apikeys', 'analytics', 'templates', 'themes', 'wishes', 'owner']
 function srPickName(list, q) {
     const n = String(q || '').toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -2585,25 +2585,27 @@ function srCatalogText() {
     } catch (e) { return '' }
 }
 const SR_PUBLIC_PROMPT = () =>
-    'You are the Realm Assistant inside the SUKUNA REALM WhatsApp bot dashboard. You ONLY help with this bot and this dashboard: what commands do, how to use settings, how to connect a number, themes, groups, the Wishes page, and fixing problems with them. '
-    + 'Be precise and short: usually 2 to 5 sentences, no filler, no greetings unless greeted. Plain text only: no markdown, no asterisks, no backticks, no headings. For steps, write lines like 1) 2) 3). '
-    + 'Do NOT write code and do NOT explain how to build WhatsApp bots or anything unrelated; for that, say in one sentence that you can only help with this bot and dashboard. '
+    'You are the Realm Assistant of the SUKUNA REALM WhatsApp bot dashboard: a precise, composed and elegant concierge that helps ONLY with this bot and this dashboard (commands, settings, connecting a number, themes, groups, the Wishes page and fixing problems with them). '
+    + 'Style: lead with the answer in the first sentence, then add only what is needed, usually 2 to 6 short lines. Refined plain language; no filler, no apologies, no emojis, no greetings unless greeted. Plain text only: no markdown, no asterisks, no backticks, no headings. For steps write one per line as 1) 2) 3). '
+    + 'Agentic behaviour: when the request is clear and a tool can do it, call the tool immediately instead of explaining how (several tools in one turn if several things are asked), then confirm in one line what changed and offer the single most useful next step. If the request is ambiguous, ask exactly one short question. Harmless actions (theme, text colour, mode, open a page) need no permission; risky ones are confirmed by the system. '
+    + 'Do NOT write code and do NOT explain how to build WhatsApp bots or anything unrelated; say in one sentence that you only help with this bot and dashboard. '
     + 'The dashboard menu has ONLY these pages: Home, Connect, Sessions, Commands, Settings, Groups, Logs, Media, API Keys, Analytics, Templates, Themes, Wishes, Contact owner. Never invent buttons, tabs or settings outside that list. '
+    + 'The Themes page has a separate Light and Dark switch, 30 gradient themes and text colours (solid and gradient, used in dark mode; light mode always uses black text). '
     + 'If you are not sure about a command detail, say so plainly instead of guessing. '
     + 'You can NOT turn owner mode or any mode on or off, and you must never say that you did. Never claim an action happened unless a tool result says so. '
-    + 'You can act on the dashboard when the user explicitly asks (change theme, text colour, light or dark mode, open a page, connect or disconnect their number, change a setting): use the tools for that. Never use a tool unless the user clearly asked. '
     + 'Commands of this bot:\n' + srCatalogText()
 const SR_OWNER_PROMPT = () =>
     'You are the Realm Assistant in OWNER MODE for the SUKUNA REALM WhatsApp bot (Node.js, Baileys, one bot.js file plus dashboard.html). The person talking to you is the verified owner. '
-    + 'Answer precisely. Plain text only in chat, no markdown. You may write code snippets when asked. '
-    + 'You can NOT turn owner mode on or off, and you must never say that you did: the owner does that by typing "owner mode" or "exit owner mode". Never claim an action happened unless a tool result says so. '
+    + 'Style: precise, professional and elegant. Lead with the answer, then only what is needed. Plain text in chat, no markdown. You may write code snippets when asked. '
+    + 'Agentic behaviour: when the request is clear and a tool can do it, call the tool immediately, then confirm in one line what changed and offer the single most useful next step. If the request is ambiguous, ask exactly one short question. '
+    + 'You can NOT turn owner mode or any mode on or off, and you must never say that you did: the owner does that by typing "owner mode" or "exit owner mode". Never claim an action happened unless a tool result says so. '
     + 'You can use tools for dashboard actions and owner actions (block, unblock, kill session, maintenance, owner-only, free memory) but ONLY when the owner clearly asks. '
     + 'If the owner wants a new command, tell them to say: create a command. If they want to change bot.js or the dashboard, tell them to say what to change, starting with: edit. '
     + 'Commands of this bot:\n' + srCatalogText()
 
 const SR_TOOLS_PUBLIC = [
     { type: 'function', function: { name: 'set_theme', description: 'Change the dashboard colour theme.', parameters: { type: 'object', properties: { name: { type: 'string', enum: SR_THEMES } }, required: ['name'] } } },
-    { type: 'function', function: { name: 'set_text_color', description: 'Change the dashboard text colour.', parameters: { type: 'object', properties: { name: { type: 'string', enum: SR_TCOLORS } }, required: ['name'] } } },
+    { type: 'function', function: { name: 'set_text_color', description: 'Change the dashboard text colour (solid or gradient). It applies in dark mode; light mode always uses black text.', parameters: { type: 'object', properties: { name: { type: 'string', enum: SR_TCOLORS } }, required: ['name'] } } },
     { type: 'function', function: { name: 'set_mode', description: 'Switch the dashboard between light and dark mode.', parameters: { type: 'object', properties: { mode: { type: 'string', enum: ['light', 'dark'] } }, required: ['mode'] } } },
     { type: 'function', function: { name: 'open_page', description: 'Open a dashboard page.', parameters: { type: 'object', properties: { page: { type: 'string', enum: SR_PAGES } }, required: ['page'] } } },
     { type: 'function', function: { name: 'connect_number', description: 'Start connecting a WhatsApp number (digits with country code).', parameters: { type: 'object', properties: { number: { type: 'string' } }, required: ['number'] } } },
@@ -2898,9 +2900,120 @@ function srJsonFrom(text) {
     if (a < 0 || b < a) throw new Error('The model did not return JSON.')
     return JSON.parse(t.slice(a, b + 1))
 }
+/* ===== SR MULTI-AI: parallel race of two providers, automatic replacement, merged answer ===== */
+const SR_AI = [
+    { id: 'groq', rank: 1, tools: true, key: () => global.__GROQ__, url: () => 'https://api.groq.com/openai/v1/chat/completions' },
+    { id: 'gemini', rank: 2, tools: true, key: () => getKey('GEMINI_API_KEY'), url: () => 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', models: ['gemini-2.5-flash', 'gemini-2.0-flash'] },
+    { id: 'cerebras', rank: 3, tools: true, key: () => getKey('CEREBRAS_API_KEY'), url: () => 'https://api.cerebras.ai/v1/chat/completions', models: ['gpt-oss-120b', 'llama-3.3-70b', 'llama3.1-8b'] },
+    { id: 'mistral', rank: 4, tools: true, key: () => getKey('MISTRAL_API_KEY'), url: () => 'https://api.mistral.ai/v1/chat/completions', models: ['mistral-large-latest', 'mistral-small-latest'] },
+    { id: 'openrouter', rank: 5, tools: true, key: () => getKey('OPENROUTER_API_KEY'), url: () => 'https://openrouter.ai/api/v1/chat/completions', headers: { 'HTTP-Referer': 'https://apibaileyswa.skyhost.tech', 'X-Title': 'Sukuna Realm' }, models: ['meta-llama/llama-3.3-70b-instruct:free', 'openai/gpt-oss-120b:free', 'google/gemma-3-27b-it:free'] },
+    { id: 'nvidia', rank: 6, tools: false, key: () => getKey('NVIDIA_API_KEY'), url: () => 'https://integrate.api.nvidia.com/v1/chat/completions', models: ['meta/llama-3.3-70b-instruct', 'meta/llama-3.1-70b-instruct'] },
+    { id: 'cloudflare', rank: 7, tools: false, key: () => (getKey('CLOUDFLARE_API_TOKEN') && getKey('CLOUDFLARE_ACCOUNT_ID')) ? getKey('CLOUDFLARE_API_TOKEN') : '', url: () => 'https://api.cloudflare.com/client/v4/accounts/' + encodeURIComponent(getKey('CLOUDFLARE_ACCOUNT_ID')) + '/ai/v1/chat/completions', models: ['@cf/meta/llama-3.3-70b-instruct-fp8-fast', '@cf/openai/gpt-oss-120b'] },
+    { id: 'huggingface', rank: 8, tools: false, key: () => getKey('HF_TOKEN'), url: () => 'https://router.huggingface.co/v1/chat/completions', models: ['meta-llama/Llama-3.3-70B-Instruct', 'Qwen/Qwen2.5-72B-Instruct'] }
+]
+function srAvail(needTools) {
+    const st = global.__srAiState = global.__srAiState || {}
+    const has = SR_AI.filter(p => { try { return !!p.key() } catch (e) { return false } })
+    let ok = has.filter(p => !(st[p.id] && st[p.id].until > Date.now()))
+    if (!ok.length) ok = has
+    ok = ok.slice().sort((a, b) => a.rank - b.rank)
+    if (needTools) ok = ok.filter(p => p.tools).concat(ok.filter(p => !p.tools))
+    return ok
+}
+function srMark(p, e, good) {
+    const st = global.__srAiState = global.__srAiState || {}
+    const s = st[p.id] = st[p.id] || { until: 0 }
+    if (good) { s.until = 0; return }
+    const m = String(e && e.message || e)
+    let ms = 20000
+    if (/HTTP (401|403)/.test(m)) ms = 600000
+    else if (/HTTP 429/.test(m)) ms = 60000
+    else if (/HTTP 5\d\d|timeout/i.test(m)) ms = 30000
+    s.until = Date.now() + ms
+    console.log('[AI] ' + p.id + ' failed, skipped for ' + Math.round(ms / 1000) + 's: ' + m.slice(0, 140))
+}
+async function srCall(p, o) {
+    const key = String(p.key() || '')
+    const headers = Object.assign({ 'Authorization': 'Bearer ' + key }, p.headers || {})
+    const body = { temperature: o.temperature == null ? 0.3 : o.temperature, max_tokens: o.maxTokens || 1200, messages: o.messages }
+    if (o.tools && p.tools) { body.tools = o.tools; body.tool_choice = 'auto' }
+    const timeout = o.timeout || 28000
+    let out
+    if (p.id === 'groq') out = await groqPost(p.url(), Object.assign({ model: 'auto' }, body), headers, timeout)
+    else {
+        const forced = getKey(p.id.toUpperCase() + '_MODEL')
+        const list = (forced ? [forced] : []).concat(p.models || []).slice(0, 3)
+        let last
+        for (const m of list) {
+            try { out = await httpPostJson(p.url(), Object.assign({}, body, { model: m }), headers, timeout); last = null; break }
+            catch (e) { last = e; if (!/HTTP (400|404|422)/.test(String(e.message))) break }
+        }
+        if (!out) throw last || new Error('no model')
+    }
+    const msg = out && out.choices && out.choices[0] && out.choices[0].message
+    let content = msg ? String(msg.content || '') : String(out && out.result && out.result.response || '')
+    content = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
+    const calls = msg && Array.isArray(msg.tool_calls) ? msg.tool_calls : []
+    if (!content && !calls.length) throw new Error('empty reply')
+    return { content, tool_calls: calls }
+}
+function srRace(o, want, budget) {
+    const order = srAvail(!!o.tools)
+    return new Promise(resolve => {
+        const got = []
+        let idx = 0, active = 0, done = false, grace = null
+        const timer = setTimeout(end, budget || 32000)
+        function end() { if (done) return; done = true; clearTimeout(timer); clearTimeout(grace); resolve(got) }
+        function fill() {
+            while (!done && active + got.length < want && idx < order.length) {
+                const p = order[idx++]
+                active++
+                srCall(p, o)
+                    .then(r => { srMark(p, null, true); got.push({ id: p.id, msg: r }); if (got.length >= want) end(); else if (!grace) grace = setTimeout(end, 5000) })
+                    .catch(e => srMark(p, e))
+                    .finally(() => { active--; if (!done) { fill(); if (active === 0 && (idx >= order.length || got.length >= want)) end() } })
+            }
+            if (!done && active === 0 && idx >= order.length) end()
+        }
+        fill()
+    })
+}
+async function srSeq(o) {
+    let last
+    for (const p of srAvail(!!o.tools)) {
+        try { const r = await srCall(p, o); srMark(p, null, true); return r }
+        catch (e) { srMark(p, e); last = e }
+    }
+    throw last || new Error('No AI key is set. Add one in API Keys.')
+}
+function srBestText(list) {
+    const score = t => Math.min(t.length, 2200) - (/^(i can(no|')t|i am sorry|sorry|as an ai)/i.test(t.trim()) ? 1500 : 0)
+    return list.slice().sort((a, b) => score(b) - score(a))[0]
+}
+async function srMerge(o, a, b) {
+    const q = o.messages.slice().reverse().find(m => m.role === 'user')
+    const sys = 'You are the final editor of the Realm Assistant. Two drafts answer the same question. Write ONE final answer that keeps the strongest, accurate and most useful points of both, removes repetition, drops any point the drafts contradict each other on, and keeps a precise, premium and elegant tone. Plain text only: no markdown, no asterisks. Never mention drafts, editors or merging. Never claim an action happened. Output only the final answer.'
+    const user = 'Question:\n' + String(q && q.content || '').slice(0, 4000) + '\n\nDraft A:\n' + a + '\n\nDraft B:\n' + b
+    const r = await srSeq({ messages: [{ role: 'system', content: sys }, { role: 'user', content: user }], maxTokens: o.maxTokens || 1200, temperature: 0.2, timeout: 18000 })
+    return r.content
+}
+async function srAsk(o) {
+    const got = await srRace(o, 2, 32000)
+    if (!got.length) throw new Error('All AI providers failed')
+    const act = got.find(g => g.msg.tool_calls.length)
+    if (act) return act.msg
+    const texts = got.map(g => g.msg.content).filter(Boolean)
+    if (texts.length < 2 || texts[0].length < 160 || texts[1].length < 160) return { content: srBestText(texts), tool_calls: [] }
+    try {
+        const merged = await srMerge(o, texts[0], texts[1])
+        const longest = Math.max(texts[0].length, texts[1].length)
+        if (merged && merged.length > Math.min(120, longest * 0.35)) return { content: merged, tool_calls: [] }
+    } catch (e) { console.log('[AI] merge failed: ' + String(e.message).slice(0, 120)) }
+    return { content: srBestText(texts), tool_calls: [] }
+}
 async function srModel(messages, maxTokens) {
-    const data = await groqPost('https://api.groq.com/openai/v1/chat/completions', { model: 'auto', temperature: 0.2, max_tokens: maxTokens || 3000, messages }, { 'Authorization': 'Bearer ' + global.__GROQ__ }, 60000)
-    return String(data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content || '')
+    const r = await srSeq({ messages, maxTokens: maxTokens || 3000, temperature: 0.2, timeout: 60000 })
+    return String(r.content || '')
 }
 const SR_CODE_RULES = 'Rules for code in this bot: it is Node.js CommonJS (no import). Inside handleCommand these variables exist: sock, ctx, msg, content, from, isGroup, sender, senderNumber, owner, cmd, args (array of words), prefix, reply(text, mentions), needOwner(), needManage(), needGroup(). Helpers: mono(text), italic(text), titleCase(text), getRandom(array), sleep(ms), skInfo(emoji, TITLE, [[LABEL, value],...]), skLine(emoji, TITLE, text), skError(text), withFooter(text), SK_HEADER, SK_FOOTER, httpGetJson(url) if you need web data (check it exists before using), normalizeJid(number). Reply with reply(...). Keep code short, safe and defensive: wrap network calls in try/catch and reply with skError(...) on failure. Never use eval, child_process, fs writes, or process.exit.'
 async function srPlanCommand(name, desc, src) {
@@ -3028,10 +3141,10 @@ async function srAiRoute(C) {
     const hits = global.__aiAtt[ip] = (global.__aiAtt[ip] || []).filter(x => Date.now() - x < 60000)
     if (hits.length >= 12) return J(429, { error: 'Too many questions at once. Wait a moment.' })
     hits.push(Date.now())
-    let p = {}; try { p = JSON.parse(await body(4000)) } catch (e) {}
-    const question = String(p.question || '').slice(0, 1200)
+    let p = {}; try { p = JSON.parse(await body(120000)) } catch (e) {}
+    const question = String(p.question || '').slice(0, 20000)
     if (!question.trim()) return J(400, { error: 'Ask something first.' })
-    const history = (Array.isArray(p.history) ? p.history.slice(-8) : []).filter(h => h && (h.role === 'user' || h.role === 'assistant') && h.content).map(h => ({ role: h.role, content: String(h.content).slice(0, 1500) }))
+    const history = (Array.isArray(p.history) ? p.history.slice(-8) : []).filter(h => h && (h.role === 'user' || h.role === 'assistant') && h.content).map(h => ({ role: h.role, content: String(h.content).slice(0, 3000) }))
     const kw = srOwnerKeywords(C, question)
     if (kw) return J(200, { answer: kw.answer, mode: kw.mode, owner: !!kw.owner, secret: true }, { 'Set-Cookie': kw.cookies })
     const st = SR_OWN.configured() ? SR_OWN.state(ck) : { on: false }
@@ -3045,18 +3158,16 @@ async function srAiRoute(C) {
         if (/^(yes|y|confirm|do it|go ahead)$/i.test(question.trim())) { delete P[key]; const r = await srRunTool(pend.tool, pend.args, tctx); return J(200, { answer: r.text, actions: r.client ? [r.client] : [], owner }, refresh) }
         if (/^(no|n|cancel|stop)$/i.test(question.trim())) { delete P[key]; return J(200, { answer: 'Cancelled.', owner }, refresh) }
     }
-    if (!global.__GROQ__) return J(503, { error: 'The assistant is not set up yet (no Groq key).' })
+    if (!srAvail().length) return J(503, { error: 'The assistant is not set up yet (no AI key added).' })
     if (owner) {
         try { const f = await srOwnerFlow(C, question, st.id); if (f) return J(200, { answer: f.answer, actions: f.client ? [f.client] : [], owner: true }, refresh) }
         catch (e) { console.log('[REAL AI ERROR]:', e.message); return J(502, { error: 'Owner action failed: ' + e.message }, refresh) }
     }
     try {
-        const data = await groqPost('https://api.groq.com/openai/v1/chat/completions', {
-            model: 'auto', temperature: 0.3, max_tokens: owner ? 1800 : 600,
+        const msg = await srAsk({
             messages: [{ role: 'system', content: owner ? SR_OWNER_PROMPT() : SR_PUBLIC_PROMPT() }, ...history, { role: 'user', content: question }],
-            tools: owner ? SR_TOOLS_OWNER : SR_TOOLS_PUBLIC, tool_choice: 'auto'
-        }, { 'Authorization': 'Bearer ' + global.__GROQ__ }, 30000)
-        const msg = data && data.choices && data.choices[0] && data.choices[0].message || {}
+            tools: owner ? SR_TOOLS_OWNER : SR_TOOLS_PUBLIC, temperature: 0.3, maxTokens: owner ? 2500 : 1100, timeout: 28000
+        })
         const calls = (msg.tool_calls || []).slice(0, 3)
         if (calls.length) {
             const texts = [], actions = []
@@ -3074,7 +3185,7 @@ async function srAiRoute(C) {
             }
             return J(200, { answer: texts.join(' '), actions, owner }, refresh)
         }
-        const answer = __plainText(msg.content || 'No response.').slice(0, 2500)
+        const answer = __plainText(msg.content || 'No response.').slice(0, 8000)
         return J(200, { answer, owner }, refresh)
     } catch (e) { console.log('[REAL AI ERROR]:', e.message); return J(502, { error: 'The assistant could not respond. Try again.' }, refresh) }
 }
@@ -3518,7 +3629,7 @@ const server = http.createServer(async (req, res) => {
             if (!user) return J(401, { error: 'Log in first.' })
             if (!srDevOk(req)) return J(403, { error: 'Sealed. Tap live and enter the code.' })
             srDevRenew(req, res)
-            const NAMES = ['GROQ_API_KEY', 'TMDB_API_KEY', 'YOUTUBE_API_KEY', 'PEXELS_API_KEY']
+            const NAMES = ['GROQ_API_KEY', 'CEREBRAS_API_KEY', 'OPENROUTER_API_KEY', 'NVIDIA_API_KEY', 'MISTRAL_API_KEY', 'HF_TOKEN', 'GEMINI_API_KEY', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID', 'TMDB_API_KEY', 'YOUTUBE_API_KEY', 'PEXELS_API_KEY']
             if (req.method === 'GET') return J(200, { keys: NAMES.map(n => ({ name: n, set: !!getKey(n), source: KEY_OVERRIDES[n] ? 'dashboard' : (process.env[n] ? 'env' : 'none') })) })
             let p = {}; try { p = JSON.parse(await body(2000)) } catch (e) {}
             if (!NAMES.includes(p.name)) return J(400, { error: 'Unknown key.' })
@@ -3595,7 +3706,7 @@ const server = http.createServer(async (req, res) => {
                     else if (p.action === 'check') {
                         const run = (c, a) => new Promise(r => require('child_process').execFile(c, a, { timeout: 8000 }, e => r(!e)))
                         const out = { ffmpeg: await run('ffmpeg', ['-version']), 'yt-dlp': await run('yt-dlp', ['--version']), dwebp: await run('dwebp', ['-version']), database: !!settingsCollection }
-                        for (const k of ['GROQ_API_KEY', 'TMDB_API_KEY', 'YOUTUBE_API_KEY', 'PEXELS_API_KEY', 'DASHBOARD_PASSWORD', 'DEV_KEY', 'MONGODB_URI', 'TELEGRAM_BOT_TOKEN', 'YT_PROXY', 'YT_COOKIES_B64']) out[k] = !!process.env[k]
+                        for (const k of ['GROQ_API_KEY', 'CEREBRAS_API_KEY', 'OPENROUTER_API_KEY', 'NVIDIA_API_KEY', 'MISTRAL_API_KEY', 'HF_TOKEN', 'GEMINI_API_KEY', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID', 'TMDB_API_KEY', 'YOUTUBE_API_KEY', 'PEXELS_API_KEY', 'DASHBOARD_PASSWORD', 'DEV_KEY', 'MONGODB_URI', 'TELEGRAM_BOT_TOKEN', 'YT_PROXY', 'YT_COOKIES_B64']) out[k] = !!process.env[k]
                         return J(200, { ok: true, check: out })
                     }
                     else if (p.action === 'imgset' && IMG_KINDS.includes(p.kind)) {

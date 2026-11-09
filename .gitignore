@@ -199,3 +199,5 @@ patch*.py
 genowner.js
 bot.other.js
 dashboard.other.html
+bot.before-*.js
+dashboard.before-*.html
