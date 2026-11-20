@@ -141,7 +141,7 @@ const ASSISTANT_NUMBER = '2348139761928'
 function isExemptNumber(n) { n = String(n || '').replace(/[^0-9]/g, ''); return n === OWNER_NUMBER || n === ASSISTANT_NUMBER }
 const DEV_FILE = 'dev_state.json'
 try { Object.assign(DEV, JSON.parse(fs.readFileSync(DEV_FILE, 'utf-8'))) } catch (e) {}
-function saveDev() { try { fs.writeFileSync(DEV_FILE, JSON.stringify(DEV)) } catch (e) {}; try { srSaveDevMongo() } catch (e) {} }
+function saveDev() { DEV.rev = Date.now(); DEV.pending = true; try { fs.writeFileSync(DEV_FILE, JSON.stringify(DEV)) } catch (e) {}; try { srSaveDevMongo() } catch (e) {} }
 const reconnectState = {}
 const reconnectCooldown = {}
 
@@ -2489,24 +2489,86 @@ function srInfoFromLog(log) {
     return o
 }
 { const m = srInfoFromLog(DEV.blockLog); for (const k of Object.keys(m)) if (!DEV.blockedInfo[k]) DEV.blockedInfo[k] = m[k] }
-function srSaveDevMongo() {
+/* ===== SR DEV STATE v2: the database is the single source of truth, nothing gets brought back ===== */
+const __devOps = []
+let __devPump = false, __devRetry = 0, __devFull = false, __devQ = Promise.resolve()
+const srSleep = ms => new Promise(r => setTimeout(r, ms))
+function srDevSnapshot(full) {
+    const s = { disabled: DEV.disabled, maintenance: DEV.maintenance, ownerOnly: DEV.ownerOnly, maxSlots: DEV.maxSlots, rev: DEV.rev || 0 }
+    if (DEV.ui) s.ui = DEV.ui
+    if (DEV.aiOff) s.aiOff = DEV.aiOff
+    if (full) { s.blocked = DEV.blocked; s.blockedInfo = DEV.blockedInfo }
+    return s
+}
+async function srDevWrite() {
+    if (!settingsCollection) throw new Error('database not connected')
+    while (__devOps.length) {
+        const op = __devOps[0]
+        if (op.t === 'add') await settingsCollection.updateOne({ _id: 'dev_state' }, { $addToSet: { blocked: op.n }, $set: { ['blockedInfo.' + op.n]: op.info } }, { upsert: true })
+        else await settingsCollection.updateOne({ _id: 'dev_state' }, { $pull: { blocked: op.n }, $unset: { ['blockedInfo.' + op.n]: '' } }, { upsert: true })
+        __devOps.shift()
+    }
+    const snap = srDevSnapshot(__devFull)
+    __devFull = false
+    DEV.pending = false
+    try { await settingsCollection.updateOne({ _id: 'dev_state' }, { $set: snap }, { upsert: true }) }
+    catch (e) { DEV.pending = true; if (snap.blocked) __devFull = true; throw e }
+    try { fs.writeFileSync(DEV_FILE, JSON.stringify(DEV)) } catch (e) {}
+}
+function srDevRun() { const p = __devQ.then(srDevWrite); __devQ = p.catch(() => {}); return p }
+async function srDevPump() {
+    if (__devPump) return
+    __devPump = true
     try {
-        if (!settingsCollection) return
-        settingsCollection.updateOne({ _id: 'dev_state' }, { $set: { blocked: DEV.blocked, blockedInfo: DEV.blockedInfo, disabled: DEV.disabled, maintenance: DEV.maintenance, ownerOnly: DEV.ownerOnly, maxSlots: DEV.maxSlots } }, { upsert: true }).catch(() => {})
-    } catch (e) {}
+        while (DEV.pending || __devOps.length) {
+            if (!MONGO_URI) { DEV.pending = false; __devOps.length = 0; break }
+            try { await srDevRun(); __devRetry = 0 }
+            catch (e) {
+                __devRetry++
+                if (__devRetry === 1 || __devRetry % 10 === 0) console.log('[DEV] database save failed, will retry: ' + String(e.message).slice(0, 100))
+                await srSleep(Math.min(60000, 1500 * __devRetry))
+            }
+        }
+    } finally { __devPump = false }
+}
+function srSaveDevMongo() { DEV.pending = true; srDevPump() }
+async function srDevFlush() {
+    if (!MONGO_URI) return true
+    try { await srDevRun(); return true } catch (e) { srDevPump(); return false }
+}
+function srAdoptDev(v) {
+    DEV.blocked = Array.isArray(v.blocked) ? v.blocked.map(String) : []
+    DEV.blockedInfo = Object.assign({}, srInfoFromLog(v.blockLog), v.blockedInfo && typeof v.blockedInfo === 'object' ? v.blockedInfo : {})
+    DEV.disabled = Array.isArray(v.disabled) ? v.disabled : []
+    if (typeof v.maintenance === 'boolean') DEV.maintenance = v.maintenance
+    if (typeof v.ownerOnly === 'boolean') DEV.ownerOnly = v.ownerOnly
+    if (v.maxSlots !== undefined) DEV.maxSlots = Math.max(0, parseInt(v.maxSlots) || 0)
+    if (v.ui && typeof v.ui === 'object') DEV.ui = v.ui
+    if (Array.isArray(v.aiOff)) DEV.aiOff = v.aiOff
+    DEV.rev = v.rev || 0
 }
 async function srLoadDevMongo() {
     try {
         if (!settingsCollection) return
         const d = await settingsCollection.findOne({ _id: 'dev_state' })
-        if (!d) { srSaveDevMongo(); return }
+        if (!d) { DEV.rev = DEV.rev || Date.now(); DEV.pending = true; __devFull = true; srDevPump(); return }
         const v = (d.value && typeof d.value === 'object') ? d.value : d
-        for (const n of v.blocked || []) if (!DEV.blocked.includes(n)) DEV.blocked.push(n)
-        DEV.blockedInfo = Object.assign({}, srInfoFromLog(v.blockLog), v.blockedInfo || {}, DEV.blockedInfo || {})
-        for (const n of v.disabled || []) if (!DEV.disabled.includes(n)) DEV.disabled.push(n)
-        saveDev()
-    } catch (e) {}
+        if (__devOps.length || (DEV.pending && (DEV.rev || 0) > (v.rev || 0))) { console.log('[DEV] pushing local changes that were not saved yet'); __devFull = true; srDevPump(); return }
+        srAdoptDev(v)
+        try { fs.writeFileSync(DEV_FILE, JSON.stringify(DEV)) } catch (e) {}
+        console.log('[DEV] state loaded from the database (' + DEV.blocked.length + ' blocked)')
+    } catch (e) { console.log('[DEV] could not load from the database: ' + String(e.message).slice(0, 100)) }
 }
+setInterval(async () => {
+    try {
+        if (!settingsCollection || DEV.pending || __devOps.length) return
+        const d = await settingsCollection.findOne({ _id: 'dev_state' }); if (!d) return
+        const v = (d.value && typeof d.value === 'object') ? d.value : d
+        if ((v.rev || 0) > (DEV.rev || 0)) { srAdoptDev(v); console.log('[DEV] picked up a newer state from the database') }
+    } catch (e) {}
+}, 45000).unref()
+process.on('SIGTERM', async () => { try { await Promise.race([srDevFlush(), srSleep(3000)]) } catch (e) {} process.exit(0) })
+
 function srBlockedList() {
     return DEV.blocked.map(n => ({ number: n, at: (DEV.blockedInfo[n] || {}).at || null, via: (DEV.blockedInfo[n] || {}).via || 'block' }))
 }
@@ -2629,8 +2691,8 @@ async function srKillSession(n) {
     try { fs.rmSync(path.join(SESSION_DIR, id), { recursive: true, force: true }) } catch (e) {}
     await deleteSessionFromMongo(id)
 }
-function srBlock(n, via) { if (!DEV.blocked.includes(n)) DEV.blocked.push(n); DEV.blockedInfo[n] = { at: Date.now(), via: via || 'block' } }
-function srUnblock(n) { DEV.blocked = DEV.blocked.filter(x => x !== n); delete DEV.blockedInfo[n] }
+function srBlock(n, via) { if (!DEV.blocked.includes(n)) DEV.blocked.push(n); const info = { at: Date.now(), via: via || 'block' }; DEV.blockedInfo[n] = info; __devOps.push({ t: 'add', n, info }) }
+function srUnblock(n) { DEV.blocked = DEV.blocked.filter(x => x !== n); delete DEV.blockedInfo[n]; __devOps.push({ t: 'del', n }) }
 
 /* run one tool. C = { user, verified, owner }. returns { text, client? } */
 async function srRunTool(name, a, C) {
@@ -3719,8 +3781,8 @@ const server = http.createServer(async (req, res) => {
                     else if (p.action === 'imgdel' && IMG_KINDS.includes(p.kind)) { await delImg(n || 'default', p.kind); return J(200, { ok: true }) }
                     else if (p.action === 'resetusage') { CMD_USAGE.counts = {}; CMD_USAGE.recent = []; return J(200, { ok: true }) }
                     else if (p.action === 'freemem') { return J(200, Object.assign({ ok: true }, freeMemory())) }
-                    else if (p.action === 'restart') { J(200, { ok: true }); setTimeout(() => process.exit(0), 600); return }
-                    saveDev(); J(200, { ok: true, blocked: srBlockedList() })
+                    else if (p.action === 'restart') { await srDevFlush(); J(200, { ok: true }); setTimeout(() => process.exit(0), 600); return }
+                    saveDev(); const __saved = await srDevFlush(); J(200, { ok: true, blocked: srBlockedList(), saved: __saved })
                 } catch (e) { J(500, { error: String(e.message || e) }) }
             })
             return
